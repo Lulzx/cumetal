@@ -46,6 +46,7 @@ Supported driver API subset:
 - `cuMemAlloc`, `cuMemFree`
 - `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
 - `cuMemcpyHtoDAsync`, `cuMemcpyDtoHAsync`, `cuMemcpyDtoDAsync`
+- `cuMemsetD8`, `cuMemsetD8Async`
 - `cuGetErrorName`, `cuGetErrorString`
 
 Current limitations:
@@ -90,6 +91,7 @@ ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
+ctest --test-dir build -R functional_driver_memset --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure

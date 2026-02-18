@@ -51,6 +51,10 @@ add_executable(cumetal_driver_async_memcpy_test
     driver_async_memcpy_test.cpp
 )
 
+add_executable(cumetal_driver_memset_test
+    driver_memset_test.cpp
+)
+
 add_executable(cumetal_driver_launch_extra_test
     driver_launch_extra_test.cpp
 )
@@ -119,6 +123,11 @@ target_link_libraries(cumetal_driver_context_switch_test
 )
 
 target_link_libraries(cumetal_driver_async_memcpy_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_memset_test
     PRIVATE
         cumetal_runtime
 )
@@ -216,6 +225,13 @@ target_compile_options(cumetal_driver_context_switch_test
 )
 
 target_compile_options(cumetal_driver_async_memcpy_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_memset_test
     PRIVATE
         -Wall
         -Wextra
@@ -342,6 +358,11 @@ add_test(
 )
 
 set_tests_properties(functional_driver_async_memcpy PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_memset
+    COMMAND cumetal_driver_memset_test
+)
 
 add_test(
     NAME functional_driver_launch_extra

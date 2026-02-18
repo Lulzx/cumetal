@@ -98,6 +98,8 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                            CUdeviceptr srcDevice,
                            size_t ByteCount,
                            CUstream hStream);
+CUresult cuMemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N);
+CUresult cuMemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream);
 
 CUresult cuGetErrorName(CUresult error, const char** pStr);
 CUresult cuGetErrorString(CUresult error, const char** pStr);

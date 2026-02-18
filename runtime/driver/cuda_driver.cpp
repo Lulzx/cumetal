@@ -560,6 +560,19 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                                           reinterpret_cast<cudaStream_t>(hStream)));
 }
 
+CUresult cuMemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) {
+    return map_cuda_error(cudaMemset(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                     static_cast<int>(uc),
+                                     N));
+}
+
+CUresult cuMemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream) {
+    return map_cuda_error(cudaMemsetAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                          static_cast<int>(uc),
+                                          N,
+                                          reinterpret_cast<cudaStream_t>(hStream)));
+}
+
 CUresult cuGetErrorName(CUresult error, const char** pStr) {
     if (pStr == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
