@@ -32,11 +32,27 @@ typedef enum cublasFillMode_t {
     CUBLAS_FILL_MODE_UPPER = 1,
 } cublasFillMode_t;
 
+typedef enum cublasMath_t {
+    CUBLAS_DEFAULT_MATH = 0,
+    CUBLAS_TENSOR_OP_MATH = 1,
+    CUBLAS_PEDANTIC_MATH = 2,
+    CUBLAS_TF32_TENSOR_OP_MATH = 3,
+} cublasMath_t;
+
+typedef enum cublasComputeType_t {
+    CUBLAS_COMPUTE_16F = 64,
+    CUBLAS_COMPUTE_32F = 68,
+    CUBLAS_COMPUTE_64F = 70,
+    CUBLAS_COMPUTE_32F_FAST_TF32 = 77,
+} cublasComputeType_t;
+
 cublasStatus_t cublasCreate(cublasHandle_t* handle);
 cublasStatus_t cublasDestroy(cublasHandle_t handle);
 cublasStatus_t cublasGetVersion(cublasHandle_t handle, int* version);
 cublasStatus_t cublasSetStream(cublasHandle_t handle, cudaStream_t stream_id);
 cublasStatus_t cublasGetStream(cublasHandle_t handle, cudaStream_t* stream_id);
+cublasStatus_t cublasSetMathMode(cublasHandle_t handle, cublasMath_t mode);
+cublasStatus_t cublasGetMathMode(cublasHandle_t handle, cublasMath_t* mode);
 
 cublasStatus_t cublasSaxpy(cublasHandle_t handle,
                            int n,
@@ -105,6 +121,25 @@ cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            const float* beta,
                            float* c,
                            int ldc);
+
+cublasStatus_t cublasSgemmStridedBatched(cublasHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m,
+                                         int n,
+                                         int k,
+                                         const float* alpha,
+                                         const float* a,
+                                         int lda,
+                                         long long int stridea,
+                                         const float* b,
+                                         int ldb,
+                                         long long int strideb,
+                                         const float* beta,
+                                         float* c,
+                                         int ldc,
+                                         long long int stridec,
+                                         int batch_count);
 
 cublasStatus_t cublasDgemm(cublasHandle_t handle,
                            cublasOperation_t transa,

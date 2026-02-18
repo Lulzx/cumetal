@@ -259,6 +259,11 @@ target_compile_options(cumetalc
         -Wpedantic
 )
 
+target_compile_definitions(cumetalc
+    PRIVATE
+        CUMETAL_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
 add_executable(cumetal-ptx2llvm
     compiler/ptx/src/main.cpp
 )

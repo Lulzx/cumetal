@@ -12,6 +12,10 @@
 #include <unistd.h>
 #include <vector>
 
+#ifndef CUMETAL_SOURCE_DIR
+#define CUMETAL_SOURCE_DIR ""
+#endif
+
 namespace {
 
 struct CommandResult {
@@ -324,10 +328,15 @@ int main(int argc, char** argv) {
         }
 
         temp_ll = make_temp_ll_path();
+        const std::filesystem::path runtime_api_dir =
+            std::filesystem::path(CUMETAL_SOURCE_DIR) / "runtime" / "api";
         const std::string command =
             "xcrun clang++ -std=c++20 -S -emit-llvm -x c++ "
             "-D__global__= -D__host__= -D__device__= -D__shared__= -D__constant__= "
             "-D__managed__= " +
+            ((std::filesystem::exists(runtime_api_dir) && std::filesystem::is_directory(runtime_api_dir))
+                 ? ("-I " + quote_shell(runtime_api_dir.string()) + " ")
+                 : "") +
             quote_shell(options.input.string()) + " -o " + quote_shell(temp_ll.string()) + " 2>&1";
         const CommandResult result = run_command_capture(command);
         if (!result.started || result.exit_code != 0) {

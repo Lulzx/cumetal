@@ -20,3 +20,6 @@ pipeline) and then invokes the AIR emitter.
 For `.cu` input, `cumetalc` invokes `xcrun clang++` with a minimal CUDA-qualifier define
 set (`__global__`, `__host__`, `__device__`, `__shared__`, `__constant__`, `__managed__`)
 to produce temporary LLVM IR, then runs the AIR emitter.
+
+When built from a CuMetal source checkout, this `.cu` frontend path automatically adds
+`runtime/api/` to the include path for clean-room CUDA headers.

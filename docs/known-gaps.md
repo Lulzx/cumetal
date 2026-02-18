@@ -8,3 +8,6 @@
   host-function and basic symbol-variable mapping, but not full NVCC fatbinary variants.
 - `llm.c` stress coverage is wired as an opt-in harness (`conformance_llmc_gpt2fp32cu`) and depends on an
   external checkout/build command.
+- End-to-end GPU execution of full `llm.c` CUDA sources through `cumetalc` is not yet implemented:
+  current `.cu` frontend lowering is partial and does not support full CUDA language/device-runtime
+  semantics required by `train_gpt2_fp32.cu` (cooperative groups, CUDA builtins, and kernel-launch codegen).

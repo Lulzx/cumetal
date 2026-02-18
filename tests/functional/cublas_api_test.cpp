@@ -54,6 +54,29 @@ int main() {
         std::fprintf(stderr, "FAIL: cublasGetStream mismatch\n");
         return 1;
     }
+    cublasMath_t math_mode = CUBLAS_DEFAULT_MATH;
+    if (cublasGetMathMode(handle, &math_mode) != CUBLAS_STATUS_SUCCESS ||
+        math_mode != CUBLAS_DEFAULT_MATH) {
+        std::fprintf(stderr, "FAIL: cublasGetMathMode default mismatch\n");
+        return 1;
+    }
+    if (cublasSetMathMode(handle, CUBLAS_TF32_TENSOR_OP_MATH) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSetMathMode failed\n");
+        return 1;
+    }
+    if (cublasGetMathMode(handle, &math_mode) != CUBLAS_STATUS_SUCCESS ||
+        math_mode != CUBLAS_TF32_TENSOR_OP_MATH) {
+        std::fprintf(stderr, "FAIL: cublasGetMathMode updated mismatch\n");
+        return 1;
+    }
+    if (cublasGetMathMode(handle, nullptr) != CUBLAS_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_NOT_INITIALIZED for null math-mode ptr\n");
+        return 1;
+    }
+    if (cublasSetMathMode(handle, static_cast<cublasMath_t>(-1)) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid math mode\n");
+        return 1;
+    }
 
     constexpr int kVecCount = 2048;
     std::vector<float> host_x(kVecCount);
@@ -528,6 +551,188 @@ int main() {
                     dev_cn,
                     ldc_n) != CUBLAS_STATUS_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid ldb\n");
+        return 1;
+    }
+
+    constexpr int sb_m = 2;
+    constexpr int sb_n = 2;
+    constexpr int sb_k = 3;
+    constexpr int sb_batch_count = 3;
+    constexpr int sb_lda = sb_m;
+    constexpr int sb_ldb = sb_k;
+    constexpr int sb_ldc = sb_m;
+    constexpr long long sb_stridea = static_cast<long long>(sb_lda) * sb_k;
+    constexpr long long sb_strideb = static_cast<long long>(sb_ldb) * sb_n;
+    constexpr long long sb_stridec = static_cast<long long>(sb_ldc) * sb_n;
+    std::vector<float> host_sa(static_cast<std::size_t>(sb_stridea * sb_batch_count));
+    std::vector<float> host_sb(static_cast<std::size_t>(sb_strideb * sb_batch_count));
+    std::vector<float> host_sc(static_cast<std::size_t>(sb_stridec * sb_batch_count));
+    std::vector<float> expected_sc = host_sc;
+
+    for (int batch = 0; batch < sb_batch_count; ++batch) {
+        for (int col = 0; col < sb_k; ++col) {
+            for (int row = 0; row < sb_m; ++row) {
+                host_sa[static_cast<std::size_t>(batch * sb_stridea) + row + col * sb_lda] =
+                    0.2f + static_cast<float>(batch + 1) * 0.05f +
+                    static_cast<float>((row + 1) * (col + 1)) * 0.1f;
+            }
+        }
+        for (int col = 0; col < sb_n; ++col) {
+            for (int row = 0; row < sb_k; ++row) {
+                host_sb[static_cast<std::size_t>(batch * sb_strideb) + row + col * sb_ldb] =
+                    0.1f + static_cast<float>(batch + 1) * 0.03f +
+                    static_cast<float>((row + 2) * (col + 1)) * 0.08f;
+            }
+        }
+        for (int col = 0; col < sb_n; ++col) {
+            for (int row = 0; row < sb_m; ++row) {
+                const std::size_t index =
+                    static_cast<std::size_t>(batch * sb_stridec) + row + col * sb_ldc;
+                host_sc[index] = static_cast<float>(batch + row + col + 1) * 0.2f;
+                expected_sc[index] = host_sc[index];
+            }
+        }
+    }
+
+    const float sb_alpha = 0.9f;
+    const float sb_beta = 0.4f;
+    for (int batch = 0; batch < sb_batch_count; ++batch) {
+        const std::size_t a_base = static_cast<std::size_t>(batch * sb_stridea);
+        const std::size_t b_base = static_cast<std::size_t>(batch * sb_strideb);
+        const std::size_t c_base = static_cast<std::size_t>(batch * sb_stridec);
+        for (int col = 0; col < sb_n; ++col) {
+            for (int row = 0; row < sb_m; ++row) {
+                float sum = 0.0f;
+                for (int p = 0; p < sb_k; ++p) {
+                    sum += host_sa[a_base + row + p * sb_lda] * host_sb[b_base + p + col * sb_ldb];
+                }
+                expected_sc[c_base + row + col * sb_ldc] =
+                    sb_alpha * sum + sb_beta * expected_sc[c_base + row + col * sb_ldc];
+            }
+        }
+    }
+
+    float* dev_sa = nullptr;
+    float* dev_sb = nullptr;
+    float* dev_sc = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_sa), host_sa.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_sb), host_sb.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_sc), host_sc.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SGEMM strided-batched failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_sa, host_sa.data(), host_sa.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_sb, host_sb.data(), host_sb.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_sc, host_sc.data(), host_sc.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SGEMM strided-batched failed\n");
+        return 1;
+    }
+    if (cublasSgemmStridedBatched(handle,
+                                  CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  sb_m,
+                                  sb_n,
+                                  sb_k,
+                                  &sb_alpha,
+                                  dev_sa,
+                                  sb_lda,
+                                  sb_stridea,
+                                  dev_sb,
+                                  sb_ldb,
+                                  sb_strideb,
+                                  &sb_beta,
+                                  dev_sc,
+                                  sb_ldc,
+                                  sb_stridec,
+                                  sb_batch_count) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemmStridedBatched failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_sc.data(), dev_sc, host_sc.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr,
+                     "FAIL: cudaMemcpy device->host for SGEMM strided-batched failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_sc.size(); ++i) {
+        if (!nearly_equal(host_sc[i], expected_sc[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SGEMM strided-batched mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_sc[i]),
+                         static_cast<double>(expected_sc[i]));
+            return 1;
+        }
+    }
+    if (cublasSgemmStridedBatched(handle,
+                                  CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  sb_m,
+                                  sb_n,
+                                  sb_k,
+                                  &sb_alpha,
+                                  host_sa.data(),
+                                  sb_lda,
+                                  sb_stridea,
+                                  dev_sb,
+                                  sb_ldb,
+                                  sb_strideb,
+                                  &sb_beta,
+                                  dev_sc,
+                                  sb_ldc,
+                                  sb_stridec,
+                                  sb_batch_count) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host A in strided-batched SGEMM\n");
+        return 1;
+    }
+    if (cublasSgemmStridedBatched(handle,
+                                  CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  sb_m,
+                                  sb_n,
+                                  sb_k,
+                                  &sb_alpha,
+                                  dev_sa,
+                                  sb_lda,
+                                  -1,
+                                  dev_sb,
+                                  sb_ldb,
+                                  sb_strideb,
+                                  &sb_beta,
+                                  dev_sc,
+                                  sb_ldc,
+                                  sb_stridec,
+                                  sb_batch_count) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for negative stride\n");
+        return 1;
+    }
+    if (cublasSgemmStridedBatched(handle,
+                                  CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  sb_m,
+                                  sb_n,
+                                  sb_k,
+                                  &sb_alpha,
+                                  dev_sa,
+                                  sb_lda,
+                                  sb_stridea,
+                                  dev_sb,
+                                  sb_ldb,
+                                  sb_strideb,
+                                  &sb_beta,
+                                  dev_sc,
+                                  sb_ldc,
+                                  sb_stridec,
+                                  0) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemmStridedBatched batch_count==0 should succeed\n");
+        return 1;
+    }
+    if (cudaFree(dev_sa) != cudaSuccess || cudaFree(dev_sb) != cudaSuccess ||
+        cudaFree(dev_sc) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for SGEMM strided-batched buffers failed\n");
         return 1;
     }
 

@@ -1,11 +1,13 @@
 #include "cublas_v2.h"
 
+#include <cstddef>
 #include <cmath>
 #include <mutex>
 #include <new>
 
 struct cublasContext {
     cudaStream_t stream = nullptr;
+    cublasMath_t math_mode = CUBLAS_DEFAULT_MATH;
     std::mutex mutex;
 };
 
@@ -21,6 +23,11 @@ bool is_valid_operation(cublasOperation_t op) {
 
 bool is_valid_fill_mode(cublasFillMode_t mode) {
     return mode == CUBLAS_FILL_MODE_LOWER || mode == CUBLAS_FILL_MODE_UPPER;
+}
+
+bool is_valid_math_mode(cublasMath_t mode) {
+    return mode == CUBLAS_DEFAULT_MATH || mode == CUBLAS_TENSOR_OP_MATH ||
+           mode == CUBLAS_PEDANTIC_MATH || mode == CUBLAS_TF32_TENSOR_OP_MATH;
 }
 
 template <typename T>
@@ -89,6 +96,27 @@ cublasStatus_t cublasGetStream(cublasHandle_t handle, cudaStream_t* stream_id) {
     }
     std::lock_guard<std::mutex> lock(handle->mutex);
     *stream_id = handle->stream;
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasSetMathMode(cublasHandle_t handle, cublasMath_t mode) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_math_mode(mode)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    std::lock_guard<std::mutex> lock(handle->mutex);
+    handle->math_mode = mode;
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasGetMathMode(cublasHandle_t handle, cublasMath_t* mode) {
+    if (handle == nullptr || mode == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    std::lock_guard<std::mutex> lock(handle->mutex);
+    *mode = handle->math_mode;
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -798,6 +826,87 @@ cublasStatus_t cublasSgemm(cublasHandle_t handle,
             c[row + col * ldc] = alpha_value * sum + beta_value * c[row + col * ldc];
         }
     }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasSgemmStridedBatched(cublasHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m,
+                                         int n,
+                                         int k,
+                                         const float* alpha,
+                                         const float* a,
+                                         int lda,
+                                         long long int stridea,
+                                         const float* b,
+                                         int ldb,
+                                         long long int strideb,
+                                         const float* beta,
+                                         float* c,
+                                         int ldc,
+                                         long long int stridec,
+                                         int batch_count) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_operation(transa) || !is_valid_operation(transb)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m < 0 || n < 0 || k < 0 || batch_count < 0 || alpha == nullptr || beta == nullptr ||
+        stridea < 0 || strideb < 0 || stridec < 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (batch_count == 0 || m == 0 || n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || b == nullptr || c == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(b) == 0 ||
+        cumetalRuntimeIsDevicePointer(c) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const int a_rows = (transa == CUBLAS_OP_N) ? m : k;
+    const int b_rows = (transb == CUBLAS_OP_N) ? k : n;
+    if (lda < (a_rows > 1 ? a_rows : 1) || ldb < (b_rows > 1 ? b_rows : 1) || ldc < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const float alpha_value = *alpha;
+    const float beta_value = *beta;
+    for (int batch = 0; batch < batch_count; ++batch) {
+        const std::ptrdiff_t batch_offset_a = static_cast<std::ptrdiff_t>(batch) *
+                                              static_cast<std::ptrdiff_t>(stridea);
+        const std::ptrdiff_t batch_offset_b = static_cast<std::ptrdiff_t>(batch) *
+                                              static_cast<std::ptrdiff_t>(strideb);
+        const std::ptrdiff_t batch_offset_c = static_cast<std::ptrdiff_t>(batch) *
+                                              static_cast<std::ptrdiff_t>(stridec);
+        const float* batch_a = a + batch_offset_a;
+        const float* batch_b = b + batch_offset_b;
+        float* batch_c = c + batch_offset_c;
+
+        for (int col = 0; col < n; ++col) {
+            for (int row = 0; row < m; ++row) {
+                float sum = 0.0f;
+                for (int p = 0; p < k; ++p) {
+                    const float a_value =
+                        (transa == CUBLAS_OP_N) ? batch_a[row + p * lda] : batch_a[p + row * lda];
+                    const float b_value =
+                        (transb == CUBLAS_OP_N) ? batch_b[p + col * ldb] : batch_b[col + p * ldb];
+                    sum += a_value * b_value;
+                }
+                batch_c[row + col * ldc] = alpha_value * sum + beta_value * batch_c[row + col * ldc];
+            }
+        }
+    }
+
     return CUBLAS_STATUS_SUCCESS;
 }
 
