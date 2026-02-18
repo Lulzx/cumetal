@@ -10,7 +10,8 @@ cumetalc --mode xcrun kernel.metal -o kernel.metallib --overwrite
 cumetalc --mode experimental --input kernel.ptx --output kernel.metallib --entry kernel_name --ptx-strict --overwrite
 ```
 
-If `-o/--output` is omitted, output defaults to `<input-stem>.metallib`.
+If `-o/--output` is omitted, output defaults to `<input-stem>.metallib`
+(for both `.metal` and `.ptx` inputs).
 
 For `.ptx` input, `cumetalc` lowers PTX to temporary LLVM IR internally (via phase1
 pipeline) and then invokes the AIR emitter.
