@@ -37,6 +37,10 @@ add_executable(cumetal_phase1_pipeline_test
     phase1_pipeline_test.cpp
 )
 
+add_executable(cumetal_ptx_lower_to_llvm_test
+    ptx_lower_to_llvm_test.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -82,6 +86,11 @@ target_link_libraries(cumetal_metadata_pass_test
 target_link_libraries(cumetal_phase1_pipeline_test
     PRIVATE
         cumetal_passes
+)
+
+target_link_libraries(cumetal_ptx_lower_to_llvm_test
+    PRIVATE
+        cumetal_ptx_codegen
 )
 
 target_compile_options(cumetal_allocation_table_test
@@ -147,6 +156,13 @@ target_compile_options(cumetal_phase1_pipeline_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_ptx_lower_to_llvm_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -192,6 +208,11 @@ add_test(
 add_test(
     NAME unit_phase1_pipeline
     COMMAND cumetal_phase1_pipeline_test
+)
+
+add_test(
+    NAME unit_ptx_lower_to_llvm
+    COMMAND cumetal_ptx_lower_to_llvm_test
 )
 
 add_test(

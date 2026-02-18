@@ -17,3 +17,4 @@ Current status:
   - per-argument `type` and `name` records
 - `phase1_pipeline` scaffold chains parser + passes for one PTX entry and returns
   lowered instructions, addrspace rewrites, metadata, and warnings.
+- This pipeline is now consumed by `cumetal::ptx::lower_ptx_to_llvm_ir`.

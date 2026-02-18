@@ -66,6 +66,27 @@ target_compile_options(cumetal_passes
         -Wpedantic
 )
 
+add_library(cumetal_ptx_codegen STATIC
+    compiler/ptx/src/lower_to_llvm.cpp
+)
+
+target_include_directories(cumetal_ptx_codegen
+    PUBLIC
+        compiler/ptx/include
+)
+
+target_link_libraries(cumetal_ptx_codegen
+    PUBLIC
+        cumetal_passes
+)
+
+target_compile_options(cumetal_ptx_codegen
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
@@ -184,6 +205,23 @@ target_compile_options(cumetalc
         -Wpedantic
 )
 
+add_executable(cumetal-ptx2llvm
+    compiler/ptx/src/main.cpp
+)
+
+target_link_libraries(cumetal-ptx2llvm
+    PRIVATE
+        cumetal_common
+        cumetal_ptx_codegen
+)
+
+target_compile_options(cumetal-ptx2llvm
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_executable(air_inspect
     tools/air_inspect/main.cpp
 )
@@ -213,6 +251,7 @@ install(TARGETS
     air_validate
     cumetal-air-emitter
     cumetalc
+    cumetal-ptx2llvm
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

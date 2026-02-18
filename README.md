@@ -18,6 +18,7 @@ Implemented today:
 - Phase 1 scaffolding:
   - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
+  - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
   - initial `metadata` pass for AIR-style kernel metadata fields
@@ -98,6 +99,7 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/cumetalc --mode xcrun --input tests/air_abi/reference/vector_add.metal --output /tmp/vector_add.cumetalc.metallib --overwrite
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal -o /tmp/vector_add.cumetalc.positional.metallib --overwrite
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal --overwrite
+./build/cumetal-ptx2llvm --input tests/air_abi/reference/vector_add.ptx --output /tmp/vector_add.from_ptx.ll --entry vector_add --overwrite
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
 ctest --test-dir build -R air_abi_validate_negative --output-on-failure
@@ -105,6 +107,7 @@ ctest --test-dir build -R air_abi_cumetalc_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_positional_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_default_output_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-on-failure
+ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failure
 ```
 
 Runtime execution tests
@@ -161,6 +164,7 @@ ctest --test-dir build -R unit_intrinsic_lower --output-on-failure
 ctest --test-dir build -R unit_addrspace_pass --output-on-failure
 ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure
+ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 
