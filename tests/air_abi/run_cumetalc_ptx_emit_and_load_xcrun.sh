@@ -5,6 +5,7 @@ CUMETALC="$1"
 LOAD_TEST="$2"
 INPUT_PTX="$3"
 OUTPUT_METALLIB="$4"
+ENTRY_NAME="${5:-vector_add}"
 
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "SKIP: xcrun not installed"
@@ -30,10 +31,10 @@ fi
   --mode xcrun \
   --input "$INPUT_PTX" \
   --output "$OUTPUT_METALLIB" \
-  --entry vector_add \
+  --entry "$ENTRY_NAME" \
   --ptx-strict \
   --overwrite
 
 "$LOAD_TEST" "$OUTPUT_METALLIB"
 
-echo "PASS: cumetalc PTX xcrun output loads via MTLDevice.newLibraryWithData"
+echo "PASS: cumetalc PTX xcrun output loads via MTLDevice.newLibraryWithData ($ENTRY_NAME)"
