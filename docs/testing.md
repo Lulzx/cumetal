@@ -110,6 +110,8 @@ Notes:
   before CMake configure, or place checkout at `../llm.c` relative to this repo root).
 - When registered, `conformance_llmc_gpt2fp32cu` auto-wires CuMetal's LLVM+fatbin shim flow:
   `scripts/build_llmc_test_gpt2fp32cu.sh` + `scripts/run_llmc_test_gpt2fp32cu.sh`.
+- `conformance_llmc_gpt2fp32cu` now fails on any `TENSOR NOT OK` marker and requires
+  `overall okay: 1` in output.
 
 Direct invocation with custom threshold/regex:
 
@@ -124,6 +126,8 @@ export CUMETAL_LLMC_DIR="/path/to/llm.c"
 # optional overrides:
 export CUMETAL_LLMC_BUILD_CMD="scripts/build_llmc_test_gpt2fp32cu.sh"
 export CUMETAL_LLMC_TEST_CMD="scripts/run_llmc_test_gpt2fp32cu.sh"
+# optional: gradient checker tolerance applied by build shim patching
+export CUMETAL_LLMC_GRAD_TOL="1.2e-2"
 ```
 
 Benchmark runner

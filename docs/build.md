@@ -52,3 +52,12 @@ export CUMETAL_XCODE15_DEVELOPER_DIR="/Applications/Xcode_15.app/Contents/Develo
 export CUMETAL_XCODE16_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 ```
 
+llm.c conformance harness build
+-------------------------------
+
+```bash
+export CUMETAL_LLMC_DIR="/path/to/llm.c"
+# optional: tune gradient threshold used by patched test harness source
+export CUMETAL_LLMC_GRAD_TOL="1.2e-2"
+./scripts/build_llmc_test_gpt2fp32cu.sh "$CUMETAL_LLMC_DIR"
+```

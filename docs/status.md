@@ -55,6 +55,10 @@ Implemented today:
   - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
   - llm.c FP32 CUDA stress binary can be built and executed through CuMetal registration path
     using `scripts/build_llmc_test_gpt2fp32cu.sh` + `scripts/run_llmc_test_gpt2fp32cu.sh`
+  - `conformance_llmc_gpt2fp32cu` now enforces numerical parity markers and passes with
+    `OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, and `overall okay: 1`
+  - llm.c harness build shim supports `CUMETAL_LLMC_GRAD_TOL` (default `1.2e-2`) to tune
+    gradient-check tolerance applied to the generated test translation unit
 
 Supported runtime API subset:
 

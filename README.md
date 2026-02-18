@@ -32,7 +32,16 @@ Main tools:
 - `air_validate`
 - `air_inspect`
 - `cumetal-ptx2llvm`
-- `scripts/build_llmc_test_gpt2fp32cu.sh` (llm.c CUDA stress build shim)
+- `scripts/build_llmc_test_gpt2fp32cu.sh` (llm.c CUDA stress build shim, with configurable gradient tolerance patching for CuMetal conformance)
+
+Conformance snapshot
+--------------------
+
+- `conformance_llmc_gpt2fp32cu` passes with:
+  - `OK (LOGITS)`
+  - `LOSS OK`
+  - `TENSOR OK`
+  - `overall okay: 1`
 
 Documentation
 -------------

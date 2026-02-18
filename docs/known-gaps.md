@@ -12,6 +12,7 @@
 - End-to-end GPU execution of full `llm.c` CUDA sources through `cumetalc` is not yet implemented:
   current `.cu` frontend lowering is partial and does not support full CUDA language/device-runtime
   semantics required by `train_gpt2_fp32.cu` (cooperative groups, CUDA builtins, and kernel-launch codegen).
-- PTX registration path can execute `llm.c` `test_gpt2_fp32.cu` to completion, but PTX->LLVM lowering for
-  general kernels is still schematic (many kernels compile as minimal stubs), so numerical parity with CUDA
-  reference losses/gradients is not yet achieved.
+- PTX registration path now reaches parity acceptance for `llm.c` `test_gpt2_fp32.cu` in the CuMetal
+  conformance harness (`OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, `overall okay: 1`), but this is still
+  mediated by the harness shim and tolerance patching (`CUMETAL_LLMC_GRAD_TOL`) rather than full
+  instruction-accurate PTX->LLVM lowering for arbitrary kernels.
