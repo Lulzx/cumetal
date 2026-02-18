@@ -106,6 +106,7 @@ Supported library shim subset:
   - `cublasIsamin`, `cublasIdamin`
   - `cublasSgemv`, `cublasDgemv`
   - `cublasSger`, `cublasDger`
+  - `cublasSsymv`, `cublasDsymv`
   - `cublasDaxpy`, `cublasDscal`, `cublasDcopy`, `cublasDgemm`
 
 Library alias compatibility:

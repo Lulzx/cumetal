@@ -19,6 +19,18 @@ bool is_valid_operation(cublasOperation_t op) {
     return op == CUBLAS_OP_N || op == CUBLAS_OP_T || op == CUBLAS_OP_C;
 }
 
+bool is_valid_fill_mode(cublasFillMode_t mode) {
+    return mode == CUBLAS_FILL_MODE_LOWER || mode == CUBLAS_FILL_MODE_UPPER;
+}
+
+template <typename T>
+T sym_element(const T* a, int lda, int row, int col, cublasFillMode_t uplo) {
+    if (uplo == CUBLAS_FILL_MODE_UPPER) {
+        return (row <= col) ? a[row + col * lda] : a[col + row * lda];
+    }
+    return (row >= col) ? a[row + col * lda] : a[col + row * lda];
+}
+
 cublasStatus_t synchronize_handle_stream(cublasHandle_t handle) {
     if (handle == nullptr) {
         return CUBLAS_STATUS_NOT_INITIALIZED;
@@ -1064,6 +1076,108 @@ cublasStatus_t cublasDger(cublasHandle_t handle,
         for (int row = 0; row < m; ++row) {
             a[row + col * lda] += alpha_value * x[row * incx] * y_value;
         }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasSsymv(cublasHandle_t handle,
+                           cublasFillMode_t uplo,
+                           int n,
+                           const float* alpha,
+                           const float* a,
+                           int lda,
+                           const float* x,
+                           int incx,
+                           const float* beta,
+                           float* y,
+                           int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_fill_mode(uplo)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n < 0 || alpha == nullptr || beta == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (n > 1 ? n : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(x) == 0 ||
+        cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const float alpha_value = *alpha;
+    const float beta_value = *beta;
+    for (int row = 0; row < n; ++row) {
+        float sum = 0.0f;
+        for (int col = 0; col < n; ++col) {
+            sum += sym_element(a, lda, row, col, uplo) * x[col * incx];
+        }
+        y[row * incy] = alpha_value * sum + beta_value * y[row * incy];
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDsymv(cublasHandle_t handle,
+                           cublasFillMode_t uplo,
+                           int n,
+                           const double* alpha,
+                           const double* a,
+                           int lda,
+                           const double* x,
+                           int incx,
+                           const double* beta,
+                           double* y,
+                           int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_fill_mode(uplo)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n < 0 || alpha == nullptr || beta == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (n > 1 ? n : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(x) == 0 ||
+        cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    const double beta_value = *beta;
+    for (int row = 0; row < n; ++row) {
+        double sum = 0.0;
+        for (int col = 0; col < n; ++col) {
+            sum += sym_element(a, lda, row, col, uplo) * x[col * incx];
+        }
+        y[row * incy] = alpha_value * sum + beta_value * y[row * incy];
     }
     return CUBLAS_STATUS_SUCCESS;
 }

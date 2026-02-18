@@ -1157,6 +1157,291 @@ int main() {
         return 1;
     }
 
+    constexpr int ssymv_n = 3;
+    constexpr int ssymv_lda = ssymv_n;
+    const float ssymv_sym[ssymv_n][ssymv_n] = {
+        {2.0f, -1.0f, 0.5f},
+        {-1.0f, 3.0f, 1.25f},
+        {0.5f, 1.25f, 4.0f},
+    };
+    std::vector<float> host_ssymv_a_upper(ssymv_lda * ssymv_n, 0.0f);
+    std::vector<float> host_ssymv_a_lower(ssymv_lda * ssymv_n, 0.0f);
+    for (int col = 0; col < ssymv_n; ++col) {
+        for (int row = 0; row < ssymv_n; ++row) {
+            host_ssymv_a_upper[row + col * ssymv_lda] =
+                (row <= col) ? ssymv_sym[row][col] : -77.0f;
+            host_ssymv_a_lower[row + col * ssymv_lda] =
+                (row >= col) ? ssymv_sym[row][col] : -88.0f;
+        }
+    }
+    std::vector<float> host_ssymv_x = {1.0f, -2.0f, 0.5f};
+    std::vector<float> host_ssymv_y_init = {0.2f, -0.3f, 0.4f};
+    std::vector<float> expected_ssymv_y = host_ssymv_y_init;
+    const float ssymv_alpha = 1.1f;
+    const float ssymv_beta = 0.6f;
+    for (int row = 0; row < ssymv_n; ++row) {
+        float sum = 0.0f;
+        for (int col = 0; col < ssymv_n; ++col) {
+            sum += ssymv_sym[row][col] * host_ssymv_x[col];
+        }
+        expected_ssymv_y[row] = ssymv_alpha * sum + ssymv_beta * expected_ssymv_y[row];
+    }
+
+    float* dev_ssymv_a = nullptr;
+    float* dev_ssymv_x = nullptr;
+    float* dev_ssymv_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_ssymv_a), host_ssymv_a_upper.size() * sizeof(float)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_ssymv_x), host_ssymv_x.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_ssymv_y), host_ssymv_y_init.size() * sizeof(float)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SSYMV failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_ssymv_x,
+                   host_ssymv_x.data(),
+                   host_ssymv_x.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SSYMV x failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_ssymv_a,
+                   host_ssymv_a_upper.data(),
+                   host_ssymv_a_upper.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_ssymv_y,
+                   host_ssymv_y_init.data(),
+                   host_ssymv_y_init.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SSYMV upper failed\n");
+        return 1;
+    }
+    if (cublasSsymv(handle,
+                    CUBLAS_FILL_MODE_UPPER,
+                    ssymv_n,
+                    &ssymv_alpha,
+                    dev_ssymv_a,
+                    ssymv_lda,
+                    dev_ssymv_x,
+                    1,
+                    &ssymv_beta,
+                    dev_ssymv_y,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSsymv (upper) failed\n");
+        return 1;
+    }
+    std::vector<float> host_ssymv_y = host_ssymv_y_init;
+    if (cudaMemcpy(host_ssymv_y.data(),
+                   dev_ssymv_y,
+                   host_ssymv_y.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SSYMV upper failed\n");
+        return 1;
+    }
+    for (int i = 0; i < ssymv_n; ++i) {
+        if (!nearly_equal(host_ssymv_y[i], expected_ssymv_y[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SSYMV upper mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_ssymv_y[i]),
+                         static_cast<double>(expected_ssymv_y[i]));
+            return 1;
+        }
+    }
+    if (cudaMemcpy(dev_ssymv_a,
+                   host_ssymv_a_lower.data(),
+                   host_ssymv_a_lower.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_ssymv_y,
+                   host_ssymv_y_init.data(),
+                   host_ssymv_y_init.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SSYMV lower failed\n");
+        return 1;
+    }
+    if (cublasSsymv(handle,
+                    CUBLAS_FILL_MODE_LOWER,
+                    ssymv_n,
+                    &ssymv_alpha,
+                    dev_ssymv_a,
+                    ssymv_lda,
+                    dev_ssymv_x,
+                    1,
+                    &ssymv_beta,
+                    dev_ssymv_y,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSsymv (lower) failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_ssymv_y.data(),
+                   dev_ssymv_y,
+                   host_ssymv_y.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SSYMV lower failed\n");
+        return 1;
+    }
+    for (int i = 0; i < ssymv_n; ++i) {
+        if (!nearly_equal(host_ssymv_y[i], expected_ssymv_y[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SSYMV lower mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_ssymv_y[i]),
+                         static_cast<double>(expected_ssymv_y[i]));
+            return 1;
+        }
+    }
+    if (cublasSsymv(handle,
+                    static_cast<cublasFillMode_t>(99),
+                    ssymv_n,
+                    &ssymv_alpha,
+                    dev_ssymv_a,
+                    ssymv_lda,
+                    dev_ssymv_x,
+                    1,
+                    &ssymv_beta,
+                    dev_ssymv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid uplo in SSYMV\n");
+        return 1;
+    }
+    if (cublasSsymv(handle,
+                    CUBLAS_FILL_MODE_UPPER,
+                    ssymv_n,
+                    &ssymv_alpha,
+                    dev_ssymv_a,
+                    ssymv_n - 1,
+                    dev_ssymv_x,
+                    1,
+                    &ssymv_beta,
+                    dev_ssymv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid lda in SSYMV\n");
+        return 1;
+    }
+    if (cublasSsymv(handle,
+                    CUBLAS_FILL_MODE_UPPER,
+                    ssymv_n,
+                    &ssymv_alpha,
+                    dev_ssymv_a,
+                    ssymv_lda,
+                    host_ssymv_x.data(),
+                    1,
+                    &ssymv_beta,
+                    dev_ssymv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SSYMV\n");
+        return 1;
+    }
+    if (cudaFree(dev_ssymv_a) != cudaSuccess || cudaFree(dev_ssymv_x) != cudaSuccess ||
+        cudaFree(dev_ssymv_y) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for SSYMV buffers failed\n");
+        return 1;
+    }
+
+    constexpr int dsymv_n = 2;
+    constexpr int dsymv_lda = dsymv_n;
+    const double dsymv_sym[dsymv_n][dsymv_n] = {
+        {1.5, -0.75},
+        {-0.75, 2.25},
+    };
+    std::vector<double> host_dsymv_a_upper(dsymv_lda * dsymv_n, 0.0);
+    for (int col = 0; col < dsymv_n; ++col) {
+        for (int row = 0; row < dsymv_n; ++row) {
+            host_dsymv_a_upper[row + col * dsymv_lda] =
+                (row <= col) ? dsymv_sym[row][col] : -42.0;
+        }
+    }
+    std::vector<double> host_dsymv_x = {0.4, -1.2};
+    std::vector<double> host_dsymv_y = {0.1, 0.2};
+    std::vector<double> expected_dsymv_y = host_dsymv_y;
+    const double dsymv_alpha = -0.8;
+    const double dsymv_beta = 1.3;
+    for (int row = 0; row < dsymv_n; ++row) {
+        double sum = 0.0;
+        for (int col = 0; col < dsymv_n; ++col) {
+            sum += dsymv_sym[row][col] * host_dsymv_x[col];
+        }
+        expected_dsymv_y[row] = dsymv_alpha * sum + dsymv_beta * expected_dsymv_y[row];
+    }
+
+    double* dev_dsymv_a = nullptr;
+    double* dev_dsymv_x = nullptr;
+    double* dev_dsymv_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_dsymv_a), host_dsymv_a_upper.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dsymv_x), host_dsymv_x.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dsymv_y), host_dsymv_y.size() * sizeof(double)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DSYMV failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_dsymv_a,
+                   host_dsymv_a_upper.data(),
+                   host_dsymv_a_upper.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dsymv_x,
+                   host_dsymv_x.data(),
+                   host_dsymv_x.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dsymv_y,
+                   host_dsymv_y.data(),
+                   host_dsymv_y.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DSYMV failed\n");
+        return 1;
+    }
+    if (cublasDsymv(handle,
+                    CUBLAS_FILL_MODE_UPPER,
+                    dsymv_n,
+                    &dsymv_alpha,
+                    dev_dsymv_a,
+                    dsymv_lda,
+                    dev_dsymv_x,
+                    1,
+                    &dsymv_beta,
+                    dev_dsymv_y,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDsymv failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_dsymv_y.data(),
+                   dev_dsymv_y,
+                   host_dsymv_y.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DSYMV failed\n");
+        return 1;
+    }
+    for (int i = 0; i < dsymv_n; ++i) {
+        if (std::fabs(host_dsymv_y[i] - expected_dsymv_y[i]) > 1e-12) {
+            std::fprintf(stderr,
+                         "FAIL: DSYMV mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         host_dsymv_y[i],
+                         expected_dsymv_y[i]);
+            return 1;
+        }
+    }
+    if (cublasDsymv(handle,
+                    CUBLAS_FILL_MODE_UPPER,
+                    dsymv_n,
+                    &dsymv_alpha,
+                    host_dsymv_a_upper.data(),
+                    dsymv_lda,
+                    dev_dsymv_x,
+                    1,
+                    &dsymv_beta,
+                    dev_dsymv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host A in DSYMV\n");
+        return 1;
+    }
+    if (cudaFree(dev_dsymv_a) != cudaSuccess || cudaFree(dev_dsymv_x) != cudaSuccess ||
+        cudaFree(dev_dsymv_y) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for DSYMV buffers failed\n");
+        return 1;
+    }
+
     constexpr int kDoubleCount = 1536;
     std::vector<double> host_dx(kDoubleCount);
     std::vector<double> host_dy(kDoubleCount);

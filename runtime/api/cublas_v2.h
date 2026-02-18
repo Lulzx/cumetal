@@ -27,6 +27,11 @@ typedef enum cublasOperation_t {
     CUBLAS_OP_C = 2,
 } cublasOperation_t;
 
+typedef enum cublasFillMode_t {
+    CUBLAS_FILL_MODE_LOWER = 0,
+    CUBLAS_FILL_MODE_UPPER = 1,
+} cublasFillMode_t;
+
 cublasStatus_t cublasCreate(cublasHandle_t* handle);
 cublasStatus_t cublasDestroy(cublasHandle_t handle);
 cublasStatus_t cublasGetVersion(cublasHandle_t handle, int* version);
@@ -163,6 +168,30 @@ cublasStatus_t cublasDger(cublasHandle_t handle,
                           int incy,
                           double* a,
                           int lda);
+
+cublasStatus_t cublasSsymv(cublasHandle_t handle,
+                           cublasFillMode_t uplo,
+                           int n,
+                           const float* alpha,
+                           const float* a,
+                           int lda,
+                           const float* x,
+                           int incx,
+                           const float* beta,
+                           float* y,
+                           int incy);
+
+cublasStatus_t cublasDsymv(cublasHandle_t handle,
+                           cublasFillMode_t uplo,
+                           int n,
+                           const double* alpha,
+                           const double* a,
+                           int lda,
+                           const double* x,
+                           int incx,
+                           const double* beta,
+                           double* y,
+                           int incy);
 
 #ifdef __cplusplus
 }
