@@ -168,6 +168,44 @@ int main() {
         return 1;
     }
 
+    std::vector<float> host_copy_src(kVecCount);
+    std::vector<float> host_copy_dst(kVecCount, 0.0f);
+    for (int i = 0; i < kVecCount; ++i) {
+        host_copy_src[i] = static_cast<float>((i * 13) % 43) * 0.125f;
+    }
+    if (cudaMemcpy(dev_x, host_copy_src.data(), host_copy_src.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_y, host_copy_dst.data(), host_copy_dst.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SCOPY failed\n");
+        return 1;
+    }
+    if (cublasScopy(handle, kVecCount, dev_x, 1, dev_y, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasScopy failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_copy_dst.data(),
+                   dev_y,
+                   host_copy_dst.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SCOPY failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kVecCount; ++i) {
+        if (!nearly_equal(host_copy_dst[i], host_copy_src[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SCOPY mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_copy_dst[i]),
+                         static_cast<double>(host_copy_src[i]));
+            return 1;
+        }
+    }
+    if (cublasScopy(handle, kVecCount, host_copy_src.data(), 1, dev_y, 1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SCOPY\n");
+        return 1;
+    }
+
     constexpr int m = 2;
     constexpr int n = 3;
     constexpr int k = 4;
@@ -684,6 +722,45 @@ int main() {
     if (cublasDscal(handle, kDoubleCount, &alpha_dscal, expected_dscal.data(), 1) !=
         CUBLAS_STATUS_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DSCAL\n");
+        return 1;
+    }
+
+    std::vector<double> host_copy_dsrc(kDoubleCount);
+    std::vector<double> host_copy_ddst(kDoubleCount, 0.0);
+    for (int i = 0; i < kDoubleCount; ++i) {
+        host_copy_dsrc[i] = 0.25 + static_cast<double>((i * 7) % 59) * 0.05;
+    }
+    if (cudaMemcpy(dev_dx, host_copy_dsrc.data(), host_copy_dsrc.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_dy, host_copy_ddst.data(), host_copy_ddst.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DCOPY failed\n");
+        return 1;
+    }
+    if (cublasDcopy(handle, kDoubleCount, dev_dx, 1, dev_dy, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDcopy failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_copy_ddst.data(),
+                   dev_dy,
+                   host_copy_ddst.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DCOPY failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kDoubleCount; ++i) {
+        if (std::fabs(host_copy_ddst[i] - host_copy_dsrc[i]) > 1e-12) {
+            std::fprintf(stderr,
+                         "FAIL: DCOPY mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         host_copy_ddst[i],
+                         host_copy_dsrc[i]);
+            return 1;
+        }
+    }
+    if (cublasDcopy(handle, kDoubleCount, host_copy_dsrc.data(), 1, dev_dy, 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DCOPY\n");
         return 1;
     }
 

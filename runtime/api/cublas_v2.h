@@ -41,6 +41,12 @@ cublasStatus_t cublasSaxpy(cublasHandle_t handle,
                            float* y,
                            int incy);
 cublasStatus_t cublasSscal(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
+cublasStatus_t cublasScopy(cublasHandle_t handle,
+                           int n,
+                           const float* x,
+                           int incx,
+                           float* y,
+                           int incy);
 cublasStatus_t cublasSswap(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy);
 cublasStatus_t cublasDaxpy(cublasHandle_t handle,
                            int n,
@@ -50,6 +56,12 @@ cublasStatus_t cublasDaxpy(cublasHandle_t handle,
                            double* y,
                            int incy);
 cublasStatus_t cublasDscal(cublasHandle_t handle, int n, const double* alpha, double* x, int incx);
+cublasStatus_t cublasDcopy(cublasHandle_t handle,
+                           int n,
+                           const double* x,
+                           int incx,
+                           double* y,
+                           int incy);
 cublasStatus_t cublasDswap(cublasHandle_t handle, int n, double* x, int incx, double* y, int incy);
 cublasStatus_t cublasSdot(cublasHandle_t handle,
                           int n,

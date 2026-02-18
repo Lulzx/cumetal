@@ -97,12 +97,12 @@ Supported library shim subset:
 - cuBLAS v2 (`cublas_v2.h`)
   - `cublasCreate`, `cublasDestroy`, `cublasGetVersion`
   - `cublasSetStream`, `cublasGetStream`
-  - `cublasSaxpy`, `cublasSscal`, `cublasSgemm`
+  - `cublasSaxpy`, `cublasSscal`, `cublasScopy`, `cublasSgemm`
   - `cublasSswap`, `cublasDswap`
   - `cublasSdot`, `cublasDdot`
   - `cublasSasum`, `cublasDasum`
   - `cublasSnrm2`, `cublasDnrm2`
-  - `cublasDaxpy`, `cublasDscal`, `cublasDgemm`
+  - `cublasDaxpy`, `cublasDscal`, `cublasDcopy`, `cublasDgemm`
 
 Library alias compatibility:
 
