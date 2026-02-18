@@ -158,6 +158,7 @@ ctest --test-dir build -R functional_runtime_device_reset --output-on-failure
 ctest --test-dir build -R functional_runtime_device_flags --output-on-failure
 ctest --test-dir build -R functional_runtime_error_api --output-on-failure
 ctest --test-dir build -R functional_runtime_profiler_api --output-on-failure
+ctest --test-dir build -R functional_curand_uniform --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_driver_null_stream_sync --output-on-failure

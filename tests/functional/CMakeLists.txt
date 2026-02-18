@@ -95,6 +95,10 @@ add_executable(cumetal_runtime_profiler_api_test
     runtime_profiler_api_test.cpp
 )
 
+add_executable(cumetal_curand_uniform_test
+    curand_uniform_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
@@ -302,6 +306,11 @@ target_link_libraries(cumetal_runtime_error_api_test
 )
 
 target_link_libraries(cumetal_runtime_profiler_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_curand_uniform_test
     PRIVATE
         cumetal_runtime
 )
@@ -581,6 +590,13 @@ target_compile_options(cumetal_runtime_error_api_test
 )
 
 target_compile_options(cumetal_runtime_profiler_api_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_curand_uniform_test
     PRIVATE
         -Wall
         -Wextra
@@ -930,6 +946,11 @@ add_test(
 add_test(
     NAME functional_runtime_profiler_api
     COMMAND cumetal_runtime_profiler_api_test
+)
+
+add_test(
+    NAME functional_curand_uniform
+    COMMAND cumetal_curand_uniform_test
 )
 
 add_test(
