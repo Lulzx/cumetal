@@ -180,11 +180,46 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (cuModuleLoadData(&module, metallib_path.c_str()) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(path) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after loadData(path) failed\n");
+        return 1;
+    }
+
+    if (cuModuleLoadDataEx(&module, metallib_path.c_str(), 0, nullptr, nullptr) != CUDA_SUCCESS ||
+        module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadDataEx(path) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after loadDataEx(path) failed\n");
+        return 1;
+    }
+
+    const char* missing_path = "/tmp/cumetal_missing_module.metallib";
+    if (cuModuleLoadData(&module, missing_path) != CUDA_ERROR_INVALID_IMAGE) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(missing path) should return CUDA_ERROR_INVALID_IMAGE\n");
+        return 1;
+    }
+
     if (cuCtxDestroy(context) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 
-    std::printf("PASS: cuModuleLoadData and cuModuleLoadDataEx work for metallib bytes\n");
+    std::printf("PASS: cuModuleLoadData and cuModuleLoadDataEx support metallib bytes and paths\n");
     return 0;
 }

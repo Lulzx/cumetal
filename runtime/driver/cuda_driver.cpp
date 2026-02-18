@@ -131,6 +131,36 @@ bool parse_metallib_size(const void* image, std::size_t* out_size) {
     return true;
 }
 
+bool parse_metallib_path_image(const void* image, std::string* out_path) {
+    if (image == nullptr || out_path == nullptr) {
+        return false;
+    }
+
+    const auto* chars = static_cast<const char*>(image);
+    constexpr std::size_t kMaxPathBytes = 4096;
+    std::size_t len = 0;
+    for (; len < kMaxPathBytes; ++len) {
+        if (chars[len] == '\0') {
+            break;
+        }
+    }
+    if (len == 0 || len == kMaxPathBytes) {
+        return false;
+    }
+
+    std::error_code ec;
+    std::filesystem::path candidate(std::string(chars, len));
+    if (!std::filesystem::exists(candidate, ec) || ec) {
+        return false;
+    }
+    if (!std::filesystem::is_regular_file(candidate, ec) || ec) {
+        return false;
+    }
+
+    *out_path = candidate.string();
+    return true;
+}
+
 bool stage_module_image_to_tempfile(const void* image, std::size_t size, std::string* out_path) {
     if (image == nullptr || size == 0 || out_path == nullptr) {
         return false;
@@ -647,21 +677,26 @@ CUresult cuModuleLoadData(CUmodule* module, const void* image) {
     }
 
     std::size_t size = 0;
-    if (!parse_metallib_size(image, &size)) {
-        return CUDA_ERROR_INVALID_IMAGE;
+    if (parse_metallib_size(image, &size)) {
+        std::string staged_path;
+        if (!stage_module_image_to_tempfile(image, size, &staged_path)) {
+            return CUDA_ERROR_UNKNOWN;
+        }
+
+        const CUresult load_status = create_module_from_path(staged_path, /*owns_path=*/true, module);
+        if (load_status != CUDA_SUCCESS) {
+            std::error_code ec;
+            std::filesystem::remove(staged_path, ec);
+        }
+        return load_status;
     }
 
-    std::string staged_path;
-    if (!stage_module_image_to_tempfile(image, size, &staged_path)) {
-        return CUDA_ERROR_UNKNOWN;
+    std::string image_path;
+    if (parse_metallib_path_image(image, &image_path)) {
+        return create_module_from_path(image_path, /*owns_path=*/false, module);
     }
 
-    const CUresult load_status = create_module_from_path(staged_path, /*owns_path=*/true, module);
-    if (load_status != CUDA_SUCCESS) {
-        std::error_code ec;
-        std::filesystem::remove(staged_path, ec);
-    }
-    return load_status;
+    return CUDA_ERROR_INVALID_IMAGE;
 }
 
 CUresult cuModuleLoadDataEx(CUmodule* module,

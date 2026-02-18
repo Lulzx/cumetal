@@ -19,6 +19,7 @@ Implemented today:
   - kernel launch through Metal compute pipelines (`setBuffer` + `setBytes`)
   - default-stream and user-stream execution (`cudaStreamCreate/Destroy/Synchronize`)
   - runtime functional tests for vector add and saxpy
+  - driver module loading from both in-memory metallib bytes and filesystem paths
 
 Supported runtime API subset:
 
