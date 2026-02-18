@@ -254,24 +254,35 @@ bool extract_ptx_from_blob(const std::uint8_t* bytes,
     return false;
 }
 
-bool parse_ptx_image(const void* image, std::string* out_ptx) {
+bool parse_direct_ptx_image(const void* image, std::string* out_ptx) {
     if (image == nullptr || out_ptx == nullptr) {
         return false;
     }
 
     const auto* bytes = static_cast<const std::uint8_t*>(image);
-    if (bytes[0] == static_cast<std::uint8_t>('.')) {
-        if (extract_ptx_cstr(static_cast<const char*>(image), 1ull << 20, out_ptx)) {
-            return true;
-        }
-    }
-
-    const auto* wrapper = static_cast<const FatbinWrapper*>(image);
-    if (wrapper->magic != kFatbinWrapperMagic || wrapper->data == nullptr) {
+    if (bytes[0] != static_cast<std::uint8_t>('.')) {
         return false;
     }
 
-    const auto* blob = static_cast<const std::uint8_t*>(wrapper->data);
+    return extract_ptx_cstr(static_cast<const char*>(image), 1ull << 20, out_ptx);
+}
+
+bool parse_fatbin_wrapper_ptx(const void* image, std::string* out_ptx) {
+    if (image == nullptr || out_ptx == nullptr) {
+        return false;
+    }
+
+    FatbinWrapper wrapper{};
+    std::memcpy(&wrapper, image, sizeof(wrapper));
+    if (wrapper.magic != kFatbinWrapperMagic || wrapper.data == nullptr) {
+        return false;
+    }
+
+    if (parse_direct_ptx_image(wrapper.data, out_ptx)) {
+        return true;
+    }
+
+    const auto* blob = static_cast<const std::uint8_t*>(wrapper.data);
     FatbinBlobHeader header{};
     std::memcpy(&header, blob, sizeof(header));
     if (header.magic != kFatbinBlobMagic || header.header_size < kFatbinHeaderMinSize) {
@@ -286,6 +297,17 @@ bool parse_ptx_image(const void* image, std::string* out_ptx) {
     }
 
     return extract_ptx_from_blob(blob + header_size, fat_size, out_ptx);
+}
+
+bool parse_ptx_image(const void* image, std::string* out_ptx) {
+    if (image == nullptr || out_ptx == nullptr) {
+        return false;
+    }
+
+    if (parse_direct_ptx_image(image, out_ptx)) {
+        return true;
+    }
+    return parse_fatbin_wrapper_ptx(image, out_ptx);
 }
 
 bool emit_ptx_to_temp_metallib(const std::string& ptx, std::string* out_path) {
