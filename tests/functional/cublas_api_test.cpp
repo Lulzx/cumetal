@@ -796,6 +796,48 @@ int main() {
         return 1;
     }
 
+    double expected_sasum_acc = 0.0;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_sasum_acc += std::fabs(static_cast<double>(host_dot_x[i]));
+    }
+    const float expected_sasum = static_cast<float>(expected_sasum_acc);
+    float sasum_result = 0.0f;
+    if (cublasSasum(handle, kDotCount, dev_dot_x, 1, &sasum_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSasum failed\n");
+        return 1;
+    }
+    if (std::fabs(sasum_result - expected_sasum) > 1e-4f) {
+        std::fprintf(stderr,
+                     "FAIL: SASUM mismatch (got=%f expected=%f)\n",
+                     static_cast<double>(sasum_result),
+                     static_cast<double>(expected_sasum));
+        return 1;
+    }
+    if (cublasSasum(handle, kDotCount, host_dot_x.data(), 1, &sasum_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SASUM\n");
+        return 1;
+    }
+
+    double expected_dasum = 0.0;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_dasum += std::fabs(host_ddot_x[i]);
+    }
+    double dasum_result = 0.0;
+    if (cublasDasum(handle, kDotCount, dev_ddot_x, 1, &dasum_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDasum failed\n");
+        return 1;
+    }
+    if (std::fabs(dasum_result - expected_dasum) > 1e-10) {
+        std::fprintf(stderr, "FAIL: DASUM mismatch (got=%f expected=%f)\n", dasum_result, expected_dasum);
+        return 1;
+    }
+    if (cublasDasum(handle, kDotCount, host_ddot_x.data(), 1, &dasum_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DASUM\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
