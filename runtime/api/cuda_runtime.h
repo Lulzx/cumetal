@@ -72,6 +72,9 @@ typedef struct cudaStream_st* cudaStream_t;
 typedef struct cudaEvent_st* cudaEvent_t;
 typedef void (*cudaStreamCallback_t)(cudaStream_t stream, cudaError_t status, void* user_data);
 
+#define cudaStreamLegacy ((cudaStream_t)0x1)
+#define cudaStreamPerThread ((cudaStream_t)0x2)
+
 enum {
     cudaEventDefault = 0x0,
     cudaEventBlockingSync = 0x1,
