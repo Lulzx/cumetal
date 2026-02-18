@@ -184,22 +184,12 @@ bool extract_ptx_from_blob(const std::uint8_t* bytes,
     return false;
 }
 
-bool parse_fatbin_wrapper_ptx(const void* fat_cubin, std::string* out_ptx) {
+bool parse_fatbin_blob_ptx(const void* fat_cubin, std::string* out_ptx) {
     if (fat_cubin == nullptr || out_ptx == nullptr) {
         return false;
     }
 
-    FatbinWrapper wrapper{};
-    std::memcpy(&wrapper, fat_cubin, sizeof(wrapper));
-    if (wrapper.magic != kFatbinWrapperMagic || wrapper.data == nullptr) {
-        return false;
-    }
-
-    if (parse_direct_ptx_image(wrapper.data, out_ptx)) {
-        return true;
-    }
-
-    const auto* blob = static_cast<const std::uint8_t*>(wrapper.data);
+    const auto* blob = static_cast<const std::uint8_t*>(fat_cubin);
     FatbinBlobHeader header{};
     std::memcpy(&header, blob, sizeof(header));
     if (header.magic != kFatbinBlobMagic || header.header_size < kFatbinHeaderMinSize) {
@@ -214,6 +204,23 @@ bool parse_fatbin_wrapper_ptx(const void* fat_cubin, std::string* out_ptx) {
     }
 
     return extract_ptx_from_blob(blob + header_size, fat_size, out_ptx);
+}
+
+bool parse_fatbin_wrapper_ptx(const void* fat_cubin, std::string* out_ptx) {
+    if (fat_cubin == nullptr || out_ptx == nullptr) {
+        return false;
+    }
+
+    FatbinWrapper wrapper{};
+    std::memcpy(&wrapper, fat_cubin, sizeof(wrapper));
+    if (wrapper.magic != kFatbinWrapperMagic || wrapper.data == nullptr) {
+        return false;
+    }
+
+    if (parse_direct_ptx_image(wrapper.data, out_ptx)) {
+        return true;
+    }
+    return parse_fatbin_blob_ptx(wrapper.data, out_ptx);
 }
 
 ParsedFatbinImage parse_fatbin_image(const void* fat_cubin) {
@@ -232,6 +239,9 @@ ParsedFatbinImage parse_fatbin_image(const void* fat_cubin) {
     }
 
     if (parse_fatbin_wrapper_ptx(fat_cubin, &parsed.ptx_source)) {
+        return parsed;
+    }
+    if (parse_fatbin_blob_ptx(fat_cubin, &parsed.ptx_source)) {
         return parsed;
     }
 

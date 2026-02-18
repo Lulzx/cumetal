@@ -131,6 +131,5 @@ Current limitations:
 - This is not yet a full CUDA Runtime/Driver implementation.
 - Default kernel launch uses a CuMetal descriptor (`cumetalKernel_t`).
 - Binary-shim registration is partial: CuMetal `CMTL` envelopes, direct PTX images, and basic CUDA
-  fatbin-wrapper PTX images are supported (including `FatBinary2/FatBinary3` entry points), but full NVCC
-  fatbinary variants are not yet implemented.
-
+  fatbin PTX images (wrapper and direct blob) are supported (including `FatBinary2/FatBinary3` entry
+  points), but full NVCC fatbinary variants are not yet implemented.

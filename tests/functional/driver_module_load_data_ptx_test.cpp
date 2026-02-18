@@ -201,6 +201,20 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (cuModuleLoadData(&module, fatbin_blob.data()) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(fatbin blob) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after fatbin blob load failed\n");
+        return 1;
+    }
+
     FatbinWrapper wrapper_direct_ptx{};
     wrapper_direct_ptx.data = ptx_bytes.data();
 
@@ -223,6 +237,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("PASS: cuModuleLoadData supports PTX text and fatbin-wrapper PTX variants (NUL and non-NUL)\n");
+    std::printf("PASS: cuModuleLoadData supports PTX text and fatbin PTX variants (wrapper/blob/direct)\n");
     return 0;
 }
