@@ -27,6 +27,10 @@ add_executable(cumetal_runtime_stream_query_test
     runtime_stream_query_test.cpp
 )
 
+add_executable(cumetal_runtime_memcpy_kind_test
+    runtime_memcpy_kind_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
@@ -65,6 +69,11 @@ target_link_libraries(cumetal_runtime_stream_wait_event_test
 )
 
 target_link_libraries(cumetal_runtime_stream_query_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_memcpy_kind_test
     PRIVATE
         cumetal_runtime
 )
@@ -120,6 +129,13 @@ target_compile_options(cumetal_runtime_stream_wait_event_test
 )
 
 target_compile_options(cumetal_runtime_stream_query_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_memcpy_kind_test
     PRIVATE
         -Wall
         -Wextra
@@ -206,6 +222,11 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_stream_query PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_memcpy_kind
+    COMMAND cumetal_runtime_memcpy_kind_test
+)
 
 add_test(
     NAME functional_driver_vector_add

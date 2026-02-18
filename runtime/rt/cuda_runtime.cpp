@@ -109,13 +109,76 @@ cudaError_t validate_memcpy_kind(cudaMemcpyKind kind) {
     }
 }
 
+bool is_device_pointer(const void* ptr) {
+    if (ptr == nullptr) {
+        return false;
+    }
+
+    RuntimeState& state = runtime_state();
+    cumetal::rt::AllocationTable::ResolvedAllocation resolved;
+    return state.allocations.resolve(ptr, &resolved);
+}
+
+cudaError_t resolve_memcpy_kind(void* dst, const void* src, cudaMemcpyKind kind, cudaMemcpyKind* resolved_kind) {
+    if (resolved_kind == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    const cudaError_t kind_status = validate_memcpy_kind(kind);
+    if (kind_status != cudaSuccess) {
+        return kind_status;
+    }
+
+    const bool dst_is_device = is_device_pointer(dst);
+    const bool src_is_device = is_device_pointer(src);
+
+    if (kind == cudaMemcpyDefault) {
+        if (dst_is_device && src_is_device) {
+            *resolved_kind = cudaMemcpyDeviceToDevice;
+        } else if (dst_is_device && !src_is_device) {
+            *resolved_kind = cudaMemcpyHostToDevice;
+        } else if (!dst_is_device && src_is_device) {
+            *resolved_kind = cudaMemcpyDeviceToHost;
+        } else {
+            *resolved_kind = cudaMemcpyHostToHost;
+        }
+        return cudaSuccess;
+    }
+
+    switch (kind) {
+        case cudaMemcpyHostToHost:
+            break;
+        case cudaMemcpyHostToDevice:
+            if (!dst_is_device) {
+                return cudaErrorInvalidDevicePointer;
+            }
+            break;
+        case cudaMemcpyDeviceToHost:
+            if (!src_is_device) {
+                return cudaErrorInvalidDevicePointer;
+            }
+            break;
+        case cudaMemcpyDeviceToDevice:
+            if (!dst_is_device || !src_is_device) {
+                return cudaErrorInvalidDevicePointer;
+            }
+            break;
+        case cudaMemcpyDefault:
+            break;
+    }
+
+    *resolved_kind = kind;
+    return cudaSuccess;
+}
+
 cudaError_t synchronize_stream_for_host_op(cudaStream_t stream,
                                            std::shared_ptr<cumetal::metal_backend::Stream>* out_stream) {
     if (out_stream != nullptr) {
         out_stream->reset();
     }
     if (stream == nullptr) {
-        return cudaSuccess;
+        std::string error;
+        return cumetal::metal_backend::synchronize(&error);
     }
 
     std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
@@ -273,15 +336,17 @@ cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, cudaMemcpyKind 
         return fail(cudaErrorInvalidValue);
     }
 
-    const cudaError_t kind_status = validate_memcpy_kind(kind);
-    if (kind_status != cudaSuccess) {
-        return fail(kind_status);
-    }
-
     const cudaError_t init_status = ensure_initialized();
     if (init_status != cudaSuccess) {
         return fail(init_status);
     }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_kind(dst, src, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
 
     std::string error;
     const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
@@ -305,15 +370,17 @@ cudaError_t cudaMemcpyAsync(void* dst,
         return fail(cudaErrorInvalidValue);
     }
 
-    const cudaError_t kind_status = validate_memcpy_kind(kind);
-    if (kind_status != cudaSuccess) {
-        return fail(kind_status);
-    }
-
     const cudaError_t init_status = ensure_initialized();
     if (init_status != cudaSuccess) {
         return fail(init_status);
     }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_kind(dst, src, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
 
     const cudaError_t sync_status = synchronize_stream_for_host_op(stream, nullptr);
     if (sync_status != cudaSuccess) {

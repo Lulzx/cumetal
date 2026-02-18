@@ -82,6 +82,7 @@ ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
 ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
+ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
