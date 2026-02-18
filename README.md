@@ -78,6 +78,7 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/air_validate tests/air_abi/reference/reference.metallib --xcrun
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
+ctest --test-dir build -R air_abi_validate_negative --output-on-failure
 ```
 
 Runtime execution tests

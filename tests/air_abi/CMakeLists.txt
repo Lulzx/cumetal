@@ -63,6 +63,13 @@ add_test(
             ${CMAKE_CURRENT_BINARY_DIR}/vector_add.xcrun.load.metallib
 )
 
+add_test(
+    NAME air_abi_validate_negative
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_negative_validation.sh
+            $<TARGET_FILE:air_validate>
+            ${CMAKE_CURRENT_BINARY_DIR}/negative
+)
+
 set_tests_properties(
     air_abi_validate_reference
     air_abi_emit_validate_xcrun
