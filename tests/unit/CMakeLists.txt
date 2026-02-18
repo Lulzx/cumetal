@@ -248,6 +248,17 @@ add_test(
 set_tests_properties(unit_cumetal_bench_invalid_arg PROPERTIES WILL_FAIL TRUE)
 
 add_test(
+    NAME unit_cumetal_bench_ratio_gate
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_bench_ratio_gate_test.sh
+            ${CMAKE_BINARY_DIR}
+            $<TARGET_FILE:cumetal_bench>
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+set_tests_properties(unit_cumetal_bench_ratio_gate PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
     NAME unit_install_uninstall_scripts
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_install_uninstall_test.sh

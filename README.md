@@ -230,6 +230,7 @@ ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure
 ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
+ctest --test-dir build -R unit_cumetal_bench_ratio_gate --output-on-failure
 ctest --test-dir build -R unit_runtime_library_aliases --output-on-failure
 ctest --test-dir build -R unit_library_link_aliases --output-on-failure
 ctest --test-dir build -R ptx_sweep_supported_ops --output-on-failure
