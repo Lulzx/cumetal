@@ -278,6 +278,17 @@ cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, cudaMemcpyKind 
         return fail(kind_status);
     }
 
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
     if (count > 0) {
         std::memcpy(dst, src, count);
     }
@@ -319,6 +330,17 @@ cudaError_t cudaMemcpyAsync(void* dst,
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count) {
     if (dev_ptr == nullptr && count > 0) {
         return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
     }
 
     if (count > 0) {
@@ -583,6 +605,12 @@ cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream) {
                 return fail(query_status);
             }
         }
+    } else {
+        std::string error;
+        const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+        if (sync_status != cudaSuccess) {
+            return fail(sync_status);
+        }
     }
 
     {
@@ -673,6 +701,13 @@ cudaError_t cudaLaunchKernel(const void* func,
     std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
     if (stream != nullptr && !resolve_stream_handle(stream, &backend_stream)) {
         return fail(cudaErrorInvalidValue);
+    }
+    if (stream == nullptr) {
+        std::string error;
+        const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+        if (sync_status != cudaSuccess) {
+            return fail(sync_status);
+        }
     }
 
     std::vector<cumetal::metal_backend::KernelArg> launch_args;
