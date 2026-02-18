@@ -42,6 +42,27 @@ target_compile_options(cumetal_ptx
         -Wpedantic
 )
 
+add_library(cumetal_passes STATIC
+    compiler/passes/src/intrinsic_lower.cpp
+)
+
+target_include_directories(cumetal_passes
+    PUBLIC
+        compiler/passes/include
+)
+
+target_link_libraries(cumetal_passes
+    PUBLIC
+        cumetal_ptx
+)
+
+target_compile_options(cumetal_passes
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp

@@ -21,6 +21,10 @@ add_executable(cumetal_ptx_parser_test
     ptx_parser_test.cpp
 )
 
+add_executable(cumetal_intrinsic_lower_test
+    intrinsic_lower_test.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -46,6 +50,11 @@ target_link_libraries(cumetal_metallib_parser_test
 target_link_libraries(cumetal_ptx_parser_test
     PRIVATE
         cumetal_ptx
+)
+
+target_link_libraries(cumetal_intrinsic_lower_test
+    PRIVATE
+        cumetal_passes
 )
 
 target_compile_options(cumetal_allocation_table_test
@@ -83,6 +92,13 @@ target_compile_options(cumetal_ptx_parser_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_intrinsic_lower_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -108,6 +124,11 @@ add_test(
 add_test(
     NAME unit_ptx_parser
     COMMAND cumetal_ptx_parser_test
+)
+
+add_test(
+    NAME unit_intrinsic_lower
+    COMMAND cumetal_intrinsic_lower_test
 )
 
 add_test(

@@ -18,6 +18,7 @@ Implemented today:
 - Phase 1 scaffolding:
   - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
+  - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
   - synchronous `cudaMemcpy` on UMA via `memcpy`
@@ -153,6 +154,7 @@ ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure
 ctest --test-dir build -R unit_metallib_parser --output-on-failure
 ctest --test-dir build -R unit_ptx_parser --output-on-failure
+ctest --test-dir build -R unit_intrinsic_lower --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 
