@@ -356,6 +356,60 @@ cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
     return fail(cudaSuccess);
 }
 
+cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device) {
+    if (value == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    cudaDeviceProp prop{};
+    const cudaError_t status = cudaGetDeviceProperties(&prop, device);
+    if (status != cudaSuccess) {
+        return fail(status);
+    }
+
+    switch (attr) {
+        case cudaDevAttrMaxThreadsPerBlock:
+            *value = prop.maxThreadsPerBlock;
+            break;
+        case cudaDevAttrMaxBlockDimX:
+            *value = prop.maxThreadsDim[0];
+            break;
+        case cudaDevAttrMaxBlockDimY:
+            *value = prop.maxThreadsDim[1];
+            break;
+        case cudaDevAttrMaxBlockDimZ:
+            *value = prop.maxThreadsDim[2];
+            break;
+        case cudaDevAttrMaxGridDimX:
+            *value = prop.maxGridSize[0];
+            break;
+        case cudaDevAttrMaxGridDimY:
+            *value = prop.maxGridSize[1];
+            break;
+        case cudaDevAttrMaxGridDimZ:
+            *value = prop.maxGridSize[2];
+            break;
+        case cudaDevAttrMaxSharedMemoryPerBlock:
+            *value = prop.sharedMemPerBlock;
+            break;
+        case cudaDevAttrWarpSize:
+            *value = prop.warpSize;
+            break;
+        case cudaDevAttrMultiProcessorCount:
+            *value = prop.multiProcessorCount;
+            break;
+        case cudaDevAttrUnifiedAddressing:
+        case cudaDevAttrManagedMemory:
+        case cudaDevAttrConcurrentManagedAccess:
+            *value = 1;
+            break;
+        default:
+            return fail(cudaErrorInvalidValue);
+    }
+
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
     if (dev_ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);
