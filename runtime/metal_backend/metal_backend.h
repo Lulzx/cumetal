@@ -22,6 +22,14 @@ public:
     virtual ~Stream() = default;
 };
 
+struct DeviceProperties {
+    std::string name;
+    std::size_t total_global_mem = 0;
+    int shared_mem_per_block = 0;
+    int max_threads_per_block = 0;
+    int multi_processor_count = 8;
+};
+
 struct KernelArg {
     enum class Kind {
         kBuffer,
@@ -41,6 +49,7 @@ struct LaunchConfig {
 };
 
 cudaError_t initialize(std::string* error_message);
+cudaError_t query_device_properties(DeviceProperties* out_properties, std::string* error_message);
 cudaError_t allocate_buffer(std::size_t size,
                             std::shared_ptr<Buffer>* out_buffer,
                             std::string* error_message);

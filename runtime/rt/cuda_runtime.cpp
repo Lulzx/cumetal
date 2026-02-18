@@ -310,6 +310,51 @@ cudaError_t cudaSetDevice(int device) {
     return fail(cudaSuccess);
 }
 
+cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
+    if (prop == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    if (device != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    cumetal::metal_backend::DeviceProperties backend_props;
+    std::string error;
+    const cudaError_t query_status =
+        cumetal::metal_backend::query_device_properties(&backend_props, &error);
+    if (query_status != cudaSuccess) {
+        return fail(query_status);
+    }
+
+    std::memset(prop, 0, sizeof(*prop));
+    std::strncpy(prop->name, backend_props.name.c_str(), sizeof(prop->name) - 1);
+    prop->name[sizeof(prop->name) - 1] = '\0';
+    prop->totalGlobalMem = backend_props.total_global_mem;
+    prop->warpSize = 32;
+    prop->multiProcessorCount = backend_props.multi_processor_count;
+    prop->maxThreadsPerBlock =
+        backend_props.max_threads_per_block > 0 ? backend_props.max_threads_per_block : 1024;
+    prop->maxThreadsDim[0] = prop->maxThreadsPerBlock;
+    prop->maxThreadsDim[1] = prop->maxThreadsPerBlock;
+    prop->maxThreadsDim[2] = prop->maxThreadsPerBlock;
+    prop->maxGridSize[0] = 2147483647;
+    prop->maxGridSize[1] = 65535;
+    prop->maxGridSize[2] = 65535;
+    prop->sharedMemPerBlock =
+        backend_props.shared_mem_per_block > 0 ? backend_props.shared_mem_per_block : (32 * 1024);
+    prop->regsPerBlock = 65536;
+    prop->major = 8;
+    prop->minor = 0;
+
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
     if (dev_ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);

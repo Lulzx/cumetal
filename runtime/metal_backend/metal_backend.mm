@@ -3,6 +3,9 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
+#include <algorithm>
+#include <cctype>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -208,6 +211,66 @@ bool ensure_initialized(std::string* error_message) {
     }
 }
 
+std::string to_lower_copy(const std::string& input) {
+    std::string lowered = input;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
+
+int infer_multi_processor_count(const std::string& device_name) {
+    const std::string lowered = to_lower_copy(device_name);
+
+    if (lowered.find("m1 ultra") != std::string::npos) {
+        return 48;
+    }
+    if (lowered.find("m1 max") != std::string::npos) {
+        return 24;
+    }
+    if (lowered.find("m1 pro") != std::string::npos) {
+        return 14;
+    }
+    if (lowered.find("m1") != std::string::npos) {
+        return 8;
+    }
+
+    if (lowered.find("m2 ultra") != std::string::npos) {
+        return 60;
+    }
+    if (lowered.find("m2 max") != std::string::npos) {
+        return 30;
+    }
+    if (lowered.find("m2 pro") != std::string::npos) {
+        return 16;
+    }
+    if (lowered.find("m2") != std::string::npos) {
+        return 8;
+    }
+
+    if (lowered.find("m3 max") != std::string::npos) {
+        return 30;
+    }
+    if (lowered.find("m3 pro") != std::string::npos) {
+        return 11;
+    }
+    if (lowered.find("m3") != std::string::npos) {
+        return 8;
+    }
+
+    if (lowered.find("m4 max") != std::string::npos) {
+        return 32;
+    }
+    if (lowered.find("m4 pro") != std::string::npos) {
+        return 16;
+    }
+    if (lowered.find("m4") != std::string::npos) {
+        return 10;
+    }
+
+    return 8;
+}
+
 id<MTLLibrary> load_library_locked(BackendState& backend,
                                    const std::string& metallib_path,
                                    std::string* error_message) {
@@ -338,6 +401,56 @@ std::vector<std::shared_ptr<StreamImpl>> collect_live_streams_locked(BackendStat
 
 cudaError_t initialize(std::string* error_message) {
     return ensure_initialized(error_message) ? cudaSuccess : cudaErrorInitializationError;
+}
+
+cudaError_t query_device_properties(DeviceProperties* out_properties, std::string* error_message) {
+    if (out_properties == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "query_device_properties missing output";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (!ensure_initialized(error_message)) {
+        return cudaErrorInitializationError;
+    }
+
+    DeviceProperties props;
+    BackendState& backend = state();
+    {
+        std::lock_guard<std::mutex> lock(backend.mutex);
+
+        NSString* ns_name = [backend.device name];
+        if (ns_name != nil) {
+            props.name = [ns_name UTF8String];
+        }
+        if (props.name.empty()) {
+            props.name = "Apple GPU";
+        }
+
+        props.total_global_mem = static_cast<std::size_t>([backend.device recommendedMaxWorkingSetSize]);
+        if (props.total_global_mem == 0) {
+            props.total_global_mem =
+                static_cast<std::size_t>([[NSProcessInfo processInfo] physicalMemory]);
+        }
+
+        props.shared_mem_per_block =
+            static_cast<int>([backend.device maxThreadgroupMemoryLength]);
+
+        const MTLSize max_threads_per_group = [backend.device maxThreadsPerThreadgroup];
+        const std::uint64_t max_threads_product =
+            static_cast<std::uint64_t>(max_threads_per_group.width) *
+            static_cast<std::uint64_t>(max_threads_per_group.height) *
+            static_cast<std::uint64_t>(max_threads_per_group.depth);
+        const std::uint64_t max_int = static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+        props.max_threads_per_block = static_cast<int>(
+            std::min(max_threads_product, max_int));
+
+        props.multi_processor_count = infer_multi_processor_count(props.name);
+    }
+
+    *out_properties = std::move(props);
+    return cudaSuccess;
 }
 
 cudaError_t allocate_buffer(std::size_t size,

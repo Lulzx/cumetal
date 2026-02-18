@@ -23,7 +23,7 @@ Implemented today:
 Supported runtime API subset:
 
 - `cudaInit`
-- `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`
+- `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
 - `cudaHostAlloc`, `cudaFreeHost`
 - `cudaMemcpy`, `cudaMemcpyAsync`
@@ -39,7 +39,7 @@ Supported runtime API subset:
 
 Supported driver API subset:
 
-- `cuInit`, `cuDeviceGetCount`, `cuDeviceGet`
+- `cuInit`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`
 - `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxSynchronize`
 - `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
@@ -92,8 +92,10 @@ ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
 ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_runtime_device_api --output-on-failure
+ctest --test-dir build -R functional_runtime_device_properties --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
+ctest --test-dir build -R functional_driver_device_query --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure

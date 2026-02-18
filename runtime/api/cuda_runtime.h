@@ -35,6 +35,20 @@ typedef struct dim3 {
 #endif
 } dim3;
 
+typedef struct cudaDeviceProp {
+    char name[256];
+    size_t totalGlobalMem;
+    int warpSize;
+    int multiProcessorCount;
+    int maxThreadsPerBlock;
+    int maxThreadsDim[3];
+    int maxGridSize[3];
+    int sharedMemPerBlock;
+    int regsPerBlock;
+    int major;
+    int minor;
+} cudaDeviceProp;
+
 typedef struct cudaStream_st* cudaStream_t;
 typedef struct cudaEvent_st* cudaEvent_t;
 
@@ -75,6 +89,7 @@ cudaError_t cudaInit(unsigned int flags);
 cudaError_t cudaGetDeviceCount(int* count);
 cudaError_t cudaGetDevice(int* device);
 cudaError_t cudaSetDevice(int device);
+cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device);
 cudaError_t cudaMalloc(void** dev_ptr, size_t size);
 cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags);

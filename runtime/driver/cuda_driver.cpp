@@ -202,6 +202,61 @@ CUresult cuDeviceGet(CUdevice* device, int ordinal) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuDeviceGetName(char* name, int len, CUdevice dev) {
+    if (name == nullptr || len <= 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+    }
+
+    if (dev != 0) {
+        return CUDA_ERROR_INVALID_DEVICE;
+    }
+
+    cudaDeviceProp prop{};
+    const cudaError_t status = cudaGetDeviceProperties(&prop, dev);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    std::strncpy(name, prop.name, static_cast<std::size_t>(len - 1));
+    name[len - 1] = '\0';
+    return CUDA_SUCCESS;
+}
+
+CUresult cuDeviceTotalMem(size_t* bytes, CUdevice dev) {
+    if (bytes == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+    }
+
+    if (dev != 0) {
+        return CUDA_ERROR_INVALID_DEVICE;
+    }
+
+    cudaDeviceProp prop{};
+    const cudaError_t status = cudaGetDeviceProperties(&prop, dev);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    *bytes = prop.totalGlobalMem;
+    return CUDA_SUCCESS;
+}
+
 CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev) {
     if (pctx == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
