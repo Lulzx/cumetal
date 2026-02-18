@@ -184,6 +184,7 @@ ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
+ctest --test-dir build -R functional_runtime_atomic --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure
