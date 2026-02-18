@@ -32,6 +32,7 @@ Main tools:
 - `air_validate`
 - `air_inspect`
 - `cumetal-ptx2llvm`
+- `scripts/build_llmc_test_gpt2fp32cu.sh` (llm.c CUDA stress build shim)
 
 Documentation
 -------------

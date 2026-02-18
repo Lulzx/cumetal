@@ -3,6 +3,45 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(__clang__) && defined(__CUDA__)
+#ifndef CUDA_VERSION
+#define CUDA_VERSION 12000
+#endif
+
+#ifndef __host__
+#define __host__ __attribute__((host))
+#endif
+#ifndef __device__
+#define __device__ __attribute__((device))
+#endif
+#ifndef __global__
+#define __global__ __attribute__((global))
+#endif
+#ifndef __shared__
+#define __shared__ __attribute__((shared))
+#endif
+#ifndef __constant__
+#define __constant__ __attribute__((constant))
+#endif
+#ifndef __managed__
+#define __managed__ __attribute__((managed))
+#endif
+#ifndef __forceinline__
+#define __forceinline__ __inline__ __attribute__((always_inline))
+#endif
+#ifndef __launch_bounds__
+#define __launch_bounds__(t, b) __attribute__((launch_bounds(t, b)))
+#endif
+#endif
+
+#ifndef __align__
+#if defined(__clang__) || defined(__GNUC__)
+#define __align__(n) __attribute__((aligned(n)))
+#else
+#define __align__(n)
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,6 +67,16 @@ typedef enum cudaMemcpyKind {
     cudaMemcpyDefault = 4,
 } cudaMemcpyKind;
 
+typedef struct uint3 {
+    unsigned int x;
+    unsigned int y;
+    unsigned int z;
+#ifdef __cplusplus
+    constexpr uint3(unsigned int vx = 0, unsigned int vy = 0, unsigned int vz = 0)
+        : x(vx), y(vy), z(vz) {}
+#endif
+} uint3;
+
 typedef struct dim3 {
     unsigned int x;
     unsigned int y;
@@ -35,8 +84,23 @@ typedef struct dim3 {
 #ifdef __cplusplus
     constexpr dim3(unsigned int vx = 1, unsigned int vy = 1, unsigned int vz = 1)
         : x(vx), y(vy), z(vz) {}
+    constexpr dim3(uint3 v) : x(v.x), y(v.y), z(v.z) {}
+    constexpr operator uint3(void) const { return uint3{x, y, z}; }
 #endif
 } dim3;
+
+typedef struct __align__(16) float4 {
+    float x;
+    float y;
+    float z;
+    float w;
+} float4;
+
+#ifdef __cplusplus
+static inline constexpr float4 make_float4(float x, float y, float z, float w) {
+    return float4{x, y, z, w};
+}
+#endif
 
 typedef struct cudaDeviceProp {
     char name[256];
@@ -196,8 +260,13 @@ cudaError_t cudaLaunchKernel(const void* func,
                              cudaStream_t stream);
 cudaError_t cudaConfigureCall(dim3 grid_dim,
                               dim3 block_dim,
+#ifdef __cplusplus
+                              size_t shared_mem = 0,
+                              cudaStream_t stream = nullptr);
+#else
                               size_t shared_mem,
                               cudaStream_t stream);
+#endif
 cudaError_t cudaSetupArgument(const void* arg, size_t size, size_t offset);
 cudaError_t cudaLaunch(const void* func);
 cudaError_t cudaGetLastError(void);
@@ -209,4 +278,56 @@ cudaError_t cudaProfilerStop(void);
 
 #ifdef __cplusplus
 }
+#endif
+
+#if defined(__cplusplus) && defined(__clang__) && defined(__CUDA__)
+
+#include <limits.h>
+#include <math.h>
+
+#include <__clang_cuda_builtin_vars.h>
+#include <__clang_cuda_libdevice_declares.h>
+#include <__clang_cuda_device_functions.h>
+#include <__clang_cuda_math.h>
+
+#if defined(assert)
+#undef assert
+#define assert(expr) ((void)0)
+#endif
+
+static __host__ __forceinline__ int max(int a, int b) {
+    return a > b ? a : b;
+}
+
+static __host__ __forceinline__ int min(int a, int b) {
+    return a < b ? a : b;
+}
+
+template <typename T>
+static __device__ __forceinline__ T __ldcs(const T* ptr) {
+    return *ptr;
+}
+
+template <typename T>
+static __device__ __forceinline__ void __stcs(T* ptr, T value) {
+    *ptr = value;
+}
+
+static __device__ __forceinline__ float atomicAdd(float* ptr, float val) {
+    return __fAtomicAdd(ptr, val);
+}
+
+static __device__ __forceinline__ int atomicAdd(int* ptr, int val) {
+    return __iAtomicAdd(ptr, val);
+}
+
+static __device__ __forceinline__ unsigned int atomicAdd(unsigned int* ptr, unsigned int val) {
+    return __uAtomicAdd(ptr, val);
+}
+
+static __device__ __forceinline__ unsigned long long atomicAdd(unsigned long long* ptr,
+                                                                unsigned long long val) {
+    return __ullAtomicAdd(ptr, val);
+}
+
 #endif

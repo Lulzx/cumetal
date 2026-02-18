@@ -464,6 +464,18 @@ cudaError_t update_event_completion(cudaEvent_t event, bool wait_for_completion)
 
 }  // namespace
 
+namespace cumetal::rt {
+
+bool resolve_allocation_for_pointer(const void* ptr, AllocationTable::ResolvedAllocation* out) {
+    if (ptr == nullptr || out == nullptr) {
+        return false;
+    }
+    RuntimeState& state = runtime_state();
+    return state.allocations.resolve(ptr, out);
+}
+
+}  // namespace cumetal::rt
+
 extern "C" {
 
 int cumetalRuntimeIsDevicePointer(const void* ptr) {

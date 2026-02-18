@@ -167,6 +167,36 @@ std::vector<std::string> split_operands(const std::string& text) {
     return operands;
 }
 
+std::vector<std::string> split_tokens_ws(const std::string& text) {
+    std::istringstream stream(text);
+    std::vector<std::string> tokens;
+    std::string token;
+    while (stream >> token) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
+bool is_ptx_type_token(const std::string& token) {
+    if (token.size() < 2 || token[0] != '.') {
+        return false;
+    }
+
+    static const std::unordered_set<std::string> kNonTypeQualifiers = {
+        ".param",
+        ".ptr",
+        ".align",
+    };
+    return !kNonTypeQualifiers.contains(token);
+}
+
+std::string sanitize_param_name(std::string name) {
+    while (!name.empty() && (name.back() == ',' || name.back() == ';' || name.back() == ')')) {
+        name.pop_back();
+    }
+    return name;
+}
+
 int count_line_number_at_offset(const std::string& text, std::size_t offset) {
     int line = 1;
     const std::size_t clamped = std::min(offset, text.size());
@@ -269,8 +299,8 @@ ParseResult parse_ptx(std::string_view text, const ParseOptions& options) {
     }
 
     const std::regex entry_regex(
-        R"(\.entry\s+([A-Za-z_.$][A-Za-z0-9_.$]*)\s*\(([\s\S]*?)\)\s*\{)");
-    const std::regex param_regex(R"(\.param\s+([A-Za-z0-9_\.]+)\s+([A-Za-z0-9_.$]+))");
+        R"(\.entry\s+([A-Za-z_.$][A-Za-z0-9_.$]*)\s*\(([\s\S]*?)\)\s*(?:\.[^\n{}]*\s*)*\{)");
+    const std::regex param_decl_regex(R"(\.param\s+([^,\n\)]+))");
 
     std::sregex_iterator iter(source.begin(), source.end(), entry_regex);
     const std::sregex_iterator end;
@@ -284,12 +314,36 @@ ParseResult parse_ptx(std::string_view text, const ParseOptions& options) {
         entry.name = (*iter)[1].str();
 
         const std::string params_blob = (*iter)[2].str();
-        std::sregex_iterator param_iter(params_blob.begin(), params_blob.end(), param_regex);
+        std::sregex_iterator param_iter(params_blob.begin(), params_blob.end(), param_decl_regex);
         for (; param_iter != end; ++param_iter) {
-            if (param_iter->size() < 3) {
+            if (param_iter->size() < 2) {
                 continue;
             }
-            entry.params.push_back({.type = (*param_iter)[1].str(), .name = (*param_iter)[2].str()});
+
+            const std::string decl = trim((*param_iter)[1].str());
+            if (decl.empty()) {
+                continue;
+            }
+
+            const std::vector<std::string> tokens = split_tokens_ws(decl);
+            if (tokens.empty()) {
+                continue;
+            }
+
+            std::string type = ".u32";
+            for (const std::string& token : tokens) {
+                if (is_ptx_type_token(token)) {
+                    type = token;
+                    break;
+                }
+            }
+
+            std::string name = sanitize_param_name(tokens.back());
+            if (name.empty()) {
+                continue;
+            }
+
+            entry.params.push_back({.type = type, .name = name});
         }
 
         const std::size_t open_brace = static_cast<std::size_t>(iter->position(0) + iter->length(0) - 1);

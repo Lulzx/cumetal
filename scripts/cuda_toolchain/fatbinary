@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+out_file=""
+images=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --create)
+            out_file="$2"
+            shift 2
+            ;;
+        --create=*)
+            out_file="${1#--create=}"
+            shift
+            ;;
+        --image=*)
+            image_spec="${1#--image=}"
+            images+=("${image_spec##*file=}")
+            shift
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$out_file" || ${#images[@]} -eq 0 ]]; then
+    echo "fatbinary shim: expected --create and at least one --image=...file=..." >&2
+    exit 2
+fi
+
+python3 - "$out_file" "${images[0]}" <<'PY'
+import struct
+import sys
+
+out_path = sys.argv[1]
+image_path = sys.argv[2]
+
+with open(image_path, "rb") as f:
+    payload = f.read()
+
+# Minimal FatBinary blob header accepted by CuMetal's parser.
+header = struct.pack("<IHHQ", 0xBA55ED50, 1, 16, len(payload))
+
+with open(out_path, "wb") as f:
+    f.write(header)
+    f.write(payload)
+PY

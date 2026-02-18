@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+out_file=""
+input_file=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-file)
+            out_file="$2"
+            shift 2
+            ;;
+        --output-file=*)
+            out_file="${1#--output-file=}"
+            shift
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            input_file="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$out_file" || -z "$input_file" ]]; then
+    echo "ptxas shim: expected input file and --output-file" >&2
+    exit 2
+fi
+
+cp "$input_file" "$out_file"

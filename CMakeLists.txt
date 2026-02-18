@@ -144,6 +144,7 @@ target_link_libraries(cumetal_runtime
     PRIVATE
         "-framework Foundation"
         "-framework Metal"
+        "-framework MetalPerformanceShaders"
 )
 
 target_compile_options(cumetal_runtime

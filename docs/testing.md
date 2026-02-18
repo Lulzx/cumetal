@@ -108,6 +108,8 @@ Notes:
   If unset, it falls back to `xcode-select -p` for both slots (single-Xcode mode).
 - `conformance_llmc_gpt2fp32cu` is registered only when llm.c is configured (set `CUMETAL_LLMC_DIR`
   before CMake configure, or place checkout at `../llm.c` relative to this repo root).
+- When registered, `conformance_llmc_gpt2fp32cu` auto-wires CuMetal's LLVM+fatbin shim flow:
+  `scripts/build_llmc_test_gpt2fp32cu.sh` + `scripts/run_llmc_test_gpt2fp32cu.sh`.
 
 Direct invocation with custom threshold/regex:
 
@@ -119,9 +121,9 @@ Optional llm.c stress harness setup:
 
 ```bash
 export CUMETAL_LLMC_DIR="/path/to/llm.c"
-# optional:
-export CUMETAL_LLMC_BUILD_CMD="make test_gpt2fp32cu"
-export CUMETAL_LLMC_TEST_CMD="./test_gpt2fp32cu"
+# optional overrides:
+export CUMETAL_LLMC_BUILD_CMD="scripts/build_llmc_test_gpt2fp32cu.sh"
+export CUMETAL_LLMC_TEST_CMD="scripts/run_llmc_test_gpt2fp32cu.sh"
 ```
 
 Benchmark runner

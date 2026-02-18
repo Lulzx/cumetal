@@ -1,9 +1,12 @@
 #include "cublas_v2.h"
+#include "metal_backend.h"
+#include "runtime_internal.h"
 
 #include <cstddef>
 #include <cmath>
 #include <mutex>
 #include <new>
+#include <string>
 
 struct cublasContext {
     cudaStream_t stream = nullptr;
@@ -28,6 +31,19 @@ bool is_valid_fill_mode(cublasFillMode_t mode) {
 bool is_valid_math_mode(cublasMath_t mode) {
     return mode == CUBLAS_DEFAULT_MATH || mode == CUBLAS_TENSOR_OP_MATH ||
            mode == CUBLAS_PEDANTIC_MATH || mode == CUBLAS_TF32_TENSOR_OP_MATH;
+}
+
+cublasStatus_t map_cuda_status_to_cublas(cudaError_t status) {
+    if (status == cudaSuccess) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (status == cudaErrorInvalidValue || status == cudaErrorInvalidDevicePointer) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (status == cudaErrorMemoryAllocation) {
+        return CUBLAS_STATUS_ALLOC_FAILED;
+    }
+    return CUBLAS_STATUS_EXECUTION_FAILED;
 }
 
 template <typename T>
@@ -813,20 +829,36 @@ cublasStatus_t cublasSgemm(cublasHandle_t handle,
         return sync_status;
     }
 
-    const float alpha_value = *alpha;
-    const float beta_value = *beta;
-    for (int col = 0; col < n; ++col) {
-        for (int row = 0; row < m; ++row) {
-            float sum = 0.0f;
-            for (int p = 0; p < k; ++p) {
-                const float a_value = (transa == CUBLAS_OP_N) ? a[row + p * lda] : a[p + row * lda];
-                const float b_value = (transb == CUBLAS_OP_N) ? b[p + col * ldb] : b[col + p * ldb];
-                sum += a_value * b_value;
-            }
-            c[row + col * ldc] = alpha_value * sum + beta_value * c[row + col * ldc];
-        }
+    cumetal::rt::AllocationTable::ResolvedAllocation a_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation b_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation c_resolved;
+    if (!cumetal::rt::resolve_allocation_for_pointer(a, &a_resolved) ||
+        !cumetal::rt::resolve_allocation_for_pointer(b, &b_resolved) ||
+        !cumetal::rt::resolve_allocation_for_pointer(c, &c_resolved)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
     }
-    return CUBLAS_STATUS_SUCCESS;
+
+    std::string error;
+    const cudaError_t gemm_status = cumetal::metal_backend::gemm_f32(
+        transa != CUBLAS_OP_N,
+        transb != CUBLAS_OP_N,
+        m,
+        n,
+        k,
+        *alpha,
+        a_resolved.buffer,
+        a_resolved.offset,
+        lda,
+        b_resolved.buffer,
+        b_resolved.offset,
+        ldb,
+        *beta,
+        c_resolved.buffer,
+        c_resolved.offset,
+        ldc,
+        nullptr,
+        &error);
+    return map_cuda_status_to_cublas(gemm_status);
 }
 
 cublasStatus_t cublasSgemmStridedBatched(cublasHandle_t handle,
@@ -879,35 +911,41 @@ cublasStatus_t cublasSgemmStridedBatched(cublasHandle_t handle,
         return sync_status;
     }
 
-    const float alpha_value = *alpha;
-    const float beta_value = *beta;
-    for (int batch = 0; batch < batch_count; ++batch) {
-        const std::ptrdiff_t batch_offset_a = static_cast<std::ptrdiff_t>(batch) *
-                                              static_cast<std::ptrdiff_t>(stridea);
-        const std::ptrdiff_t batch_offset_b = static_cast<std::ptrdiff_t>(batch) *
-                                              static_cast<std::ptrdiff_t>(strideb);
-        const std::ptrdiff_t batch_offset_c = static_cast<std::ptrdiff_t>(batch) *
-                                              static_cast<std::ptrdiff_t>(stridec);
-        const float* batch_a = a + batch_offset_a;
-        const float* batch_b = b + batch_offset_b;
-        float* batch_c = c + batch_offset_c;
-
-        for (int col = 0; col < n; ++col) {
-            for (int row = 0; row < m; ++row) {
-                float sum = 0.0f;
-                for (int p = 0; p < k; ++p) {
-                    const float a_value =
-                        (transa == CUBLAS_OP_N) ? batch_a[row + p * lda] : batch_a[p + row * lda];
-                    const float b_value =
-                        (transb == CUBLAS_OP_N) ? batch_b[p + col * ldb] : batch_b[col + p * ldb];
-                    sum += a_value * b_value;
-                }
-                batch_c[row + col * ldc] = alpha_value * sum + beta_value * batch_c[row + col * ldc];
-            }
-        }
+    cumetal::rt::AllocationTable::ResolvedAllocation a_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation b_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation c_resolved;
+    if (!cumetal::rt::resolve_allocation_for_pointer(a, &a_resolved) ||
+        !cumetal::rt::resolve_allocation_for_pointer(b, &b_resolved) ||
+        !cumetal::rt::resolve_allocation_for_pointer(c, &c_resolved)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
     }
 
-    return CUBLAS_STATUS_SUCCESS;
+    std::string error;
+    const cudaError_t gemm_status = cumetal::metal_backend::gemm_strided_batched_f32(
+        transa != CUBLAS_OP_N,
+        transb != CUBLAS_OP_N,
+        m,
+        n,
+        k,
+        *alpha,
+        a_resolved.buffer,
+        a_resolved.offset,
+        lda,
+        static_cast<std::size_t>(stridea) * sizeof(float),
+        b_resolved.buffer,
+        b_resolved.offset,
+        ldb,
+        static_cast<std::size_t>(strideb) * sizeof(float),
+        *beta,
+        c_resolved.buffer,
+        c_resolved.offset,
+        ldc,
+        static_cast<std::size_t>(stridec) * sizeof(float),
+        batch_count,
+        nullptr,
+        &error);
+
+    return map_cuda_status_to_cublas(gemm_status);
 }
 
 cublasStatus_t cublasDgemm(cublasHandle_t handle,

@@ -25,6 +25,8 @@ Implemented today:
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
   - initial `metadata` pass for AIR-style kernel metadata fields
   - initial phase1 pipeline API chaining parser + passes for a selected PTX entry
+  - PTX parser handles entry attributes between signature/body (e.g. `.maxntid`, `.minnctapersm`)
+    and `.param` qualifiers (`.ptr`, `.align`) used by clang-emitted PTX
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
   - optional `MTLHeap`-backed sub-allocation path for `cudaMalloc` / `cuMemAlloc`
@@ -35,6 +37,7 @@ Implemented today:
     (`cudaStreamCreate/Destroy/Synchronize`, `cudaStreamPerThread`, `cudaStreamLegacy`)
   - runtime functional tests for vector add, matrix multiply, and saxpy
   - initial library shims for cuRAND and cuBLAS v2
+  - cuBLAS `cublasSgemm`/`cublasSgemmStridedBatched` backed by MetalPerformanceShaders GEMM
   - driver module loading from both in-memory metallib bytes and filesystem paths
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
@@ -50,6 +53,8 @@ Implemented today:
     `__cudaRegisterManagedVar`,
     `__cudaPushCallConfiguration`)
   - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
+  - llm.c FP32 CUDA stress binary can be built and executed through CuMetal registration path
+    using `scripts/build_llmc_test_gpt2fp32cu.sh` + `scripts/run_llmc_test_gpt2fp32cu.sh`
 
 Supported runtime API subset:
 

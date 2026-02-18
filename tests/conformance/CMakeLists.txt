@@ -24,6 +24,11 @@ elseif(EXISTS "${CMAKE_SOURCE_DIR}/llm.c")
     set(CUMETAL_LLMC_DIR_AUTO "${CMAKE_SOURCE_DIR}/llm.c")
 endif()
 
+set(CUMETAL_LLMC_DIR_ACTIVE "${CUMETAL_LLMC_DIR_ENV}")
+if(NOT CUMETAL_LLMC_DIR_ACTIVE)
+    set(CUMETAL_LLMC_DIR_ACTIVE "${CUMETAL_LLMC_DIR_AUTO}")
+endif()
+
 if((CUMETAL_LLMC_DIR_ENV AND EXISTS "${CUMETAL_LLMC_DIR_ENV}") OR CUMETAL_LLMC_DIR_AUTO)
     add_test(
         NAME conformance_llmc_gpt2fp32cu
@@ -33,6 +38,8 @@ if((CUMETAL_LLMC_DIR_ENV AND EXISTS "${CUMETAL_LLMC_DIR_ENV}") OR CUMETAL_LLMC_D
     set_tests_properties(conformance_llmc_gpt2fp32cu PROPERTIES
         SKIP_RETURN_CODE 77
         TIMEOUT 1800
+        ENVIRONMENT
+            "CUMETAL_LLMC_DIR=${CUMETAL_LLMC_DIR_ACTIVE};CUMETAL_LLMC_BUILD_CMD=${CMAKE_SOURCE_DIR}/scripts/build_llmc_test_gpt2fp32cu.sh;CUMETAL_LLMC_TEST_CMD=${CMAKE_SOURCE_DIR}/scripts/run_llmc_test_gpt2fp32cu.sh"
     )
 else()
     message(STATUS "Skipping llm.c conformance registration (set CUMETAL_LLMC_DIR to enable)")
