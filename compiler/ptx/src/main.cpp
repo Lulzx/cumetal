@@ -10,7 +10,7 @@ namespace {
 
 void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0
-              << " --input <file.ptx> --output <file.ll> [--entry <name>] [--strict]"
+              << " [--input] <file.ptx> [--output|-o <file.ll>] [--entry <name>] [--strict]"
                  " [--module-id <id>] [--target-triple <triple>] [--overwrite]\n";
 }
 
@@ -20,6 +20,7 @@ int main(int argc, char** argv) {
     std::filesystem::path input;
     std::filesystem::path output;
     bool overwrite = false;
+    bool positional_input_set = false;
     cumetal::ptx::LowerToLlvmOptions options;
 
     for (int i = 1; i < argc; ++i) {
@@ -30,9 +31,9 @@ int main(int argc, char** argv) {
                 return 2;
             }
             input = argv[++i];
-        } else if (arg == "--output") {
+        } else if (arg == "--output" || arg == "-o") {
             if (i + 1 >= argc) {
-                std::cerr << "--output expects a path\n";
+                std::cerr << arg << " expects a path\n";
                 return 2;
             }
             output = argv[++i];
@@ -61,15 +62,25 @@ int main(int argc, char** argv) {
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
-        } else {
+        } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "unknown option: " << arg << "\n";
+            return 2;
+        } else if (!positional_input_set && input.empty()) {
+            input = arg;
+            positional_input_set = true;
+        } else {
+            std::cerr << "unexpected positional argument: " << arg << "\n";
             return 2;
         }
     }
 
-    if (input.empty() || output.empty()) {
+    if (input.empty()) {
         print_usage(argv[0]);
         return 2;
+    }
+    if (output.empty()) {
+        output = input;
+        output.replace_extension(".ll");
     }
 
     if (!std::filesystem::exists(input)) {

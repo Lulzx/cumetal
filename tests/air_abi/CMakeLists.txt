@@ -145,6 +145,15 @@ add_test(
             ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+add_test(
+    NAME air_abi_ptx2llvm_positional_default_output
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_ptx2llvm_positional_default_output.sh
+            $<TARGET_FILE:cumetal-ptx2llvm>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.ptx
+            ${CMAKE_CURRENT_BINARY_DIR}
+)
+
 set_tests_properties(
     air_abi_validate_reference
     air_abi_emit_validate_xcrun

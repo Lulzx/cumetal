@@ -17,4 +17,6 @@ Current status:
   - For `vector_add`-shaped signatures, a concrete `fadd`/`load`/`store` kernel body is emitted.
 - `cumetal-ptx2llvm` CLI writes `.ll` from `.ptx`:
   - `cumetal-ptx2llvm --input kernel.ptx --output kernel.ll --entry kernel_name`
+  - `cumetal-ptx2llvm kernel.ptx --entry kernel_name` (defaults to `kernel.ll`)
+  - `cumetal-ptx2llvm kernel.ptx -o out.ll --entry kernel_name`
 - `tests/ptx_sweep/` now includes initial strict-mode instruction sweep coverage.

@@ -103,6 +103,7 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal -o /tmp/vector_add.cumetalc.positional.metallib --overwrite
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal --overwrite
 ./build/cumetal-ptx2llvm --input tests/air_abi/reference/vector_add.ptx --output /tmp/vector_add.from_ptx.ll --entry vector_add --overwrite
+./build/cumetal-ptx2llvm tests/air_abi/reference/vector_add.ptx --entry vector_add --overwrite
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
 ctest --test-dir build -R air_abi_validate_negative --output-on-failure
@@ -113,6 +114,7 @@ ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-
 ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_default_output_validate --output-on-failure
+ctest --test-dir build -R air_abi_ptx2llvm_positional_default_output --output-on-failure
 ```
 
 Runtime execution tests
