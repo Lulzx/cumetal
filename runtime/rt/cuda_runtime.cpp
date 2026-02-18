@@ -1320,4 +1320,20 @@ const char* cudaGetErrorString(cudaError_t error) {
     return "cudaErrorUnknown";
 }
 
+cudaError_t cudaProfilerStart(void) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaProfilerStop(void) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    return fail(cudaSuccess);
+}
+
 }  // extern "C"

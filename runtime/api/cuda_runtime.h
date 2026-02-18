@@ -170,6 +170,8 @@ cudaError_t cudaGetLastError(void);
 cudaError_t cudaPeekAtLastError(void);
 const char* cudaGetErrorName(cudaError_t error);
 const char* cudaGetErrorString(cudaError_t error);
+cudaError_t cudaProfilerStart(void);
+cudaError_t cudaProfilerStop(void);
 
 #ifdef __cplusplus
 }

@@ -161,6 +161,8 @@ CUresult cuMemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUst
 
 CUresult cuGetErrorName(CUresult error, const char** pStr);
 CUresult cuGetErrorString(CUresult error, const char** pStr);
+CUresult cuProfilerStart(void);
+CUresult cuProfilerStop(void);
 
 #ifdef __cplusplus
 }

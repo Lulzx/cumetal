@@ -75,6 +75,10 @@ add_executable(cumetal_runtime_error_api_test
     runtime_error_api_test.cpp
 )
 
+add_executable(cumetal_runtime_profiler_api_test
+    runtime_profiler_api_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
@@ -85,6 +89,10 @@ add_executable(cumetal_driver_device_api_test
 
 add_executable(cumetal_driver_error_api_test
     driver_error_api_test.cpp
+)
+
+add_executable(cumetal_driver_profiler_api_test
+    driver_profiler_api_test.cpp
 )
 
 add_executable(cumetal_driver_device_query_test
@@ -241,6 +249,11 @@ target_link_libraries(cumetal_runtime_error_api_test
         cumetal_runtime
 )
 
+target_link_libraries(cumetal_runtime_profiler_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
 target_link_libraries(cumetal_driver_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -252,6 +265,11 @@ target_link_libraries(cumetal_driver_device_api_test
 )
 
 target_link_libraries(cumetal_driver_error_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_profiler_api_test
     PRIVATE
         cumetal_runtime
 )
@@ -462,6 +480,13 @@ target_compile_options(cumetal_runtime_error_api_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_runtime_profiler_api_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_driver_vector_add_test
     PRIVATE
         -Wall
@@ -477,6 +502,13 @@ target_compile_options(cumetal_driver_device_api_test
 )
 
 target_compile_options(cumetal_driver_error_api_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_profiler_api_test
     PRIVATE
         -Wall
         -Wextra
@@ -721,6 +753,11 @@ add_test(
 )
 
 add_test(
+    NAME functional_runtime_profiler_api
+    COMMAND cumetal_runtime_profiler_api_test
+)
+
+add_test(
     NAME functional_driver_vector_add
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
             ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
@@ -738,6 +775,11 @@ add_test(
 add_test(
     NAME functional_driver_error_api
     COMMAND cumetal_driver_error_api_test
+)
+
+add_test(
+    NAME functional_driver_profiler_api
+    COMMAND cumetal_driver_profiler_api_test
 )
 
 add_test(

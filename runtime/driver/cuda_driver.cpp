@@ -1226,4 +1226,20 @@ CUresult cuGetErrorString(CUresult error, const char** pStr) {
     return cuGetErrorName(error, pStr);
 }
 
+CUresult cuProfilerStart(void) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    return CUDA_SUCCESS;
+}
+
+CUresult cuProfilerStop(void) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    return CUDA_SUCCESS;
+}
+
 }  // extern "C"
