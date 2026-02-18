@@ -1,16 +1,38 @@
 #include "cumetal/air_emitter/emitter.h"
+#include "cumetal/common/metallib.h"
+#include "cumetal/ptx/lower_to_llvm.h"
 
+#include <cctype>
+#include <chrono>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <unistd.h>
+#include <vector>
 
 namespace {
 
 void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0
-              << " [--input] <file.{metal,ll,air,bc}> [--output|-o <file.metallib>]"
+              << " [--input] <file.{metal,ptx,ll,air,bc}> [--output|-o <file.metallib>]"
                  " [--mode xcrun|experimental] [--fallback-experimental]"
                  " [--overwrite] [--skip-validate] [--xcrun-validate]"
-                 " [--kernel-name name]\n";
+                 " [--kernel-name name] [--entry name] [--ptx-strict]\n";
+}
+
+std::string lower_ext(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext;
+}
+
+std::filesystem::path make_temp_ll_path() {
+    const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto pid = static_cast<long long>(::getpid());
+    return std::filesystem::temp_directory_path() /
+           ("cumetalc-ptx-" + std::to_string(pid) + "-" + std::to_string(now) + ".ll");
 }
 
 }  // namespace
@@ -19,6 +41,8 @@ int main(int argc, char** argv) {
     cumetal::air_emitter::EmitOptions options;
     bool mode_set = false;
     bool positional_input_set = false;
+    std::string ptx_entry_name;
+    bool ptx_strict = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -64,6 +88,14 @@ int main(int argc, char** argv) {
                 return 2;
             }
             options.kernel_name = argv[++i];
+        } else if (arg == "--entry") {
+            if (i + 1 >= argc) {
+                std::cerr << "--entry expects a value\n";
+                return 2;
+            }
+            ptx_entry_name = argv[++i];
+        } else if (arg == "--ptx-strict") {
+            ptx_strict = true;
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -92,7 +124,46 @@ int main(int argc, char** argv) {
         options.mode = cumetal::air_emitter::EmitMode::kXcrun;
     }
 
+    std::filesystem::path temp_ll;
+    const std::string input_ext = lower_ext(options.input);
+    if (input_ext == ".ptx") {
+        std::string io_error;
+        const std::vector<std::uint8_t> ptx_bytes = cumetal::common::read_file_bytes(options.input, &io_error);
+        if (ptx_bytes.empty()) {
+            std::cerr << "cumetalc failed: "
+                      << (io_error.empty() ? "failed to read PTX input" : io_error) << "\n";
+            return 1;
+        }
+
+        cumetal::ptx::LowerToLlvmOptions lower_options;
+        lower_options.strict = ptx_strict;
+        lower_options.entry_name = ptx_entry_name;
+        const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(
+            std::string_view(reinterpret_cast<const char*>(ptx_bytes.data()), ptx_bytes.size()),
+            lower_options);
+        for (const auto& warning : lowered.warnings) {
+            std::cerr << "ptx warning: " << warning << "\n";
+        }
+        if (!lowered.ok) {
+            std::cerr << "cumetalc failed: PTX lowering failed: " << lowered.error << "\n";
+            return 1;
+        }
+
+        temp_ll = make_temp_ll_path();
+        const std::vector<std::uint8_t> ll_bytes(lowered.llvm_ir.begin(), lowered.llvm_ir.end());
+        if (!cumetal::common::write_file_bytes(temp_ll, ll_bytes, &io_error)) {
+            std::cerr << "cumetalc failed: failed to write temporary LLVM IR: " << io_error << "\n";
+            return 1;
+        }
+        options.input = temp_ll;
+        options.kernel_name = lowered.entry_name;
+    }
+
     const auto result = cumetal::air_emitter::emit_metallib(options);
+    if (!temp_ll.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(temp_ll, ec);
+    }
     for (const auto& log : result.logs) {
         if (!log.empty()) {
             std::cerr << log;

@@ -20,6 +20,7 @@ Implemented today:
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
     including concrete vector-add body emission for vector-add signatures
+  - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
   - initial PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
@@ -110,6 +111,7 @@ ctest --test-dir build -R air_abi_cumetalc_positional_emit_load_xcrun --output-o
 ctest --test-dir build -R air_abi_cumetalc_default_output_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_ptx_experimental_validate --output-on-failure
 ```
 
 Runtime execution tests

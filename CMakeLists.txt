@@ -196,6 +196,7 @@ add_executable(cumetalc
 target_link_libraries(cumetalc
     PRIVATE
         cumetal_air_emitter
+        cumetal_ptx_codegen
 )
 
 target_compile_options(cumetalc
