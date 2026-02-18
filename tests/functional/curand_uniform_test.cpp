@@ -416,9 +416,46 @@ int main() {
         return 1;
     }
 
+    std::uint64_t* device_output_ull = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_ull), kCount * sizeof(std::uint64_t)) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for uint64 output failed\n");
+        return 1;
+    }
+    if (curandGenerateLongLong(generator,
+                               reinterpret_cast<unsigned long long*>(device_output_ull),
+                               kCount) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerateLongLong failed\n");
+        return 1;
+    }
+    std::vector<std::uint64_t> host_ull(kCount, 0);
+    if (cudaMemcpy(host_ull.data(),
+                   device_output_ull,
+                   kCount * sizeof(std::uint64_t),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for uint64 output failed\n");
+        return 1;
+    }
+    bool has_ull_variation = false;
+    for (std::size_t i = 1; i < kCount; ++i) {
+        if (host_ull[i] != host_ull[i - 1]) {
+            has_ull_variation = true;
+            break;
+        }
+    }
+    if (!has_ull_variation) {
+        std::fprintf(stderr, "FAIL: generated uint64 sequence has no variation\n");
+        return 1;
+    }
+
     std::vector<unsigned int> host_uint_out(kCount, 0u);
     if (curandGenerate(generator, host_uint_out.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host uint output pointer\n");
+        return 1;
+    }
+    std::vector<unsigned long long> host_ull_out(kCount, 0ull);
+    if (curandGenerateLongLong(generator, host_ull_out.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host uint64 output pointer\n");
         return 1;
     }
 
@@ -467,6 +504,10 @@ int main() {
     }
     if (cudaFree(device_output_uint) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree for uint output failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_ull) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for uint64 output failed\n");
         return 1;
     }
     if (curandDestroyGenerator(generator) != CURAND_STATUS_SUCCESS) {

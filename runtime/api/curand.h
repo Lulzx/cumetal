@@ -63,6 +63,9 @@ curandStatus_t curandGenerateLogNormalDouble(curandGenerator_t generator,
                                              double mean,
                                              double stddev);
 curandStatus_t curandGenerate(curandGenerator_t generator, unsigned int* output_ptr, size_t num);
+curandStatus_t curandGenerateLongLong(curandGenerator_t generator,
+                                      unsigned long long* output_ptr,
+                                      size_t num);
 
 #ifdef __cplusplus
 }
