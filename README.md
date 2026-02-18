@@ -34,6 +34,18 @@ Supported runtime API subset:
 - `cudaDeviceSynchronize`
 - `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorString`
 
+Supported driver API subset:
+
+- `cuInit`, `cuDeviceGet`
+- `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSynchronize`
+- `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamWaitEvent`
+- `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
+- `cuModuleLoad`, `cuModuleUnload`, `cuModuleGetFunction`
+- `cuLaunchKernel` (kernel params path with `nullptr`-terminated arg array)
+- `cuMemAlloc`, `cuMemFree`
+- `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
+- `cuGetErrorName`, `cuGetErrorString`
+
 Current limitations:
 
 - This is not yet a full CUDA Runtime/Driver implementation.
@@ -70,6 +82,8 @@ ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
 ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
+ctest --test-dir build -R functional_driver_vector_add --output-on-failure
+ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ```

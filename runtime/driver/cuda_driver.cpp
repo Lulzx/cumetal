@@ -1,0 +1,487 @@
+#include "cuda.h"
+
+#include "cuda_runtime.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <mutex>
+#include <new>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+struct CUctx_st {
+    CUdevice device = 0;
+};
+
+struct CUfunc_st;
+
+struct CUmod_st {
+    std::string metallib_path;
+    std::vector<CUfunc_st*> functions;
+};
+
+struct CUfunc_st {
+    CUmod_st* module = nullptr;
+    std::string kernel_name;
+};
+
+namespace {
+
+struct DriverState {
+    std::mutex mutex;
+    bool initialized = false;
+    std::unordered_set<CUctx_st*> contexts;
+    std::unordered_set<CUmod_st*> modules;
+    std::unordered_set<CUfunc_st*> functions;
+    CUctx_st* current_context = nullptr;
+};
+
+DriverState& driver_state() {
+    static DriverState state;
+    return state;
+}
+
+CUresult map_cuda_error(cudaError_t error) {
+    switch (error) {
+        case cudaSuccess:
+            return CUDA_SUCCESS;
+        case cudaErrorInvalidValue:
+        case cudaErrorInvalidDevicePointer:
+            return CUDA_ERROR_INVALID_VALUE;
+        case cudaErrorMemoryAllocation:
+            return CUDA_ERROR_OUT_OF_MEMORY;
+        case cudaErrorInitializationError:
+            return CUDA_ERROR_NOT_INITIALIZED;
+        case cudaErrorNotReady:
+            return CUDA_ERROR_NOT_READY;
+        case cudaErrorUnknown:
+            return CUDA_ERROR_UNKNOWN;
+    }
+    return CUDA_ERROR_UNKNOWN;
+}
+
+bool has_current_context_locked(const DriverState& state) {
+    return state.current_context != nullptr;
+}
+
+bool is_valid_function_locked(const DriverState& state, CUfunction function) {
+    return function != nullptr && state.functions.find(function) != state.functions.end();
+}
+
+bool is_valid_module_locked(const DriverState& state, CUmodule module) {
+    return module != nullptr && state.modules.find(module) != state.modules.end();
+}
+
+}  // namespace
+
+extern "C" {
+
+CUresult cuInit(unsigned int flags) {
+    if (flags != 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    const CUresult status = map_cuda_error(cudaInit(0));
+    if (status != CUDA_SUCCESS) {
+        return status;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    state.initialized = true;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuDeviceGet(CUdevice* device, int ordinal) {
+    if (device == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+
+    if (ordinal != 0) {
+        return CUDA_ERROR_INVALID_DEVICE;
+    }
+
+    *device = 0;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev) {
+    if (pctx == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    if (flags != 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    if (dev != 0) {
+        return CUDA_ERROR_INVALID_DEVICE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+    }
+
+    auto* context = new (std::nothrow) CUctx_st{};
+    if (context == nullptr) {
+        return CUDA_ERROR_OUT_OF_MEMORY;
+    }
+    context->device = dev;
+
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.contexts.insert(context);
+        if (state.current_context == nullptr) {
+            state.current_context = context;
+        }
+    }
+
+    *pctx = context;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxDestroy(CUcontext ctx) {
+    if (ctx == nullptr) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (state.contexts.find(ctx) == state.contexts.end()) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+        state.contexts.erase(ctx);
+        if (state.current_context == ctx) {
+            state.current_context = state.contexts.empty() ? nullptr : *state.contexts.begin();
+        }
+    }
+
+    delete ctx;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxSynchronize(void) {
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+        if (!has_current_context_locked(state)) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+    }
+
+    return map_cuda_error(cudaDeviceSynchronize());
+}
+
+CUresult cuStreamCreate(CUstream* phStream, unsigned int flags) {
+    if (flags != 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    return map_cuda_error(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(phStream)));
+}
+
+CUresult cuStreamDestroy(CUstream hStream) {
+    return map_cuda_error(cudaStreamDestroy(reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuStreamSynchronize(CUstream hStream) {
+    return map_cuda_error(cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuStreamQuery(CUstream hStream) {
+    return map_cuda_error(cudaStreamQuery(reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags) {
+    return map_cuda_error(cudaStreamWaitEvent(reinterpret_cast<cudaStream_t>(hStream),
+                                              reinterpret_cast<cudaEvent_t>(hEvent),
+                                              flags));
+}
+
+CUresult cuEventCreate(CUevent* phEvent, unsigned int flags) {
+    return map_cuda_error(cudaEventCreateWithFlags(reinterpret_cast<cudaEvent_t*>(phEvent), flags));
+}
+
+CUresult cuEventDestroy(CUevent hEvent) {
+    return map_cuda_error(cudaEventDestroy(reinterpret_cast<cudaEvent_t>(hEvent)));
+}
+
+CUresult cuEventRecord(CUevent hEvent, CUstream hStream) {
+    return map_cuda_error(cudaEventRecord(reinterpret_cast<cudaEvent_t>(hEvent),
+                                          reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuEventSynchronize(CUevent hEvent) {
+    return map_cuda_error(cudaEventSynchronize(reinterpret_cast<cudaEvent_t>(hEvent)));
+}
+
+CUresult cuEventQuery(CUevent hEvent) {
+    return map_cuda_error(cudaEventQuery(reinterpret_cast<cudaEvent_t>(hEvent)));
+}
+
+CUresult cuEventElapsedTime(float* pMilliseconds, CUevent hStart, CUevent hEnd) {
+    return map_cuda_error(cudaEventElapsedTime(pMilliseconds,
+                                               reinterpret_cast<cudaEvent_t>(hStart),
+                                               reinterpret_cast<cudaEvent_t>(hEnd)));
+}
+
+CUresult cuModuleLoad(CUmodule* module, const char* fname) {
+    if (module == nullptr || fname == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+        if (!has_current_context_locked(state)) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+    }
+
+    if (!std::filesystem::exists(fname)) {
+        return CUDA_ERROR_INVALID_IMAGE;
+    }
+
+    auto* loaded = new (std::nothrow) CUmod_st{};
+    if (loaded == nullptr) {
+        return CUDA_ERROR_OUT_OF_MEMORY;
+    }
+    loaded->metallib_path = fname;
+
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.modules.insert(loaded);
+    }
+
+    *module = loaded;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuModuleUnload(CUmodule module) {
+    if (module == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!is_valid_module_locked(state, module)) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+
+        for (CUfunc_st* function : module->functions) {
+            state.functions.erase(function);
+            delete function;
+        }
+        module->functions.clear();
+        state.modules.erase(module);
+    }
+
+    delete module;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuModuleGetFunction(CUfunction* hfunc, CUmodule hmod, const char* name) {
+    if (hfunc == nullptr || hmod == nullptr || name == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+        if (!has_current_context_locked(state)) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+        if (!is_valid_module_locked(state, hmod)) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    auto* function = new (std::nothrow) CUfunc_st{};
+    if (function == nullptr) {
+        return CUDA_ERROR_OUT_OF_MEMORY;
+    }
+    function->module = hmod;
+    function->kernel_name = name;
+
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        hmod->functions.push_back(function);
+        state.functions.insert(function);
+    }
+
+    *hfunc = function;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuLaunchKernel(CUfunction f,
+                        unsigned int gridDimX,
+                        unsigned int gridDimY,
+                        unsigned int gridDimZ,
+                        unsigned int blockDimX,
+                        unsigned int blockDimY,
+                        unsigned int blockDimZ,
+                        unsigned int sharedMemBytes,
+                        CUstream hStream,
+                        void** kernelParams,
+                        void** extra) {
+    if (f == nullptr || gridDimX == 0 || gridDimY == 0 || gridDimZ == 0 || blockDimX == 0 ||
+        blockDimY == 0 || blockDimZ == 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    if (extra != nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+        if (!has_current_context_locked(state)) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+        if (!is_valid_function_locked(state, f)) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    std::vector<cumetalKernelArgInfo_t> arg_info;
+    if (kernelParams != nullptr) {
+        for (std::size_t i = 0; i < 31; ++i) {
+            if (kernelParams[i] == nullptr) {
+                break;
+            }
+            arg_info.push_back(cumetalKernelArgInfo_t{
+                .kind = CUMETAL_ARG_BUFFER,
+                .size_bytes = 0,
+            });
+        }
+        if (arg_info.size() == 31 && kernelParams[31] != nullptr) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+    }
+
+    const cumetalKernel_t kernel{
+        .metallib_path = f->module->metallib_path.c_str(),
+        .kernel_name = f->kernel_name.c_str(),
+        .arg_count = static_cast<std::uint32_t>(arg_info.size()),
+        .arg_info = arg_info.empty() ? nullptr : arg_info.data(),
+    };
+
+    const cudaError_t status = cudaLaunchKernel(&kernel,
+                                                dim3(gridDimX, gridDimY, gridDimZ),
+                                                dim3(blockDimX, blockDimY, blockDimZ),
+                                                kernelParams,
+                                                sharedMemBytes,
+                                                reinterpret_cast<cudaStream_t>(hStream));
+    return map_cuda_error(status);
+}
+
+CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) {
+    if (dptr == nullptr || bytesize == 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    void* allocated = nullptr;
+    const cudaError_t status = cudaMalloc(&allocated, bytesize);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    *dptr = static_cast<CUdeviceptr>(reinterpret_cast<std::uintptr_t>(allocated));
+    return CUDA_SUCCESS;
+}
+
+CUresult cuMemFree(CUdeviceptr dptr) {
+    return map_cuda_error(cudaFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dptr))));
+}
+
+CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount) {
+    return map_cuda_error(cudaMemcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                     srcHost,
+                                     ByteCount,
+                                     cudaMemcpyHostToDevice));
+}
+
+CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount) {
+    return map_cuda_error(cudaMemcpy(dstHost,
+                                     reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
+                                     ByteCount,
+                                     cudaMemcpyDeviceToHost));
+}
+
+CUresult cuMemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount) {
+    return map_cuda_error(cudaMemcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                     reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
+                                     ByteCount,
+                                     cudaMemcpyDeviceToDevice));
+}
+
+CUresult cuGetErrorName(CUresult error, const char** pStr) {
+    if (pStr == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    switch (error) {
+        case CUDA_SUCCESS:
+            *pStr = "CUDA_SUCCESS";
+            break;
+        case CUDA_ERROR_INVALID_VALUE:
+            *pStr = "CUDA_ERROR_INVALID_VALUE";
+            break;
+        case CUDA_ERROR_OUT_OF_MEMORY:
+            *pStr = "CUDA_ERROR_OUT_OF_MEMORY";
+            break;
+        case CUDA_ERROR_NOT_INITIALIZED:
+            *pStr = "CUDA_ERROR_NOT_INITIALIZED";
+            break;
+        case CUDA_ERROR_INVALID_DEVICE:
+            *pStr = "CUDA_ERROR_INVALID_DEVICE";
+            break;
+        case CUDA_ERROR_INVALID_IMAGE:
+            *pStr = "CUDA_ERROR_INVALID_IMAGE";
+            break;
+        case CUDA_ERROR_INVALID_CONTEXT:
+            *pStr = "CUDA_ERROR_INVALID_CONTEXT";
+            break;
+        case CUDA_ERROR_NOT_FOUND:
+            *pStr = "CUDA_ERROR_NOT_FOUND";
+            break;
+        case CUDA_ERROR_NOT_READY:
+            *pStr = "CUDA_ERROR_NOT_READY";
+            break;
+        case CUDA_ERROR_UNKNOWN:
+            *pStr = "CUDA_ERROR_UNKNOWN";
+            break;
+        default:
+            *pStr = "CUDA_ERROR_UNKNOWN";
+            break;
+    }
+    return CUDA_SUCCESS;
+}
+
+CUresult cuGetErrorString(CUresult error, const char** pStr) {
+    return cuGetErrorName(error, pStr);
+}
+
+}  // extern "C"
