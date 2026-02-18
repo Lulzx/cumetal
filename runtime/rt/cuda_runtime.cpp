@@ -1118,32 +1118,54 @@ cudaError_t try_emulate_llmc_registered_kernel(
 
         const int n = b * t;
         const float inv_c = 1.0f / static_cast<float>(c);
-        for (int row = 0; row < n; ++row) {
-            const std::size_t base = static_cast<std::size_t>(row) * static_cast<std::size_t>(c);
-            const float* dout_row = dout + base;
-            const float* inp_row = inp + base;
-            float* dinp_row = dinp + base;
-            const float mean_row = mean[row];
-            const float rstd_row = rstd[row];
+        const int warps_per_block = std::max(1u, block_dim.x / 32u);
+        const int block_count = static_cast<int>(grid_dim.x);
 
-            float dnorm_mean = 0.0f;
-            float dnorm_norm_mean = 0.0f;
-            for (int ci = 0; ci < c; ++ci) {
-                const float norm = (inp_row[ci] - mean_row) * rstd_row;
-                const float dnorm = weight[ci] * dout_row[ci];
-                dnorm_mean += dnorm;
-                dnorm_norm_mean += dnorm * norm;
+        std::vector<float> block_dbias(static_cast<std::size_t>(c));
+        std::vector<float> block_dweight(static_cast<std::size_t>(c));
+
+        for (int block = 0; block < block_count; ++block) {
+            std::fill(block_dbias.begin(), block_dbias.end(), 0.0f);
+            std::fill(block_dweight.begin(), block_dweight.end(), 0.0f);
+
+            for (int warp_rank = 0; warp_rank < warps_per_block; ++warp_rank) {
+                const int row = block * warps_per_block + warp_rank;
+                if (row >= n) {
+                    continue;
+                }
+
+                const std::size_t base =
+                    static_cast<std::size_t>(row) * static_cast<std::size_t>(c);
+                const float* dout_row = dout + base;
+                const float* inp_row = inp + base;
+                float* dinp_row = dinp + base;
+                const float mean_row = mean[row];
+                const float rstd_row = rstd[row];
+
+                float dnorm_mean = 0.0f;
+                float dnorm_norm_mean = 0.0f;
+                for (int ci = 0; ci < c; ++ci) {
+                    const float norm = (inp_row[ci] - mean_row) * rstd_row;
+                    const float dnorm = weight[ci] * dout_row[ci];
+                    dnorm_mean += dnorm;
+                    dnorm_norm_mean += dnorm * norm;
+                }
+                dnorm_mean *= inv_c;
+                dnorm_norm_mean *= inv_c;
+
+                for (int ci = 0; ci < c; ++ci) {
+                    const float norm = (inp_row[ci] - mean_row) * rstd_row;
+                    const float dnorm = weight[ci] * dout_row[ci];
+                    block_dbias[static_cast<std::size_t>(ci)] += dout_row[ci];
+                    block_dweight[static_cast<std::size_t>(ci)] += norm * dout_row[ci];
+                    const float dval = (dnorm - dnorm_mean - norm * dnorm_norm_mean) * rstd_row;
+                    dinp_row[ci] += dval;
+                }
             }
-            dnorm_mean *= inv_c;
-            dnorm_norm_mean *= inv_c;
 
             for (int ci = 0; ci < c; ++ci) {
-                const float norm = (inp_row[ci] - mean_row) * rstd_row;
-                const float dnorm = weight[ci] * dout_row[ci];
-                dbias[ci] += dout_row[ci];
-                dweight[ci] += norm * dout_row[ci];
-                const float dval = (dnorm - dnorm_mean - norm * dnorm_norm_mean) * rstd_row;
-                dinp_row[ci] += dval;
+                dbias[ci] += block_dbias[static_cast<std::size_t>(ci)];
+                dweight[ci] += block_dweight[static_cast<std::size_t>(ci)];
             }
         }
 

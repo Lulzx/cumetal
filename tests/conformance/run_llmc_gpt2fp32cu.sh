@@ -43,6 +43,11 @@ if rg -qi "\\b(fail|error|nan|inf)\\b" "$OUTPUT_FILE"; then
   exit 1
 fi
 
+if rg -q "TENSOR NOT OK" "$OUTPUT_FILE"; then
+  echo "FAIL: llm.c reported gradient tensor mismatch"
+  exit 1
+fi
+
 if rg -q "overall okay: 1" "$OUTPUT_FILE"; then
   echo "PASS: llm.c test_gpt2fp32cu reached numerical parity (overall okay: 1)"
   exit 0
