@@ -244,7 +244,8 @@ ValidationResult validate_file(const std::filesystem::path& path, const Validati
                 }
             }
         }
-    } else if (options.require_function_list || options.require_kernel_metadata) {
+    } else if ((options.require_function_list || options.require_kernel_metadata) &&
+               !options.run_metal_library_archive) {
         result.diagnostics.push_back({
             .severity = Severity::kWarning,
             .message =
@@ -282,26 +283,42 @@ ValidationResult validate_file(const std::filesystem::path& path, const Validati
     }
 
     if (options.run_xcrun_validate) {
-        const std::string command =
-            "xcrun metal -validate " + quote_shell(path.string()) + " 2>&1";
-        const CommandResult command_result = run_command_capture(command);
+        const std::string metallib_command =
+            "xcrun metallib --app-store-validate " + quote_shell(path.string()) + " 2>&1";
+        CommandResult command_result = run_command_capture(metallib_command);
+        std::string command_used = metallib_command;
+
+        const bool needs_legacy_fallback =
+            !command_result.started ||
+            command_result.output.find("unknown argument: '--app-store-validate'") != std::string::npos ||
+            command_result.output.find("unable to find utility \"metallib\"") != std::string::npos;
+
+        if (needs_legacy_fallback) {
+            const std::string metal_command =
+                "xcrun metal -validate " + quote_shell(path.string()) + " 2>&1";
+            command_result = run_command_capture(metal_command);
+            command_used = metal_command;
+        }
+
         result.xcrun_exit_code = command_result.exit_code;
         result.xcrun_output = command_result.output;
 
         if (!command_result.started) {
             result.diagnostics.push_back(
                 {.severity = Severity::kError,
-                 .message = "failed to invoke xcrun for metal -validate"});
+                 .message = "failed to invoke xcrun validation command"});
         } else if (command_result.exit_code != 0) {
             result.diagnostics.push_back(
                 {.severity = Severity::kError,
-                 .message = "xcrun metal -validate returned non-zero exit code " +
+                 .message = "xcrun validation command returned non-zero exit code " +
                             std::to_string(command_result.exit_code)});
         } else {
             result.diagnostics.push_back(
                 {.severity = Severity::kInfo,
-                 .message = "xcrun metal -validate accepted the container"});
+                 .message = "xcrun validation command accepted the container"});
         }
+        result.diagnostics.push_back(
+            {.severity = Severity::kInfo, .message = "xcrun validation command: " + command_used});
     }
 
     result.ok = !has_error(result.diagnostics);
