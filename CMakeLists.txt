@@ -93,6 +93,7 @@ add_library(cumetal_runtime SHARED
     runtime/driver/cuda_driver.cpp
     runtime/error/library_conflict.cpp
     runtime/rt/allocation_table.cpp
+    runtime/rt/cublas.cpp
     runtime/rt/curand.cpp
     runtime/rt/cuda_runtime.cpp
     runtime/metal_backend/metal_backend.mm
@@ -279,6 +280,7 @@ install(TARGETS
 )
 
 install(FILES
+    runtime/api/cublas_v2.h
     runtime/api/cuda.h
     runtime/api/cuda_runtime.h
     runtime/api/curand.h

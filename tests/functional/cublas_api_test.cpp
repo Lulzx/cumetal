@@ -1,0 +1,217 @@
+#include "cublas_v2.h"
+#include "cuda_runtime.h"
+
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <vector>
+
+namespace {
+
+bool nearly_equal(float a, float b) {
+    return std::fabs(a - b) < 1e-5f;
+}
+
+}  // namespace
+
+int main() {
+    if (cudaInit(0) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaInit failed\n");
+        return 1;
+    }
+
+    if (cublasCreate(nullptr) != CUBLAS_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_NOT_INITIALIZED for null handle out ptr\n");
+        return 1;
+    }
+
+    cublasHandle_t handle = nullptr;
+    if (cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS || handle == nullptr) {
+        std::fprintf(stderr, "FAIL: cublasCreate failed\n");
+        return 1;
+    }
+
+    cudaStream_t stream = nullptr;
+    if (cudaStreamCreate(&stream) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamCreate failed\n");
+        return 1;
+    }
+    if (cublasSetStream(handle, stream) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSetStream failed\n");
+        return 1;
+    }
+    cudaStream_t queried_stream = nullptr;
+    if (cublasGetStream(handle, &queried_stream) != CUBLAS_STATUS_SUCCESS || queried_stream != stream) {
+        std::fprintf(stderr, "FAIL: cublasGetStream mismatch\n");
+        return 1;
+    }
+
+    constexpr int kVecCount = 2048;
+    std::vector<float> host_x(kVecCount);
+    std::vector<float> host_y(kVecCount);
+    std::vector<float> expected_y(kVecCount);
+    for (int i = 0; i < kVecCount; ++i) {
+        host_x[i] = static_cast<float>((i * 7) % 29) * 0.25f;
+        host_y[i] = static_cast<float>((i * 3) % 17) * 0.5f;
+        expected_y[i] = host_y[i];
+    }
+    const float alpha_axpy = 1.75f;
+    for (int i = 0; i < kVecCount; ++i) {
+        expected_y[i] = alpha_axpy * host_x[i] + expected_y[i];
+    }
+
+    float* dev_x = nullptr;
+    float* dev_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_x), host_x.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_y), host_y.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SAXPY failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_x, host_x.data(), host_x.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_y, host_y.data(), host_y.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SAXPY failed\n");
+        return 1;
+    }
+
+    if (cublasSaxpy(handle, kVecCount, &alpha_axpy, dev_x, 1, dev_y, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSaxpy failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_y.data(), dev_y, host_y.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SAXPY failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kVecCount; ++i) {
+        if (!nearly_equal(host_y[i], expected_y[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SAXPY mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_y[i]),
+                         static_cast<double>(expected_y[i]));
+            return 1;
+        }
+    }
+
+    if (cublasSaxpy(handle, kVecCount, &alpha_axpy, host_x.data(), 1, dev_y, 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host x pointer\n");
+        return 1;
+    }
+
+    constexpr int m = 2;
+    constexpr int n = 3;
+    constexpr int k = 4;
+    constexpr int lda = m;
+    constexpr int ldb = k;
+    constexpr int ldc = m;
+    std::vector<float> host_a(lda * k);
+    std::vector<float> host_b(ldb * n);
+    std::vector<float> host_c(ldc * n);
+    std::vector<float> expected_c(ldc * n);
+
+    for (int col = 0; col < k; ++col) {
+        for (int row = 0; row < m; ++row) {
+            host_a[row + col * lda] = 1.0f + static_cast<float>(row) * 0.5f +
+                                      static_cast<float>(col) * 0.25f;
+        }
+    }
+    for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < k; ++row) {
+            host_b[row + col * ldb] =
+                0.5f + static_cast<float>(row + 1) * static_cast<float>(col + 2) * 0.125f;
+        }
+    }
+    for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < m; ++row) {
+            host_c[row + col * ldc] = static_cast<float>((row + 1) * (col + 2)) * 0.1f;
+            expected_c[row + col * ldc] = host_c[row + col * ldc];
+        }
+    }
+
+    const float alpha_gemm = 1.25f;
+    const float beta_gemm = 0.75f;
+    for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < m; ++row) {
+            float sum = 0.0f;
+            for (int p = 0; p < k; ++p) {
+                sum += host_a[row + p * lda] * host_b[p + col * ldb];
+            }
+            expected_c[row + col * ldc] = alpha_gemm * sum + beta_gemm * expected_c[row + col * ldc];
+        }
+    }
+
+    float* dev_a = nullptr;
+    float* dev_b = nullptr;
+    float* dev_c = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_a), host_a.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_b), host_b.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_c), host_c.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SGEMM failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_a, host_a.data(), host_a.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_b, host_b.data(), host_b.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_c, host_c.data(), host_c.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SGEMM failed\n");
+        return 1;
+    }
+
+    if (cublasSgemm(handle,
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_N,
+                    m,
+                    n,
+                    k,
+                    &alpha_gemm,
+                    dev_a,
+                    lda,
+                    dev_b,
+                    ldb,
+                    &beta_gemm,
+                    dev_c,
+                    ldc) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemm failed\n");
+        return 1;
+    }
+
+    if (cudaMemcpy(host_c.data(), dev_c, host_c.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SGEMM failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_c.size(); ++i) {
+        if (!nearly_equal(host_c[i], expected_c[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SGEMM mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_c[i]),
+                         static_cast<double>(expected_c[i]));
+            return 1;
+        }
+    }
+
+    if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
+        cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
+        cudaFree(dev_c) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree failed\n");
+        return 1;
+    }
+
+    if (cublasDestroy(handle) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDestroy failed\n");
+        return 1;
+    }
+    if (cudaStreamDestroy(stream) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamDestroy failed\n");
+        return 1;
+    }
+
+    std::printf("PASS: cuBLAS shim SAXPY/SGEMM operations validated\n");
+    return 0;
+}
