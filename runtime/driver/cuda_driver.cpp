@@ -15,6 +15,7 @@
 
 struct CUctx_st {
     CUdevice device = 0;
+    unsigned int flags = 0;
 };
 
 struct CUfunc_st;
@@ -364,6 +365,7 @@ CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev) {
         return CUDA_ERROR_OUT_OF_MEMORY;
     }
     context->device = dev;
+    context->flags = flags;
 
     {
         std::lock_guard<std::mutex> lock(state.mutex);
@@ -443,6 +445,24 @@ CUresult cuCtxGetDevice(CUdevice* device) {
     }
 
     *device = state.current_context->device;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxGetFlags(unsigned int* flags) {
+    if (flags == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+    if (!has_current_context_locked(state)) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+
+    *flags = state.current_context->flags;
     return CUDA_SUCCESS;
 }
 

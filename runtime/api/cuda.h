@@ -73,6 +73,7 @@ CUresult cuCtxDestroy(CUcontext ctx);
 CUresult cuCtxSetCurrent(CUcontext ctx);
 CUresult cuCtxGetCurrent(CUcontext* pctx);
 CUresult cuCtxGetDevice(CUdevice* device);
+CUresult cuCtxGetFlags(unsigned int* flags);
 CUresult cuCtxSynchronize(void);
 
 CUresult cuStreamCreate(CUstream* phStream, unsigned int flags);
