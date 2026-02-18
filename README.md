@@ -16,7 +16,8 @@ Implemented today:
   - `air_validate`: structural checks + optional `xcrun metal -validate`
   - `cumetal_metal_load_test`: `MTLDevice.newLibraryWithData:` acceptance test
 - Phase 1 scaffolding:
-  - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param`) in `compiler/ptx/`
+  - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
+    with tolerant/strict unsupported-op modes in `compiler/ptx/`
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
   - synchronous `cudaMemcpy` on UMA via `memcpy`

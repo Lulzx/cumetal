@@ -9,4 +9,6 @@ Current status:
   - `.target`
   - `.entry` signatures
   - `.param` declarations in entry parameter lists
-- This is an initial text parser scaffold for upcoming lowering work.
+  - instruction streams per entry (`opcode`, operands, optional predicate)
+- Unsupported opcodes are recorded as warnings by default.
+- Strict mode (`ParseOptions.strict=true`) fails parsing on unsupported opcodes.

@@ -14,6 +14,14 @@ struct Parameter {
 struct EntryFunction {
     std::string name;
     std::vector<Parameter> params;
+    struct Instruction {
+        std::string predicate;
+        std::string opcode;
+        std::vector<std::string> operands;
+        int line = 0;
+        bool supported = false;
+    };
+    std::vector<Instruction> instructions;
 };
 
 struct ModuleInfo {
@@ -23,12 +31,18 @@ struct ModuleInfo {
     std::vector<EntryFunction> entries;
 };
 
+struct ParseOptions {
+    bool strict = false;
+};
+
 struct ParseResult {
     bool ok = false;
     ModuleInfo module;
+    std::vector<std::string> warnings;
     std::string error;
 };
 
 ParseResult parse_ptx(std::string_view text);
+ParseResult parse_ptx(std::string_view text, const ParseOptions& options);
 
 }  // namespace cumetal::ptx

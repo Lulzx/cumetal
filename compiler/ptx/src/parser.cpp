@@ -1,8 +1,11 @@
 #include "cumetal/ptx/parser.h"
 
+#include <algorithm>
 #include <cctype>
 #include <regex>
+#include <sstream>
 #include <utility>
+#include <unordered_set>
 
 namespace cumetal::ptx {
 namespace {
@@ -67,9 +70,189 @@ bool parse_number(const std::string& token, int* out) {
     return true;
 }
 
+std::string trim(std::string_view text) {
+    std::size_t begin = 0;
+    while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
+        ++begin;
+    }
+    std::size_t end = text.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
+        --end;
+    }
+    return std::string(text.substr(begin, end - begin));
+}
+
+bool extract_balanced_body(const std::string& text,
+                           std::size_t open_brace_index,
+                           std::string* body,
+                           std::size_t* body_start,
+                           std::size_t* body_end) {
+    if (body == nullptr || body_start == nullptr || body_end == nullptr ||
+        open_brace_index >= text.size() || text[open_brace_index] != '{') {
+        return false;
+    }
+
+    int depth = 1;
+    const std::size_t start = open_brace_index + 1;
+    std::size_t end = std::string::npos;
+    for (std::size_t i = start; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c == '{') {
+            ++depth;
+        } else if (c == '}') {
+            --depth;
+            if (depth == 0) {
+                end = i;
+                break;
+            }
+        }
+    }
+
+    if (end == std::string::npos || end < start) {
+        return false;
+    }
+
+    *body = text.substr(start, end - start);
+    *body_start = start;
+    *body_end = end;
+    return true;
+}
+
+bool is_supported_opcode(const std::string& opcode) {
+    if (opcode.empty()) {
+        return false;
+    }
+    const std::size_t dot = opcode.find('.');
+    const std::string root = (dot == std::string::npos) ? opcode : opcode.substr(0, dot);
+
+    static const std::unordered_set<std::string> kSupportedRoots = {
+        "abs",   "add",  "and",  "atom", "bar", "bra", "call", "cvt",  "cvta", "div",
+        "fma",   "ld",   "mad",  "max",  "min", "mov", "mul",  "neg",  "or",   "rem",
+        "ret",   "set",  "setp", "shl",  "shr", "st",  "sub",  "vote", "xor",
+    };
+    return kSupportedRoots.contains(root);
+}
+
+std::vector<std::string> split_operands(const std::string& text) {
+    std::vector<std::string> operands;
+    std::string current;
+    int bracket_depth = 0;
+    for (const char c : text) {
+        if (c == '[' || c == '(' || c == '{') {
+            ++bracket_depth;
+            current.push_back(c);
+            continue;
+        }
+        if (c == ']' || c == ')' || c == '}') {
+            if (bracket_depth > 0) {
+                --bracket_depth;
+            }
+            current.push_back(c);
+            continue;
+        }
+        if (c == ',' && bracket_depth == 0) {
+            const std::string token = trim(current);
+            if (!token.empty()) {
+                operands.push_back(token);
+            }
+            current.clear();
+            continue;
+        }
+        current.push_back(c);
+    }
+    const std::string tail = trim(current);
+    if (!tail.empty()) {
+        operands.push_back(tail);
+    }
+    return operands;
+}
+
+int count_line_number_at_offset(const std::string& text, std::size_t offset) {
+    int line = 1;
+    const std::size_t clamped = std::min(offset, text.size());
+    for (std::size_t i = 0; i < clamped; ++i) {
+        if (text[i] == '\n') {
+            ++line;
+        }
+    }
+    return line;
+}
+
+void parse_instructions(const std::string& body,
+                        int start_line,
+                        EntryFunction* entry,
+                        std::vector<std::string>* warnings) {
+    if (entry == nullptr || warnings == nullptr) {
+        return;
+    }
+
+    int line = start_line;
+
+    std::istringstream stream(body);
+    std::string raw_line;
+    while (std::getline(stream, raw_line)) {
+        const int current_line = line++;
+        std::string line_text = trim(raw_line);
+        if (line_text.empty()) {
+            continue;
+        }
+        if (line_text == "{" || line_text == "}") {
+            continue;
+        }
+        if (line_text.back() == ':') {
+            continue;
+        }
+        if (!line_text.empty() && line_text[0] == '.') {
+            continue;
+        }
+        if (!line_text.empty() && line_text.back() == ';') {
+            line_text.pop_back();
+            line_text = trim(line_text);
+        }
+        if (line_text.empty()) {
+            continue;
+        }
+
+        EntryFunction::Instruction instruction;
+        instruction.line = current_line;
+
+        if (line_text[0] == '@') {
+            const std::size_t ws = line_text.find_first_of(" \t");
+            if (ws == std::string::npos) {
+                continue;
+            }
+            instruction.predicate = line_text.substr(0, ws);
+            line_text = trim(line_text.substr(ws + 1));
+        }
+
+        if (line_text.empty()) {
+            continue;
+        }
+
+        const std::size_t ws = line_text.find_first_of(" \t");
+        if (ws == std::string::npos) {
+            instruction.opcode = line_text;
+        } else {
+            instruction.opcode = line_text.substr(0, ws);
+            instruction.operands = split_operands(line_text.substr(ws + 1));
+        }
+
+        instruction.supported = is_supported_opcode(instruction.opcode);
+        if (!instruction.supported) {
+            warnings->push_back("unsupported opcode '" + instruction.opcode + "' at line " +
+                                std::to_string(instruction.line));
+        }
+        entry->instructions.push_back(std::move(instruction));
+    }
+}
+
 }  // namespace
 
 ParseResult parse_ptx(std::string_view text) {
+    return parse_ptx(text, ParseOptions{});
+}
+
+ParseResult parse_ptx(std::string_view text, const ParseOptions& options) {
     ParseResult result;
     const std::string source = strip_comments(text);
 
@@ -109,11 +292,27 @@ ParseResult parse_ptx(std::string_view text) {
             entry.params.push_back({.type = (*param_iter)[1].str(), .name = (*param_iter)[2].str()});
         }
 
+        const std::size_t open_brace = static_cast<std::size_t>(iter->position(0) + iter->length(0) - 1);
+        std::string body;
+        std::size_t body_start = 0;
+        std::size_t body_end = 0;
+        if (!extract_balanced_body(source, open_brace, &body, &body_start, &body_end)) {
+            result.error = "malformed entry body for '" + entry.name + "'";
+            return result;
+        }
+        const int start_line = count_line_number_at_offset(source, body_start);
+        parse_instructions(body, start_line, &entry, &result.warnings);
+
         result.module.entries.push_back(std::move(entry));
     }
 
     if (result.module.entries.empty()) {
         result.error = "no .entry definitions found";
+        return result;
+    }
+
+    if (options.strict && !result.warnings.empty()) {
+        result.error = result.warnings.front();
         return result;
     }
 
