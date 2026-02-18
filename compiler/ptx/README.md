@@ -15,6 +15,8 @@ Current status:
 - `cumetal::ptx::lower_ptx_to_llvm_ir` lowers PTX through the phase1 pipeline and emits
   LLVM IR text with AIR-style kernel metadata.
   - For `vector_add`-shaped signatures, a concrete `fadd`/`load`/`store` kernel body is emitted.
+  - `printf`/`vprintf` call sites are analyzed by the pipeline and exported as
+    `kernel.printf.*` metadata records.
 - `cumetal-ptx2llvm` CLI writes `.ll` from `.ptx`:
   - `cumetal-ptx2llvm --input kernel.ptx --output kernel.ll --entry kernel_name`
   - `cumetal-ptx2llvm kernel.ptx --entry kernel_name` (defaults to `kernel.ll`)

@@ -3,6 +3,7 @@
 #include "cumetal/passes/addrspace.h"
 #include "cumetal/passes/intrinsic_lower.h"
 #include "cumetal/passes/metadata.h"
+#include "cumetal/passes/printf_lower.h"
 
 #include <string>
 #include <string_view>
@@ -20,6 +21,8 @@ struct Phase1PipelineOutput {
     bool ok = false;
     std::string entry_name;
     std::vector<LoweredInstruction> lowered_instructions;
+    std::vector<PrintfLoweredCall> printf_calls;
+    std::vector<PrintfFormatEntry> printf_formats;
     std::vector<AddrspaceInstruction> addrspace_instructions;
     KernelMetadata metadata;
     std::vector<std::string> warnings;

@@ -23,6 +23,7 @@ Implemented today:
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
   - initial PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
+  - initial `printf_lower` pass for PTX `printf`/`vprintf` call extraction and format-table metadata
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
   - initial `metadata` pass for AIR-style kernel metadata fields
   - initial phase1 pipeline API chaining parser + passes for a selected PTX entry
@@ -169,6 +170,7 @@ ctest --test-dir build -R unit_library_conflict --output-on-failure
 ctest --test-dir build -R unit_metallib_parser --output-on-failure
 ctest --test-dir build -R unit_ptx_parser --output-on-failure
 ctest --test-dir build -R unit_intrinsic_lower --output-on-failure
+ctest --test-dir build -R unit_printf_lower --output-on-failure
 ctest --test-dir build -R unit_addrspace_pass --output-on-failure
 ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure

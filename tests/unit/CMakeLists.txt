@@ -25,6 +25,10 @@ add_executable(cumetal_intrinsic_lower_test
     intrinsic_lower_test.cpp
 )
 
+add_executable(cumetal_printf_lower_test
+    printf_lower_test.cpp
+)
+
 add_executable(cumetal_addrspace_pass_test
     addrspace_pass_test.cpp
 )
@@ -69,6 +73,11 @@ target_link_libraries(cumetal_ptx_parser_test
 )
 
 target_link_libraries(cumetal_intrinsic_lower_test
+    PRIVATE
+        cumetal_passes
+)
+
+target_link_libraries(cumetal_printf_lower_test
     PRIVATE
         cumetal_passes
 )
@@ -135,6 +144,13 @@ target_compile_options(cumetal_intrinsic_lower_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_printf_lower_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_addrspace_pass_test
     PRIVATE
         -Wall
@@ -193,6 +209,11 @@ add_test(
 add_test(
     NAME unit_intrinsic_lower
     COMMAND cumetal_intrinsic_lower_test
+)
+
+add_test(
+    NAME unit_printf_lower
+    COMMAND cumetal_printf_lower_test
 )
 
 add_test(

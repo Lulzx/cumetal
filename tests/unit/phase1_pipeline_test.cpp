@@ -52,6 +52,7 @@ int main() {
 )
 {
     mov.u32 %r0, %tid.x;
+    call.uni (%r1), vprintf, ("k1=%u", %r0);
     ld.shared.u32 %r1, [%rd1];
     foo.shared.u32 %r2, %r1;
     ret;
@@ -74,6 +75,15 @@ int main() {
     if (!expect(!tolerant.addrspace_instructions.empty(), "addrspace instructions emitted")) {
         return 1;
     }
+    if (!expect(tolerant.printf_calls.size() == 1, "printf lowering emits one call")) {
+        return 1;
+    }
+    if (!expect(tolerant.printf_formats.size() == 1, "printf format table contains one entry")) {
+        return 1;
+    }
+    if (!expect(tolerant.printf_calls[0].format_id == 0, "printf call references format id 0")) {
+        return 1;
+    }
     if (!expect(has_addrspace(tolerant.addrspace_instructions, "llvm.load", 3),
                 "ld.shared mapped to addrspace 3")) {
         return 1;
@@ -86,6 +96,14 @@ int main() {
     }
     if (!expect(has_metadata_field(tolerant.metadata, "kernel.arg_count"),
                 "metadata contains arg count")) {
+        return 1;
+    }
+    if (!expect(has_metadata_field(tolerant.metadata, "kernel.printf.count"),
+                "metadata contains printf count")) {
+        return 1;
+    }
+    if (!expect(has_metadata_field(tolerant.metadata, "kernel.printf.0.token"),
+                "metadata contains printf token")) {
         return 1;
     }
     if (!expect(!tolerant.warnings.empty(), "tolerant pipeline reports warnings")) {
