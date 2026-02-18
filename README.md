@@ -26,6 +26,7 @@ Supported runtime API subset:
 - `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
 - `cudaHostAlloc`, `cudaFreeHost`
+- `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaMemGetInfo`
 - `cudaMemcpy`, `cudaMemcpyAsync`
 - `cudaMemset`, `cudaMemsetAsync`
@@ -49,7 +50,7 @@ Supported driver API subset:
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
 - `cuMemAlloc`, `cuMemAllocManaged`, `cuMemFree`
 - `cuMemGetInfo`
-- `cuMemAllocHost`, `cuMemFreeHost`
+- `cuMemAllocHost`, `cuMemHostAlloc`, `cuMemHostGetDevicePointer`, `cuMemHostGetFlags`, `cuMemFreeHost`
 - `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
 - `cuMemcpyHtoDAsync`, `cuMemcpyDtoHAsync`, `cuMemcpyDtoDAsync`
 - `cuMemsetD8`, `cuMemsetD8Async`
@@ -94,6 +95,7 @@ ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
 ctest --test-dir build -R functional_runtime_mem_get_info --output-on-failure
 ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
+ctest --test-dir build -R functional_runtime_host_pointer_api --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_callback --output-on-failure
 ctest --test-dir build -R functional_runtime_device_api --output-on-failure
@@ -112,6 +114,7 @@ ctest --test-dir build -R functional_driver_memset --output-on-failure
 ctest --test-dir build -R functional_driver_mem_get_info --output-on-failure
 ctest --test-dir build -R functional_driver_mem_alloc_managed --output-on-failure
 ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
+ctest --test-dir build -R functional_driver_host_pointer_api --output-on-failure
 ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure

@@ -39,6 +39,10 @@ add_executable(cumetal_runtime_host_alloc_test
     runtime_host_alloc_test.cpp
 )
 
+add_executable(cumetal_runtime_host_pointer_api_test
+    runtime_host_pointer_api_test.cpp
+)
+
 add_executable(cumetal_runtime_stream_flags_test
     runtime_stream_flags_test.cpp
 )
@@ -111,6 +115,10 @@ add_executable(cumetal_driver_host_alloc_test
     driver_host_alloc_test.cpp
 )
 
+add_executable(cumetal_driver_host_pointer_api_test
+    driver_host_pointer_api_test.cpp
+)
+
 add_executable(cumetal_driver_module_load_data_test
     driver_module_load_data_test.cpp
 )
@@ -168,6 +176,11 @@ target_link_libraries(cumetal_runtime_mem_get_info_test
 )
 
 target_link_libraries(cumetal_runtime_host_alloc_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_host_pointer_api_test
     PRIVATE
         cumetal_runtime
 )
@@ -262,6 +275,11 @@ target_link_libraries(cumetal_driver_host_alloc_test
         cumetal_runtime
 )
 
+target_link_libraries(cumetal_driver_host_pointer_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
 target_link_libraries(cumetal_driver_module_load_data_test
     PRIVATE
         cumetal_runtime
@@ -339,6 +357,13 @@ target_compile_options(cumetal_runtime_mem_get_info_test
 )
 
 target_compile_options(cumetal_runtime_host_alloc_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_host_pointer_api_test
     PRIVATE
         -Wall
         -Wextra
@@ -471,6 +496,13 @@ target_compile_options(cumetal_driver_host_alloc_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_driver_host_pointer_api_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_driver_module_load_data_test
     PRIVATE
         -Wall
@@ -580,6 +612,11 @@ add_test(
 set_tests_properties(functional_runtime_host_alloc PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
+    NAME functional_runtime_host_pointer_api
+    COMMAND cumetal_runtime_host_pointer_api_test
+)
+
+add_test(
     NAME functional_runtime_stream_flags
     COMMAND cumetal_runtime_stream_flags_test
 )
@@ -683,6 +720,11 @@ add_test(
 )
 
 set_tests_properties(functional_driver_host_alloc PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_host_pointer_api
+    COMMAND cumetal_driver_host_pointer_api_test
+)
 
 add_test(
     NAME functional_driver_module_load_data

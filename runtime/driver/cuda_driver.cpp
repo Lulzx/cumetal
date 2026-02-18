@@ -838,6 +838,29 @@ CUresult cuMemAllocHost(void** pp, size_t bytesize) {
     return map_cuda_error(cudaHostAlloc(pp, bytesize, cudaHostAllocDefault));
 }
 
+CUresult cuMemHostAlloc(void** pp, size_t bytesize, unsigned int flags) {
+    return map_cuda_error(cudaHostAlloc(pp, bytesize, flags));
+}
+
+CUresult cuMemHostGetDevicePointer(CUdeviceptr* pdptr, void* p, unsigned int flags) {
+    if (pdptr == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    void* device_ptr = nullptr;
+    const cudaError_t status = cudaHostGetDevicePointer(&device_ptr, p, flags);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    *pdptr = static_cast<CUdeviceptr>(reinterpret_cast<std::uintptr_t>(device_ptr));
+    return CUDA_SUCCESS;
+}
+
+CUresult cuMemHostGetFlags(unsigned int* pFlags, void* p) {
+    return map_cuda_error(cudaHostGetFlags(pFlags, p));
+}
+
 CUresult cuMemFreeHost(void* p) {
     return map_cuda_error(cudaFreeHost(p));
 }

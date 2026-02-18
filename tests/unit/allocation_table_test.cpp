@@ -42,7 +42,12 @@ int main() {
     auto buffer = std::make_shared<FakeBuffer>(base, sizeof(memory));
 
     std::string error;
-    if (!expect(table.insert(base, sizeof(memory), buffer, &error), "insert base allocation")) {
+    if (!expect(table.insert(base,
+                             sizeof(memory),
+                             cumetal::rt::AllocationKind::kDevice,
+                             buffer,
+                             &error),
+                "insert base allocation")) {
         return 1;
     }
     if (!expect(table.total_allocated_size() == sizeof(memory), "total allocated tracks insert")) {
@@ -59,6 +64,9 @@ int main() {
     if (!expect(resolved.remaining_size == sizeof(memory), "base remaining size")) {
         return 1;
     }
+    if (!expect(resolved.kind == cumetal::rt::AllocationKind::kDevice, "base allocation kind")) {
+        return 1;
+    }
 
     void* offset_ptr = reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(base) + 64);
     if (!expect(table.resolve(offset_ptr, &resolved), "resolve offset pointer")) {
@@ -70,7 +78,12 @@ int main() {
 
     auto overlap_buffer = std::make_shared<FakeBuffer>(offset_ptr, 32);
     error.clear();
-    if (!expect(!table.insert(offset_ptr, 32, overlap_buffer, &error), "reject overlapping insert")) {
+    if (!expect(!table.insert(offset_ptr,
+                              32,
+                              cumetal::rt::AllocationKind::kDevice,
+                              overlap_buffer,
+                              &error),
+                "reject overlapping insert")) {
         return 1;
     }
     if (!expect(!error.empty(), "overlap insert returns error message")) {

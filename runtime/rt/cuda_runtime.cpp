@@ -460,7 +460,8 @@ cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
     }
 
     RuntimeState& state = runtime_state();
-    if (!state.allocations.insert(base, size, std::move(buffer), &error)) {
+    if (!state.allocations.insert(base, size, cumetal::rt::AllocationKind::kDevice,
+                                  std::move(buffer), &error)) {
         return fail(cudaErrorMemoryAllocation);
     }
 
@@ -479,11 +480,81 @@ cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
     if (flags != cudaHostAllocDefault) {
         return fail(cudaErrorInvalidValue);
     }
-    return cudaMalloc(ptr, size);
+    if (ptr == nullptr || size == 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Buffer> buffer;
+    std::string error;
+    const cudaError_t alloc_status = cumetal::metal_backend::allocate_buffer(size, &buffer, &error);
+    if (alloc_status != cudaSuccess || buffer == nullptr) {
+        return fail(alloc_status == cudaSuccess ? cudaErrorMemoryAllocation : alloc_status);
+    }
+
+    void* base = buffer->contents();
+    if (base == nullptr) {
+        return fail(cudaErrorMemoryAllocation);
+    }
+
+    RuntimeState& state = runtime_state();
+    if (!state.allocations.insert(base, size, cumetal::rt::AllocationKind::kHost,
+                                  std::move(buffer), &error)) {
+        return fail(cudaErrorMemoryAllocation);
+    }
+
+    *ptr = base;
+    return fail(cudaSuccess);
 }
 
 cudaError_t cudaMallocHost(void** ptr, size_t size) {
-    return cudaMalloc(ptr, size);
+    return cudaHostAlloc(ptr, size, cudaHostAllocDefault);
+}
+
+cudaError_t cudaHostGetDevicePointer(void** dev_ptr, void* host_ptr, unsigned int flags) {
+    if (dev_ptr == nullptr || host_ptr == nullptr || flags != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    cumetal::rt::AllocationTable::ResolvedAllocation resolved;
+    if (!state.allocations.resolve(host_ptr, &resolved) || resolved.offset != 0 ||
+        resolved.kind != cumetal::rt::AllocationKind::kHost) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    *dev_ptr = host_ptr;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaHostGetFlags(unsigned int* flags, void* host_ptr) {
+    if (flags == nullptr || host_ptr == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    cumetal::rt::AllocationTable::ResolvedAllocation resolved;
+    if (!state.allocations.resolve(host_ptr, &resolved) || resolved.offset != 0 ||
+        resolved.kind != cumetal::rt::AllocationKind::kHost) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    *flags = cudaHostAllocDefault;
+    return fail(cudaSuccess);
 }
 
 cudaError_t cudaFreeHost(void* ptr) {

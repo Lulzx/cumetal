@@ -113,6 +113,8 @@ cudaError_t cudaMalloc(void** dev_ptr, size_t size);
 cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags);
 cudaError_t cudaMallocHost(void** ptr, size_t size);
+cudaError_t cudaHostGetDevicePointer(void** dev_ptr, void* host_ptr, unsigned int flags);
+cudaError_t cudaHostGetFlags(unsigned int* flags, void* host_ptr);
 cudaError_t cudaFreeHost(void* ptr);
 cudaError_t cudaFree(void* dev_ptr);
 cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, cudaMemcpyKind kind);
