@@ -124,13 +124,16 @@ Library alias compatibility:
 
 - Build/install also provides `libcublas.dylib` and `libcurand.dylib` aliases to
   `libcumetal.dylib`, so software linked against CUDA library names can resolve shim symbols.
+- Optional binary-shim alias: when `CUMETAL_ENABLE_BINARY_SHIM=ON`, build/install also provides
+  `libcuda.dylib -> libcumetal.dylib`.
 
 Current limitations:
 
 - This is not yet a full CUDA Runtime/Driver implementation.
 - Default kernel launch uses a CuMetal descriptor (`cumetalKernel_t`).
-- Binary-shim registration is partial: CuMetal `CMTL` envelopes and basic CUDA fatbin-wrapper PTX images are
-  supported, but full NVCC fatbinary variants are not yet implemented.
+- Binary-shim registration is partial: CuMetal `CMTL` envelopes, direct PTX images, and basic CUDA
+  fatbin-wrapper PTX images are supported (including `FatBinary2/FatBinary3` entry points), but full NVCC
+  fatbinary variants are not yet implemented.
 
 Build
 -----
@@ -139,6 +142,8 @@ Build
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 cmake --install build --prefix /tmp/cumetal-install
+# optional: install libcuda.dylib alias for binary-shim workflows
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCUMETAL_ENABLE_BINARY_SHIM=ON
 ```
 
 Generate and validate a reference metallib (requires full Xcode)
@@ -262,6 +267,8 @@ ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_ratio_gate --output-on-failure
 ctest --test-dir build -R unit_runtime_library_aliases --output-on-failure
 ctest --test-dir build -R unit_binary_shim_symbol_exports --output-on-failure
+ctest --test-dir build -R unit_binary_shim_library_alias --output-on-failure
+ctest --test-dir build -R unit_binary_shim_link_alias --output-on-failure
 ctest --test-dir build -R unit_library_link_aliases --output-on-failure
 ctest --test-dir build -R ptx_sweep_supported_ops --output-on-failure
 ctest --test-dir build -R ptx_sweep_unsupported_ops --output-on-failure

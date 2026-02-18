@@ -276,6 +276,27 @@ add_test(
             $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
 )
 
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    add_test(
+        NAME unit_binary_shim_library_alias
+        COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/run_binary_shim_library_alias_test.sh
+                $<TARGET_FILE:cumetal_runtime>
+                $<TARGET_FILE_DIR:cumetal_runtime>/libcuda.dylib
+    )
+
+    add_test(
+        NAME unit_binary_shim_link_alias
+        COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/run_cuda_link_alias_test.sh
+                ${CMAKE_CXX_COMPILER}
+                ${CMAKE_SOURCE_DIR}/runtime/api
+                $<TARGET_FILE_DIR:cumetal_runtime>
+                ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    set_tests_properties(unit_binary_shim_link_alias PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
 add_test(
     NAME unit_binary_shim_symbol_exports
     COMMAND bash

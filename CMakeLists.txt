@@ -10,6 +10,16 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 
 option(CUMETAL_BUILD_TESTS "Build test targets" ON)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CUMETAL_ENABLE_BINARY_SHIM_DEFAULT OFF)
+else()
+    set(CUMETAL_ENABLE_BINARY_SHIM_DEFAULT ON)
+endif()
+option(CUMETAL_ENABLE_BINARY_SHIM
+    "Enable CUDA binary-shim library alias (build/install libcuda.dylib -> libcumetal.dylib)"
+    ${CUMETAL_ENABLE_BINARY_SHIM_DEFAULT}
+)
+
 add_library(cumetal_common STATIC
     compiler/common/src/metallib.cpp
 )
@@ -148,6 +158,16 @@ if(APPLE)
                 $<TARGET_FILE_NAME:cumetal_runtime>
                 $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
     )
+
+    if(CUMETAL_ENABLE_BINARY_SHIM)
+        add_custom_command(
+            TARGET cumetal_runtime
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    $<TARGET_FILE_NAME:cumetal_runtime>
+                    $<TARGET_FILE_DIR:cumetal_runtime>/libcuda.dylib
+        )
+    endif()
 endif()
 
 add_library(cumetal_air_validate STATIC
@@ -316,6 +336,15 @@ if(APPLE)
                     "libcumetal.dylib"
                     "${CMAKE_INSTALL_PREFIX}/lib/libcurand.dylib")
     ]])
+
+    if(CUMETAL_ENABLE_BINARY_SHIM)
+        install(CODE [[
+            execute_process(
+                COMMAND "${CMAKE_COMMAND}" -E create_symlink
+                        "libcumetal.dylib"
+                        "${CMAKE_INSTALL_PREFIX}/lib/libcuda.dylib")
+        ]])
+    endif()
 endif()
 
 install(FILES
