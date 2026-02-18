@@ -51,6 +51,7 @@ typedef struct cudaDeviceProp {
 
 typedef struct cudaStream_st* cudaStream_t;
 typedef struct cudaEvent_st* cudaEvent_t;
+typedef void (*cudaStreamCallback_t)(cudaStream_t stream, cudaError_t status, void* user_data);
 
 enum {
     cudaEventDefault = 0x0,
@@ -109,6 +110,10 @@ cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaStreamQuery(cudaStream_t stream);
+cudaError_t cudaStreamAddCallback(cudaStream_t stream,
+                                  cudaStreamCallback_t callback,
+                                  void* user_data,
+                                  unsigned int flags);
 cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags);
 cudaError_t cudaEventCreate(cudaEvent_t* event);
 cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event, unsigned int flags);

@@ -39,6 +39,10 @@ add_executable(cumetal_runtime_stream_flags_test
     runtime_stream_flags_test.cpp
 )
 
+add_executable(cumetal_runtime_stream_callback_test
+    runtime_stream_callback_test.cpp
+)
+
 add_executable(cumetal_runtime_device_api_test
     runtime_device_api_test.cpp
 )
@@ -61,6 +65,10 @@ add_executable(cumetal_driver_device_query_test
 
 add_executable(cumetal_driver_stream_flags_test
     driver_stream_flags_test.cpp
+)
+
+add_executable(cumetal_driver_stream_callback_test
+    driver_stream_callback_test.cpp
 )
 
 add_executable(cumetal_driver_context_switch_test
@@ -140,6 +148,11 @@ target_link_libraries(cumetal_runtime_stream_flags_test
         cumetal_runtime
 )
 
+target_link_libraries(cumetal_runtime_stream_callback_test
+    PRIVATE
+        cumetal_runtime
+)
+
 target_link_libraries(cumetal_runtime_device_api_test
     PRIVATE
         cumetal_runtime
@@ -166,6 +179,11 @@ target_link_libraries(cumetal_driver_device_query_test
 )
 
 target_link_libraries(cumetal_driver_stream_flags_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_stream_callback_test
     PRIVATE
         cumetal_runtime
 )
@@ -273,6 +291,13 @@ target_compile_options(cumetal_runtime_stream_flags_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_runtime_stream_callback_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_runtime_device_api_test
     PRIVATE
         -Wall
@@ -309,6 +334,13 @@ target_compile_options(cumetal_driver_device_query_test
 )
 
 target_compile_options(cumetal_driver_stream_flags_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_stream_callback_test
     PRIVATE
         -Wall
         -Wextra
@@ -452,6 +484,11 @@ add_test(
 )
 
 add_test(
+    NAME functional_runtime_stream_callback
+    COMMAND cumetal_runtime_stream_callback_test
+)
+
+add_test(
     NAME functional_runtime_device_api
     COMMAND cumetal_runtime_device_api_test
 )
@@ -484,6 +521,11 @@ add_test(
 add_test(
     NAME functional_driver_stream_flags
     COMMAND cumetal_driver_stream_flags_test
+)
+
+add_test(
+    NAME functional_driver_stream_callback
+    COMMAND cumetal_driver_stream_callback_test
 )
 
 add_test(

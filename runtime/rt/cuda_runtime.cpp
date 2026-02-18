@@ -9,6 +9,7 @@
 #include <new>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -690,6 +691,49 @@ cudaError_t cudaStreamQuery(cudaStream_t stream) {
         return fail(query_status);
     }
     return fail(complete ? cudaSuccess : cudaErrorNotReady);
+}
+
+cudaError_t cudaStreamAddCallback(cudaStream_t stream,
+                                  cudaStreamCallback_t callback,
+                                  void* user_data,
+                                  unsigned int flags) {
+    if (callback == nullptr || flags != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    std::uint64_t tail_ticket = 0;
+    if (stream != nullptr) {
+        if (!resolve_stream_handle(stream, &backend_stream)) {
+            return fail(cudaErrorInvalidValue);
+        }
+
+        std::string error;
+        const cudaError_t ticket_status =
+            cumetal::metal_backend::stream_tail_ticket(backend_stream, &tail_ticket, &error);
+        if (ticket_status != cudaSuccess) {
+            return fail(ticket_status);
+        }
+    }
+
+    std::thread([stream, callback, user_data, backend_stream, tail_ticket]() mutable {
+        std::string error;
+        cudaError_t callback_status = cudaSuccess;
+        if (stream == nullptr) {
+            callback_status = cumetal::metal_backend::synchronize(&error);
+        } else {
+            callback_status =
+                cumetal::metal_backend::stream_wait_ticket(backend_stream, tail_ticket, &error);
+        }
+        callback(stream, callback_status, user_data);
+    }).detach();
+
+    return fail(cudaSuccess);
 }
 
 cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags) {

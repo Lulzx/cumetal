@@ -30,7 +30,7 @@ Supported runtime API subset:
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
 - `cudaStreamCreate`, `cudaStreamCreateWithFlags`, `cudaStreamDestroy`
-- `cudaStreamSynchronize`, `cudaStreamQuery`
+- `cudaStreamSynchronize`, `cudaStreamQuery`, `cudaStreamAddCallback`
 - `cudaStreamWaitEvent`
 - `cudaEventCreate`, `cudaEventCreateWithFlags`, `cudaEventRecord`
 - `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
@@ -41,7 +41,7 @@ Supported driver API subset:
 
 - `cuInit`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`
 - `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxSynchronize`
-- `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamWaitEvent`
+- `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamAddCallback`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
 - `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
@@ -91,12 +91,14 @@ ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
 ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
+ctest --test-dir build -R functional_runtime_stream_callback --output-on-failure
 ctest --test-dir build -R functional_runtime_device_api --output-on-failure
 ctest --test-dir build -R functional_runtime_device_properties --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
 ctest --test-dir build -R functional_driver_device_query --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
+ctest --test-dir build -R functional_driver_stream_callback --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
 ctest --test-dir build -R functional_driver_memset --output-on-failure

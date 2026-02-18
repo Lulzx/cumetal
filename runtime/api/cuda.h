@@ -44,6 +44,8 @@ typedef enum CUresult {
     CUDA_ERROR_UNKNOWN = 999,
 } CUresult;
 
+typedef void (*CUstreamCallback)(CUstream hStream, CUresult status, void* userData);
+
 CUresult cuInit(unsigned int flags);
 CUresult cuDeviceGetCount(int* count);
 CUresult cuDeviceGet(CUdevice* device, int ordinal);
@@ -59,6 +61,10 @@ CUresult cuStreamCreate(CUstream* phStream, unsigned int flags);
 CUresult cuStreamDestroy(CUstream hStream);
 CUresult cuStreamSynchronize(CUstream hStream);
 CUresult cuStreamQuery(CUstream hStream);
+CUresult cuStreamAddCallback(CUstream hStream,
+                             CUstreamCallback callback,
+                             void* userData,
+                             unsigned int flags);
 CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags);
 
 CUresult cuEventCreate(CUevent* phEvent, unsigned int flags);

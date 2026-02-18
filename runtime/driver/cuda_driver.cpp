@@ -41,6 +41,12 @@ struct DriverState {
     CUctx_st* current_context = nullptr;
 };
 
+struct DriverStreamCallbackPayload {
+    CUstream stream = nullptr;
+    CUstreamCallback callback = nullptr;
+    void* user_data = nullptr;
+};
+
 DriverState& driver_state() {
     static DriverState state;
     return state;
@@ -146,6 +152,17 @@ bool stage_module_image_to_tempfile(const void* image, std::size_t size, std::st
 
     *out_path = path.string();
     return true;
+}
+
+void driver_stream_callback_bridge(cudaStream_t stream, cudaError_t status, void* user_data) {
+    (void)stream;
+    auto* payload = static_cast<DriverStreamCallbackPayload*>(user_data);
+    if (payload == nullptr || payload->callback == nullptr) {
+        return;
+    }
+
+    payload->callback(payload->stream, map_cuda_error(status), payload->user_data);
+    delete payload;
 }
 
 }  // namespace
@@ -377,6 +394,34 @@ CUresult cuStreamSynchronize(CUstream hStream) {
 
 CUresult cuStreamQuery(CUstream hStream) {
     return map_cuda_error(cudaStreamQuery(reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuStreamAddCallback(CUstream hStream,
+                             CUstreamCallback callback,
+                             void* userData,
+                             unsigned int flags) {
+    if (callback == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    auto* payload = new (std::nothrow) DriverStreamCallbackPayload{};
+    if (payload == nullptr) {
+        return CUDA_ERROR_OUT_OF_MEMORY;
+    }
+    payload->stream = hStream;
+    payload->callback = callback;
+    payload->user_data = userData;
+
+    const cudaError_t status = cudaStreamAddCallback(reinterpret_cast<cudaStream_t>(hStream),
+                                                     driver_stream_callback_bridge,
+                                                     payload,
+                                                     flags);
+    if (status != cudaSuccess) {
+        delete payload;
+        return map_cuda_error(status);
+    }
+
+    return CUDA_SUCCESS;
 }
 
 CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags) {
