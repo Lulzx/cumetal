@@ -134,6 +134,70 @@ cublasStatus_t cublasSscal(cublasHandle_t handle, int n, const float* alpha, flo
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasDaxpy(cublasHandle_t handle,
+                           int n,
+                           const double* alpha,
+                           const double* x,
+                           int incx,
+                           double* y,
+                           int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || incy <= 0 || alpha == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0 || cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    for (int i = 0; i < n; ++i) {
+        y[i * incy] = alpha_value * x[i * incx] + y[i * incy];
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDscal(cublasHandle_t handle, int n, const double* alpha, double* x, int incx) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || alpha == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    for (int i = 0; i < n; ++i) {
+        x[i * incx] *= alpha_value;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
                            cublasOperation_t transb,

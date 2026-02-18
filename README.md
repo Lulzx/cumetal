@@ -94,7 +94,8 @@ Supported library shim subset:
   - `curandGenerateLogNormal`, `curandGenerateLogNormalDouble`
 - cuBLAS v2 (`cublas_v2.h`)
   - `cublasCreate`, `cublasDestroy`, `cublasSetStream`, `cublasGetStream`
-  - `cublasSaxpy`, `cublasSscal`, `cublasSgemm`, `cublasDgemm`
+  - `cublasSaxpy`, `cublasSscal`, `cublasSgemm`
+  - `cublasDaxpy`, `cublasDscal`, `cublasDgemm`
 
 Library alias compatibility:
 

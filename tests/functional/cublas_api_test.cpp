@@ -571,13 +571,97 @@ int main() {
         return 1;
     }
 
+    constexpr int kDoubleCount = 1536;
+    std::vector<double> host_dx(kDoubleCount);
+    std::vector<double> host_dy(kDoubleCount);
+    for (int i = 0; i < kDoubleCount; ++i) {
+        host_dx[i] = 0.125 + static_cast<double>((i * 5) % 23) * 0.25;
+        host_dy[i] = 0.5 + static_cast<double>((i * 3) % 17) * 0.1;
+    }
+    std::vector<double> expected_daxpy = host_dy;
+    const double alpha_daxpy = -1.3;
+    for (int i = 0; i < kDoubleCount; ++i) {
+        expected_daxpy[i] = alpha_daxpy * host_dx[i] + expected_daxpy[i];
+    }
+
+    double* dev_dx = nullptr;
+    double* dev_dy = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_dx), host_dx.size() * sizeof(double)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dy), host_dy.size() * sizeof(double)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DAXPY failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_dx, host_dx.data(), host_dx.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_dy, host_dy.data(), host_dy.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DAXPY failed\n");
+        return 1;
+    }
+    if (cublasDaxpy(handle, kDoubleCount, &alpha_daxpy, dev_dx, 1, dev_dy, 1) !=
+        CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDaxpy failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_dy.data(), dev_dy, host_dy.size() * sizeof(double), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DAXPY failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kDoubleCount; ++i) {
+        if (std::fabs(host_dy[i] - expected_daxpy[i]) > 1e-10) {
+            std::fprintf(stderr,
+                         "FAIL: DAXPY mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         host_dy[i],
+                         expected_daxpy[i]);
+            return 1;
+        }
+    }
+    if (cublasDaxpy(handle, kDoubleCount, &alpha_daxpy, host_dx.data(), 1, dev_dy, 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DAXPY\n");
+        return 1;
+    }
+
+    const double alpha_dscal = 0.25;
+    std::vector<double> expected_dscal = host_dx;
+    for (double& value : expected_dscal) {
+        value *= alpha_dscal;
+    }
+    if (cublasDscal(handle, kDoubleCount, &alpha_dscal, dev_dx, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDscal failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_dx.data(), dev_dx, host_dx.size() * sizeof(double), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DSCAL failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kDoubleCount; ++i) {
+        if (std::fabs(host_dx[i] - expected_dscal[i]) > 1e-10) {
+            std::fprintf(stderr,
+                         "FAIL: DSCAL mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         host_dx[i],
+                         expected_dscal[i]);
+            return 1;
+        }
+    }
+    if (cublasDscal(handle, kDoubleCount, &alpha_dscal, expected_dscal.data(), 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DSCAL\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
         cudaFree(dev_bt) != cudaSuccess || cudaFree(dev_ct) != cudaSuccess ||
         cudaFree(dev_an) != cudaSuccess || cudaFree(dev_bn) != cudaSuccess ||
         cudaFree(dev_cn) != cudaSuccess || cudaFree(dev_ad) != cudaSuccess ||
-        cudaFree(dev_bd) != cudaSuccess || cudaFree(dev_cd) != cudaSuccess) {
+        cudaFree(dev_bd) != cudaSuccess || cudaFree(dev_cd) != cudaSuccess ||
+        cudaFree(dev_dx) != cudaSuccess || cudaFree(dev_dy) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }
