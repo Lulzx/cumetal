@@ -49,6 +49,7 @@ Implemented today:
     against `libcumetal`, execute and validate output)
   - opt-in registration path symbols for binary-shim style launches
     (`__cudaRegisterFatBinary`, `__cudaRegisterFunction`, `__cudaPushCallConfiguration`)
+  - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
 
 Supported runtime API subset:
 
@@ -62,6 +63,7 @@ Supported runtime API subset:
 - `cudaMemcpyToSymbol`, `cudaMemcpyFromSymbol`, `cudaMemcpyToSymbolAsync`, `cudaMemcpyFromSymbolAsync`
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
+- `cudaConfigureCall`, `cudaSetupArgument`, `cudaLaunch`
 - `cudaStreamCreate`, `cudaStreamCreateWithFlags`, `cudaStreamDestroy`
 - `cudaStreamSynchronize`, `cudaStreamQuery`, `cudaStreamAddCallback`
 - `cudaStreamWaitEvent`
@@ -124,7 +126,9 @@ Library alias compatibility:
 Current limitations:
 
 - This is not yet a full CUDA Runtime/Driver implementation.
-- Kernel launch currently uses a CuMetal descriptor (`cumetalKernel_t`) rather than NVCC fatbin registration.
+- Default kernel launch uses a CuMetal descriptor (`cumetalKernel_t`).
+- Binary-shim registration is partial: CuMetal `CMTL` envelopes and basic CUDA fatbin-wrapper PTX images are
+  supported, but full NVCC fatbinary variants are not yet implemented.
 
 Build
 -----
@@ -237,6 +241,9 @@ ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failur
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R functional_runtime_atomic --output-on-failure
 ctest --test-dir build -R functional_runtime_registration_path --output-on-failure
+ctest --test-dir build -R functional_runtime_call_config_registration --output-on-failure
+ctest --test-dir build -R functional_runtime_registration_fatbin_ptx --output-on-failure
+ctest --test-dir build -R functional_runtime_legacy_launch_registration --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure

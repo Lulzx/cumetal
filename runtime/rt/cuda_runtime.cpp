@@ -5,6 +5,7 @@
 #include "metal_backend.h"
 #include "registration.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -51,6 +52,33 @@ RuntimeState& runtime_state() {
 
 thread_local cudaError_t tls_last_error = cudaSuccess;
 thread_local std::shared_ptr<cumetal::metal_backend::Stream> tls_per_thread_stream;
+
+struct PendingLaunchArgument {
+    size_t offset = 0;
+    size_t size = 0;
+};
+
+struct PendingLaunchState {
+    bool configured = false;
+    dim3 grid_dim{};
+    dim3 block_dim{};
+    size_t shared_mem = 0;
+    cudaStream_t stream = nullptr;
+    std::vector<std::uint8_t> storage;
+    std::vector<PendingLaunchArgument> arguments;
+};
+
+thread_local PendingLaunchState tls_pending_launch;
+
+void clear_pending_launch_state() {
+    tls_pending_launch.configured = false;
+    tls_pending_launch.grid_dim = dim3{};
+    tls_pending_launch.block_dim = dim3{};
+    tls_pending_launch.shared_mem = 0;
+    tls_pending_launch.stream = nullptr;
+    tls_pending_launch.storage.clear();
+    tls_pending_launch.arguments.clear();
+}
 
 void set_last_error(cudaError_t error) {
     tls_last_error = error;
@@ -1135,6 +1163,7 @@ cudaError_t cudaDeviceReset(void) {
 
     state.allocations.clear();
     cumetal::registration::clear();
+    clear_pending_launch_state();
     state.current_device = 0;
     state.device_flags = cudaDeviceScheduleAuto;
     return fail(cudaSuccess);
@@ -1639,6 +1668,117 @@ cudaError_t cudaLaunchKernel(const void* func,
         cumetal::metal_backend::launch_kernel(metallib_path, kernel_name, config, launch_args,
                                               backend_stream, &error);
     return fail(status);
+}
+
+cudaError_t cudaConfigureCall(dim3 grid_dim,
+                              dim3 block_dim,
+                              size_t shared_mem,
+                              cudaStream_t stream) {
+    if (grid_dim.x == 0 || grid_dim.y == 0 || grid_dim.z == 0 || block_dim.x == 0 ||
+        block_dim.y == 0 || block_dim.z == 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> resolved_stream;
+    bool legacy_stream = false;
+    const cudaError_t stream_status =
+        resolve_runtime_stream(stream, &resolved_stream, &legacy_stream);
+    if (stream_status != cudaSuccess) {
+        return fail(stream_status);
+    }
+
+    clear_pending_launch_state();
+    tls_pending_launch.configured = true;
+    tls_pending_launch.grid_dim = grid_dim;
+    tls_pending_launch.block_dim = block_dim;
+    tls_pending_launch.shared_mem = shared_mem;
+    tls_pending_launch.stream = stream;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaSetupArgument(const void* arg, size_t size, size_t offset) {
+    if (!tls_pending_launch.configured || arg == nullptr || size == 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    if (offset > (std::numeric_limits<size_t>::max() - size)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const size_t end = offset + size;
+    if (end > tls_pending_launch.storage.size()) {
+        tls_pending_launch.storage.resize(end, 0);
+    }
+    std::memcpy(tls_pending_launch.storage.data() + offset, arg, size);
+
+    bool found = false;
+    for (PendingLaunchArgument& pending_arg : tls_pending_launch.arguments) {
+        if (pending_arg.offset != offset) {
+            continue;
+        }
+        pending_arg.size = size;
+        found = true;
+        break;
+    }
+    if (!found) {
+        tls_pending_launch.arguments.push_back(PendingLaunchArgument{
+            .offset = offset,
+            .size = size,
+        });
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaLaunch(const void* func) {
+    if (func == nullptr || !tls_pending_launch.configured) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    std::vector<PendingLaunchArgument> ordered_args = tls_pending_launch.arguments;
+    std::sort(ordered_args.begin(),
+              ordered_args.end(),
+              [](const PendingLaunchArgument& lhs, const PendingLaunchArgument& rhs) {
+                  return lhs.offset < rhs.offset;
+              });
+
+    std::vector<void*> launch_args;
+    launch_args.reserve(ordered_args.size() + 1);
+
+    size_t previous_end = 0;
+    for (const PendingLaunchArgument& pending_arg : ordered_args) {
+        if (pending_arg.size == 0 ||
+            pending_arg.offset > (std::numeric_limits<size_t>::max() - pending_arg.size)) {
+            clear_pending_launch_state();
+            return fail(cudaErrorInvalidValue);
+        }
+
+        const size_t end = pending_arg.offset + pending_arg.size;
+        if (end > tls_pending_launch.storage.size() || pending_arg.offset < previous_end) {
+            clear_pending_launch_state();
+            return fail(cudaErrorInvalidValue);
+        }
+        previous_end = end;
+
+        launch_args.push_back(reinterpret_cast<void*>(tls_pending_launch.storage.data() +
+                                                      pending_arg.offset));
+    }
+    launch_args.push_back(nullptr);
+
+    const dim3 grid_dim = tls_pending_launch.grid_dim;
+    const dim3 block_dim = tls_pending_launch.block_dim;
+    const size_t shared_mem = tls_pending_launch.shared_mem;
+    const cudaStream_t stream = tls_pending_launch.stream;
+
+    const cudaError_t status =
+        cudaLaunchKernel(func, grid_dim, block_dim, launch_args.data(), shared_mem, stream);
+    clear_pending_launch_state();
+    return status;
 }
 
 cudaError_t cudaGetLastError(void) {

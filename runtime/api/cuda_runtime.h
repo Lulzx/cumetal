@@ -194,6 +194,12 @@ cudaError_t cudaLaunchKernel(const void* func,
                              void** args,
                              size_t shared_mem,
                              cudaStream_t stream);
+cudaError_t cudaConfigureCall(dim3 grid_dim,
+                              dim3 block_dim,
+                              size_t shared_mem,
+                              cudaStream_t stream);
+cudaError_t cudaSetupArgument(const void* arg, size_t size, size_t offset);
+cudaError_t cudaLaunch(const void* func);
 cudaError_t cudaGetLastError(void);
 cudaError_t cudaPeekAtLastError(void);
 const char* cudaGetErrorName(cudaError_t error);
