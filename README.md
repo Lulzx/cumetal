@@ -21,6 +21,7 @@ Implemented today:
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
     including concrete vector-add and matrix-multiply body emission for recognized signatures
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
+  - `cumetalc` accepts initial `.cu` input via xcrun clang++ frontend lowering to LLVM IR
   - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `printf_lower` pass for PTX `printf`/`vprintf` call extraction and format-table metadata
@@ -104,6 +105,7 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/cumetalc --mode xcrun --input tests/air_abi/reference/vector_add.metal --output /tmp/vector_add.cumetalc.metallib --overwrite
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal -o /tmp/vector_add.cumetalc.positional.metallib --overwrite
 ./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal --overwrite
+./build/cumetalc --mode experimental --input tests/air_abi/reference/vector_add.cu --output /tmp/vector_add.cumetalc.from_cu.experimental.metallib --overwrite
 ./build/cumetal-ptx2llvm --input tests/air_abi/reference/vector_add.ptx --output /tmp/vector_add.from_ptx.ll --entry vector_add --overwrite
 ./build/cumetal-ptx2llvm tests/air_abi/reference/vector_add.ptx --entry vector_add --overwrite
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
@@ -117,6 +119,7 @@ ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failu
 ctest --test-dir build -R air_abi_matrix_ptx_to_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_matrix_ptx_experimental_validate --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_cu_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_default_output_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_matrix_ptx_emit_load_xcrun --output-on-failure

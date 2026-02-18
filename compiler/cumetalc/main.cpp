@@ -4,17 +4,25 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 
 namespace {
 
+struct CommandResult {
+    bool started = false;
+    int exit_code = -1;
+    std::string output;
+};
+
 void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0
-              << " [--input] <file.{metal,ptx,ll,air,bc}> [--output|-o <file.metallib>]"
+              << " [--input] <file.{metal,cu,ptx,ll,air,bc}> [--output|-o <file.metallib>]"
                  " [--mode xcrun|experimental] [--fallback-experimental]"
                  " [--overwrite] [--skip-validate] [--xcrun-validate]"
                  " [--kernel-name name] [--entry name] [--ptx-strict]\n";
@@ -33,6 +41,59 @@ std::filesystem::path make_temp_ll_path() {
     const auto pid = static_cast<long long>(::getpid());
     return std::filesystem::temp_directory_path() /
            ("cumetalc-ptx-" + std::to_string(pid) + "-" + std::to_string(now) + ".ll");
+}
+
+std::string quote_shell(const std::string& value) {
+    std::string quoted;
+    quoted.reserve(value.size() + 2);
+    quoted.push_back('\'');
+    for (char c : value) {
+        if (c == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted.push_back(c);
+        }
+    }
+    quoted.push_back('\'');
+    return quoted;
+}
+
+CommandResult run_command_capture(const std::string& command) {
+    CommandResult result;
+    FILE* pipe = popen(command.c_str(), "r");
+    if (pipe == nullptr) {
+        return result;
+    }
+
+    result.started = true;
+    char buffer[512];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        result.output.append(buffer);
+    }
+
+    const int status = pclose(pipe);
+    if (WIFEXITED(status)) {
+        result.exit_code = WEXITSTATUS(status);
+    }
+
+    return result;
+}
+
+bool command_exists(const std::string& name) {
+    const CommandResult result = run_command_capture("command -v " + name + " >/dev/null 2>&1; echo $?");
+    if (!result.started || result.exit_code != 0 || result.output.empty()) {
+        return false;
+    }
+    return result.output[0] == '0';
+}
+
+bool xcrun_tool_exists(const std::string& tool_name) {
+    const CommandResult result =
+        run_command_capture("xcrun --find " + quote_shell(tool_name) + " >/dev/null 2>&1; echo $?");
+    if (!result.started || result.exit_code != 0 || result.output.empty()) {
+        return false;
+    }
+    return result.output[0] == '0';
 }
 
 }  // namespace
@@ -157,6 +218,35 @@ int main(int argc, char** argv) {
         }
         options.input = temp_ll;
         options.kernel_name = lowered.entry_name;
+    } else if (input_ext == ".cu") {
+        if (!command_exists("xcrun")) {
+            std::cerr << "cumetalc failed: xcrun is required for .cu frontend compilation\n";
+            return 1;
+        }
+        if (!xcrun_tool_exists("clang++")) {
+            std::cerr << "cumetalc failed: xcrun clang++ not available for .cu frontend compilation\n";
+            return 1;
+        }
+
+        temp_ll = make_temp_ll_path();
+        const std::string command =
+            "xcrun clang++ -std=c++20 -S -emit-llvm -x c++ "
+            "-D__global__= -D__host__= -D__device__= -D__shared__= -D__constant__= "
+            "-D__managed__= " +
+            quote_shell(options.input.string()) + " -o " + quote_shell(temp_ll.string()) + " 2>&1";
+        const CommandResult result = run_command_capture(command);
+        if (!result.started || result.exit_code != 0) {
+            if (!result.output.empty()) {
+                std::cerr << result.output;
+                if (result.output.back() != '\n') {
+                    std::cerr << '\n';
+                }
+            }
+            std::cerr << "cumetalc failed: .cu frontend compilation failed\n";
+            return 1;
+        }
+
+        options.input = temp_ll;
     }
 
     const auto result = cumetal::air_emitter::emit_metallib(options);
