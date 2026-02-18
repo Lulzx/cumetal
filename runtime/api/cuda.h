@@ -22,6 +22,15 @@ enum {
 };
 
 enum {
+    CU_CTX_SCHED_AUTO = 0x00,
+    CU_CTX_SCHED_SPIN = 0x01,
+    CU_CTX_SCHED_YIELD = 0x02,
+    CU_CTX_SCHED_BLOCKING_SYNC = 0x04,
+    CU_CTX_MAP_HOST = 0x08,
+    CU_CTX_LMEM_RESIZE_TO_MAX = 0x10,
+};
+
+enum {
     CU_MEMHOSTALLOC_PORTABLE = 0x1,
     CU_MEMHOSTALLOC_DEVICEMAP = 0x2,
     CU_MEMHOSTALLOC_WRITECOMBINED = 0x4,
@@ -80,6 +89,7 @@ CUresult cuCtxSetCurrent(CUcontext ctx);
 CUresult cuCtxGetCurrent(CUcontext* pctx);
 CUresult cuCtxGetDevice(CUdevice* device);
 CUresult cuCtxGetFlags(unsigned int* flags);
+CUresult cuCtxSetFlags(unsigned int flags);
 CUresult cuCtxSynchronize(void);
 
 CUresult cuStreamCreate(CUstream* phStream, unsigned int flags);

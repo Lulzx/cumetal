@@ -155,6 +155,27 @@ bool stage_module_image_to_tempfile(const void* image, std::size_t size, std::st
     return true;
 }
 
+bool valid_context_flags(unsigned int flags) {
+    constexpr unsigned int kSupportedContextFlags =
+        CU_CTX_SCHED_SPIN | CU_CTX_SCHED_YIELD | CU_CTX_SCHED_BLOCKING_SYNC | CU_CTX_MAP_HOST |
+        CU_CTX_LMEM_RESIZE_TO_MAX;
+
+    if ((flags & ~kSupportedContextFlags) != 0) {
+        return false;
+    }
+
+    const unsigned int schedule_bits =
+        flags & (CU_CTX_SCHED_SPIN | CU_CTX_SCHED_YIELD | CU_CTX_SCHED_BLOCKING_SYNC);
+    if (schedule_bits == (CU_CTX_SCHED_SPIN | CU_CTX_SCHED_YIELD) ||
+        schedule_bits == (CU_CTX_SCHED_SPIN | CU_CTX_SCHED_BLOCKING_SYNC) ||
+        schedule_bits == (CU_CTX_SCHED_YIELD | CU_CTX_SCHED_BLOCKING_SYNC) ||
+        schedule_bits == (CU_CTX_SCHED_SPIN | CU_CTX_SCHED_YIELD | CU_CTX_SCHED_BLOCKING_SYNC)) {
+        return false;
+    }
+
+    return true;
+}
+
 void driver_stream_callback_bridge(cudaStream_t stream, cudaError_t status, void* user_data) {
     (void)stream;
     auto* payload = static_cast<DriverStreamCallbackPayload*>(user_data);
@@ -345,7 +366,7 @@ CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev) {
     if (pctx == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
     }
-    if (flags != 0) {
+    if (!valid_context_flags(flags)) {
         return CUDA_ERROR_INVALID_VALUE;
     }
     if (dev != 0) {
@@ -463,6 +484,24 @@ CUresult cuCtxGetFlags(unsigned int* flags) {
     }
 
     *flags = state.current_context->flags;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxSetFlags(unsigned int flags) {
+    if (!valid_context_flags(flags)) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+    if (!has_current_context_locked(state)) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+
+    state.current_context->flags = flags;
     return CUDA_SUCCESS;
 }
 

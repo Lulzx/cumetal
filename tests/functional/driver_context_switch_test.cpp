@@ -24,6 +24,12 @@ int main() {
         std::fprintf(stderr, "FAIL: cuCtxCreate(ctx2) failed\n");
         return 1;
     }
+    CUcontext ctx3 = nullptr;
+    const unsigned int create_flags = CU_CTX_SCHED_BLOCKING_SYNC | CU_CTX_MAP_HOST;
+    if (cuCtxCreate(&ctx3, create_flags, device) != CUDA_SUCCESS || ctx3 == nullptr) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate(ctx3, flags) failed\n");
+        return 1;
+    }
 
     CUcontext current = reinterpret_cast<CUcontext>(0x1);
     if (cuCtxGetCurrent(&current) != CUDA_SUCCESS || current != ctx1) {
@@ -33,6 +39,23 @@ int main() {
     unsigned int current_flags = 0xdeadbeefu;
     if (cuCtxGetFlags(&current_flags) != CUDA_SUCCESS || current_flags != 0u) {
         std::fprintf(stderr, "FAIL: expected cuCtxGetFlags to report context creation flags\n");
+        return 1;
+    }
+    const unsigned int updated_flags = CU_CTX_SCHED_YIELD | CU_CTX_MAP_HOST;
+    if (cuCtxSetFlags(updated_flags) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxSetFlags(valid) failed\n");
+        return 1;
+    }
+    if (cuCtxGetFlags(&current_flags) != CUDA_SUCCESS || current_flags != updated_flags) {
+        std::fprintf(stderr, "FAIL: cuCtxGetFlags should return updated context flags\n");
+        return 1;
+    }
+    if (cuCtxSetFlags(CU_CTX_SCHED_SPIN | CU_CTX_SCHED_YIELD) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: cuCtxSetFlags should reject conflicting schedule flags\n");
+        return 1;
+    }
+    if (cuCtxSetFlags(0x80u) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: cuCtxSetFlags should reject unsupported flags\n");
         return 1;
     }
     CUdevice current_device = -1;
@@ -49,6 +72,18 @@ int main() {
         std::fprintf(stderr, "FAIL: expected ctx2 as current context\n");
         return 1;
     }
+    if (cuCtxSetCurrent(ctx3) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxSetCurrent(ctx3) failed\n");
+        return 1;
+    }
+    if (cuCtxGetFlags(&current_flags) != CUDA_SUCCESS || current_flags != create_flags) {
+        std::fprintf(stderr, "FAIL: cuCtxGetFlags should reflect flags passed to cuCtxCreate\n");
+        return 1;
+    }
+    if (cuCtxSetCurrent(ctx2) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxSetCurrent(ctx2) second switch failed\n");
+        return 1;
+    }
 
     if (cuCtxSetCurrent(nullptr) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxSetCurrent(nullptr) failed\n");
@@ -60,6 +95,10 @@ int main() {
     }
     if (cuCtxGetFlags(&current_flags) != CUDA_ERROR_INVALID_CONTEXT) {
         std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_CONTEXT from cuCtxGetFlags without context\n");
+        return 1;
+    }
+    if (cuCtxSetFlags(CU_CTX_SCHED_AUTO) != CUDA_ERROR_INVALID_CONTEXT) {
+        std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_CONTEXT from cuCtxSetFlags without context\n");
         return 1;
     }
     if (cuCtxGetDevice(&current_device) != CUDA_ERROR_INVALID_CONTEXT) {
@@ -83,13 +122,17 @@ int main() {
         std::fprintf(stderr, "FAIL: cuCtxGetDevice should succeed after restoring current context\n");
         return 1;
     }
-    if (cuCtxGetFlags(&current_flags) != CUDA_SUCCESS || current_flags != 0u) {
+    if (cuCtxGetFlags(&current_flags) != CUDA_SUCCESS || current_flags != updated_flags) {
         std::fprintf(stderr, "FAIL: cuCtxGetFlags should succeed after restoring current context\n");
         return 1;
     }
 
     if (cuCtxDestroy(ctx2) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxDestroy(ctx2) failed\n");
+        return 1;
+    }
+    if (cuCtxDestroy(ctx3) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy(ctx3) failed\n");
         return 1;
     }
     if (cuCtxDestroy(ctx1) != CUDA_SUCCESS) {
