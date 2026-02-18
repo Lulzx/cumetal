@@ -10,6 +10,8 @@ struct curandGenerator_st {
     std::mt19937_64 engine{0};
     std::uniform_real_distribution<float> uniform{0.0f, 1.0f};
     std::uniform_real_distribution<double> uniform_double{0.0, 1.0};
+    unsigned long long seed = 0;
+    unsigned long long offset = 0;
     cudaStream_t stream = nullptr;
     std::mutex mutex;
 };
@@ -83,7 +85,21 @@ curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,
     }
 
     std::lock_guard<std::mutex> lock(generator->mutex);
+    generator->seed = seed;
+    generator->offset = 0;
     generator->engine.seed(seed);
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandSetGeneratorOffset(curandGenerator_t generator, unsigned long long offset) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    generator->engine.seed(generator->seed);
+    generator->engine.discard(offset);
+    generator->offset = offset;
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -108,6 +124,7 @@ curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = generator->uniform(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -134,6 +151,7 @@ curandStatus_t curandGenerateUniformDouble(curandGenerator_t generator,
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = generator->uniform_double(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -166,6 +184,7 @@ curandStatus_t curandGenerateNormal(curandGenerator_t generator,
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = distribution(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -198,6 +217,7 @@ curandStatus_t curandGenerateNormalDouble(curandGenerator_t generator,
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = distribution(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -230,6 +250,7 @@ curandStatus_t curandGenerateLogNormal(curandGenerator_t generator,
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = distribution(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -262,6 +283,7 @@ curandStatus_t curandGenerateLogNormalDouble(curandGenerator_t generator,
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = distribution(generator->engine);
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 
@@ -286,6 +308,7 @@ curandStatus_t curandGenerate(curandGenerator_t generator, unsigned int* output_
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = static_cast<unsigned int>(generator->engine());
     }
+    generator->offset += static_cast<unsigned long long>(num);
     return CURAND_STATUS_SUCCESS;
 }
 

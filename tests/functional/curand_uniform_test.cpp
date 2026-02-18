@@ -48,6 +48,72 @@ int main() {
         std::fprintf(stderr, "FAIL: curandGetStream mismatch\n");
         return 1;
     }
+    if (curandSetGeneratorOffset(nullptr, 0) != CURAND_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_NOT_INITIALIZED for null generator offset\n");
+        return 1;
+    }
+
+    constexpr std::size_t kOffsetSkip = 257;
+    constexpr std::size_t kOffsetSample = 128;
+    std::uint32_t* device_offset_sample = nullptr;
+    std::uint32_t* device_offset_skipped = nullptr;
+    std::uint32_t* device_offset_reference = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_offset_sample), kOffsetSample * sizeof(std::uint32_t)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&device_offset_skipped), kOffsetSample * sizeof(std::uint32_t)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&device_offset_reference),
+                   (kOffsetSkip + kOffsetSample) * sizeof(std::uint32_t)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for offset test buffers failed\n");
+        return 1;
+    }
+
+    if (curandSetGeneratorOffset(generator, 0) != CURAND_STATUS_SUCCESS ||
+        curandGenerate(generator,
+                       reinterpret_cast<unsigned int*>(device_offset_sample),
+                       kOffsetSample) != CURAND_STATUS_SUCCESS ||
+        curandSetGeneratorOffset(generator, kOffsetSkip) != CURAND_STATUS_SUCCESS ||
+        curandGenerate(generator,
+                       reinterpret_cast<unsigned int*>(device_offset_skipped),
+                       kOffsetSample) != CURAND_STATUS_SUCCESS ||
+        curandSetGeneratorOffset(generator, 0) != CURAND_STATUS_SUCCESS ||
+        curandGenerate(generator,
+                       reinterpret_cast<unsigned int*>(device_offset_reference),
+                       kOffsetSkip + kOffsetSample) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curand offset sequence generation failed\n");
+        return 1;
+    }
+
+    std::vector<std::uint32_t> host_offset_skipped(kOffsetSample, 0);
+    std::vector<std::uint32_t> host_offset_reference(kOffsetSkip + kOffsetSample, 0);
+    if (cudaMemcpy(host_offset_skipped.data(),
+                   device_offset_skipped,
+                   kOffsetSample * sizeof(std::uint32_t),
+                   cudaMemcpyDeviceToHost) != cudaSuccess ||
+        cudaMemcpy(host_offset_reference.data(),
+                   device_offset_reference,
+                   (kOffsetSkip + kOffsetSample) * sizeof(std::uint32_t),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy for offset sequence validation failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < kOffsetSample; ++i) {
+        if (host_offset_skipped[i] != host_offset_reference[kOffsetSkip + i]) {
+            std::fprintf(stderr, "FAIL: curand offset mismatch at %zu\n", i);
+            return 1;
+        }
+    }
+
+    if (cudaFree(device_offset_sample) != cudaSuccess ||
+        cudaFree(device_offset_skipped) != cudaSuccess ||
+        cudaFree(device_offset_reference) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for offset test buffers failed\n");
+        return 1;
+    }
+    if (curandSetPseudoRandomGeneratorSeed(generator, 0xC0FFEEULL) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandSetPseudoRandomGeneratorSeed reset failed\n");
+        return 1;
+    }
 
     float* device_output = nullptr;
     if (cudaMalloc(reinterpret_cast<void**>(&device_output), kCount * sizeof(float)) != cudaSuccess) {

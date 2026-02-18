@@ -37,6 +37,7 @@ curandStatus_t curandSetStream(curandGenerator_t generator, cudaStream_t stream)
 curandStatus_t curandGetStream(curandGenerator_t generator, cudaStream_t* stream);
 curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,
                                                    unsigned long long seed);
+curandStatus_t curandSetGeneratorOffset(curandGenerator_t generator, unsigned long long offset);
 curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_ptr, size_t num);
 curandStatus_t curandGenerateUniformDouble(curandGenerator_t generator,
                                            double* output_ptr,
