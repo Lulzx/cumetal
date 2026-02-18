@@ -1,22 +1,28 @@
-# CuMetal
+CuMetal
+=======
 
-CuMetal is a CUDA compiler/runtime project targeting Apple Silicon GPUs.
+CuMetal is an experimental CUDA compiler/runtime for Apple Silicon GPUs.
 
-This repository currently implements the **Phase 0.5 metallib validation harness**:
+Current code implements Phase 0.5 (metallib validation harness):
 
-- `air_inspect`
-- `cumetal-air-emitter`
-- `air_validate`
-- `cumetal_metal_load_test`
+- `air_inspect`: inspect `.metallib` container structure
+- `cumetal-air-emitter`: emit `.metallib` (xcrun mode or experimental mode)
+- `air_validate`: structural checks and optional `xcrun metal -validate`
+- `cumetal_metal_load_test`: check `MTLDevice.newLibraryWithData:` acceptance
 
-## Build
+This is bootstrap code for the compiler/runtime pipeline.
+CUDA kernel execution is not implemented yet.
+
+Build
+-----
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-## Generate + validate reference metallib
+Generate and validate a reference metallib (requires full Xcode)
+-----------------------------------------------------------------
 
 ```bash
 ./scripts/generate_reference_metallib.sh
@@ -25,8 +31,8 @@ cmake --build build
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ```
 
-If `xcrun metal` / `xcrun metallib` are unavailable, use emitter experimental mode for
-local parser/validator development:
+If `xcrun metal`/`xcrun metallib` are unavailable
+--------------------------------------------------
 
 ```bash
 ./build/cumetal-air-emitter \
@@ -35,3 +41,8 @@ local parser/validator development:
   --mode experimental \
   --overwrite
 ```
+
+License
+-------
+
+Apache 2.0 (proposed).
