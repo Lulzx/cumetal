@@ -527,6 +527,39 @@ CUresult cuMemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteC
                                      cudaMemcpyDeviceToDevice));
 }
 
+CUresult cuMemcpyHtoDAsync(CUdeviceptr dstDevice,
+                           const void* srcHost,
+                           size_t ByteCount,
+                           CUstream hStream) {
+    return map_cuda_error(cudaMemcpyAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                          srcHost,
+                                          ByteCount,
+                                          cudaMemcpyHostToDevice,
+                                          reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuMemcpyDtoHAsync(void* dstHost,
+                           CUdeviceptr srcDevice,
+                           size_t ByteCount,
+                           CUstream hStream) {
+    return map_cuda_error(cudaMemcpyAsync(dstHost,
+                                          reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
+                                          ByteCount,
+                                          cudaMemcpyDeviceToHost,
+                                          reinterpret_cast<cudaStream_t>(hStream)));
+}
+
+CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
+                           CUdeviceptr srcDevice,
+                           size_t ByteCount,
+                           CUstream hStream) {
+    return map_cuda_error(cudaMemcpyAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
+                                          reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
+                                          ByteCount,
+                                          cudaMemcpyDeviceToDevice,
+                                          reinterpret_cast<cudaStream_t>(hStream)));
+}
+
 CUresult cuGetErrorName(CUresult error, const char** pStr) {
     if (pStr == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;

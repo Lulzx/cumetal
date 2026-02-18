@@ -47,6 +47,10 @@ add_executable(cumetal_driver_context_switch_test
     driver_context_switch_test.cpp
 )
 
+add_executable(cumetal_driver_async_memcpy_test
+    driver_async_memcpy_test.cpp
+)
+
 add_executable(cumetal_driver_launch_extra_test
     driver_launch_extra_test.cpp
 )
@@ -110,6 +114,11 @@ target_link_libraries(cumetal_driver_stream_flags_test
 )
 
 target_link_libraries(cumetal_driver_context_switch_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_async_memcpy_test
     PRIVATE
         cumetal_runtime
 )
@@ -200,6 +209,13 @@ target_compile_options(cumetal_driver_stream_flags_test
 )
 
 target_compile_options(cumetal_driver_context_switch_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_async_memcpy_test
     PRIVATE
         -Wall
         -Wextra
@@ -316,6 +332,16 @@ add_test(
     NAME functional_driver_context_switch
     COMMAND cumetal_driver_context_switch_test
 )
+
+add_test(
+    NAME functional_driver_async_memcpy
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_driver_async_memcpy_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(functional_driver_async_memcpy PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_driver_launch_extra

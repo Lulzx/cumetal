@@ -86,6 +86,18 @@ CUresult cuMemFree(CUdeviceptr dptr);
 CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount);
 CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount);
 CUresult cuMemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount);
+CUresult cuMemcpyHtoDAsync(CUdeviceptr dstDevice,
+                           const void* srcHost,
+                           size_t ByteCount,
+                           CUstream hStream);
+CUresult cuMemcpyDtoHAsync(void* dstHost,
+                           CUdeviceptr srcDevice,
+                           size_t ByteCount,
+                           CUstream hStream);
+CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
+                           CUdeviceptr srcDevice,
+                           size_t ByteCount,
+                           CUstream hStream);
 
 CUresult cuGetErrorName(CUresult error, const char** pStr);
 CUresult cuGetErrorString(CUresult error, const char** pStr);
