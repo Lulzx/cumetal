@@ -815,6 +815,21 @@ CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flags) {
+    if (dptr == nullptr || bytesize == 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    void* allocated = nullptr;
+    const cudaError_t status = cudaMallocManaged(&allocated, bytesize, flags);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    *dptr = static_cast<CUdeviceptr>(reinterpret_cast<std::uintptr_t>(allocated));
+    return CUDA_SUCCESS;
+}
+
 CUresult cuMemFree(CUdeviceptr dptr) {
     return map_cuda_error(cudaFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dptr))));
 }

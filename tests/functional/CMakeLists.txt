@@ -103,6 +103,10 @@ add_executable(cumetal_driver_mem_get_info_test
     driver_mem_get_info_test.cpp
 )
 
+add_executable(cumetal_driver_mem_alloc_managed_test
+    driver_mem_alloc_managed_test.cpp
+)
+
 add_executable(cumetal_driver_host_alloc_test
     driver_host_alloc_test.cpp
 )
@@ -244,6 +248,11 @@ target_link_libraries(cumetal_driver_memset_test
 )
 
 target_link_libraries(cumetal_driver_mem_get_info_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_mem_alloc_managed_test
     PRIVATE
         cumetal_runtime
 )
@@ -442,6 +451,13 @@ target_compile_options(cumetal_driver_memset_test
 )
 
 target_compile_options(cumetal_driver_mem_get_info_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_mem_alloc_managed_test
     PRIVATE
         -Wall
         -Wextra
@@ -651,6 +667,11 @@ add_test(
 add_test(
     NAME functional_driver_mem_get_info
     COMMAND cumetal_driver_mem_get_info_test
+)
+
+add_test(
+    NAME functional_driver_mem_alloc_managed
+    COMMAND cumetal_driver_mem_alloc_managed_test
 )
 
 add_test(

@@ -47,7 +47,7 @@ Supported driver API subset:
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
 - `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
-- `cuMemAlloc`, `cuMemFree`
+- `cuMemAlloc`, `cuMemAllocManaged`, `cuMemFree`
 - `cuMemGetInfo`
 - `cuMemAllocHost`, `cuMemFreeHost`
 - `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
@@ -110,6 +110,7 @@ ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
 ctest --test-dir build -R functional_driver_memset --output-on-failure
 ctest --test-dir build -R functional_driver_mem_get_info --output-on-failure
+ctest --test-dir build -R functional_driver_mem_alloc_managed --output-on-failure
 ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
 ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure

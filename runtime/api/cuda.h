@@ -115,6 +115,7 @@ CUresult cuLaunchKernel(CUfunction f,
                         void** extra);
 
 CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize);
+CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flags);
 CUresult cuMemFree(CUdeviceptr dptr);
 CUresult cuMemAllocHost(void** pp, size_t bytesize);
 CUresult cuMemFreeHost(void* p);
