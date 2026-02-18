@@ -642,6 +642,309 @@ int main() {
         return 1;
     }
 
+    constexpr int gemv_m = 3;
+    constexpr int gemv_n = 4;
+    constexpr int gemv_lda = gemv_m;
+    std::vector<float> host_gemv_a(gemv_lda * gemv_n);
+    std::vector<float> host_gemv_x_n(gemv_n);
+    std::vector<float> host_gemv_y_n(gemv_m);
+    std::vector<float> expected_gemv_y_n(gemv_m);
+    for (int col = 0; col < gemv_n; ++col) {
+        for (int row = 0; row < gemv_m; ++row) {
+            host_gemv_a[row + col * gemv_lda] =
+                0.3f + static_cast<float>(row + 1) * static_cast<float>(col + 2) * 0.08f;
+        }
+    }
+    for (int i = 0; i < gemv_n; ++i) {
+        host_gemv_x_n[i] = 0.25f + static_cast<float>(i + 1) * 0.2f;
+    }
+    for (int i = 0; i < gemv_m; ++i) {
+        host_gemv_y_n[i] = -0.1f + static_cast<float>(i + 1) * 0.05f;
+        expected_gemv_y_n[i] = host_gemv_y_n[i];
+    }
+    const float gemv_alpha = 1.15f;
+    const float gemv_beta = 0.4f;
+    for (int row = 0; row < gemv_m; ++row) {
+        float sum = 0.0f;
+        for (int col = 0; col < gemv_n; ++col) {
+            sum += host_gemv_a[row + col * gemv_lda] * host_gemv_x_n[col];
+        }
+        expected_gemv_y_n[row] = gemv_alpha * sum + gemv_beta * expected_gemv_y_n[row];
+    }
+
+    float* dev_gemv_a = nullptr;
+    float* dev_gemv_x = nullptr;
+    float* dev_gemv_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_gemv_a), host_gemv_a.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_gemv_x), host_gemv_x_n.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_gemv_y), host_gemv_y_n.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SGEMV failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_gemv_a,
+                   host_gemv_a.data(),
+                   host_gemv_a.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_gemv_x,
+                   host_gemv_x_n.data(),
+                   host_gemv_x_n.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_gemv_y,
+                   host_gemv_y_n.data(),
+                   host_gemv_y_n.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SGEMV failed\n");
+        return 1;
+    }
+    if (cublasSgemv(handle,
+                    CUBLAS_OP_N,
+                    gemv_m,
+                    gemv_n,
+                    &gemv_alpha,
+                    dev_gemv_a,
+                    gemv_lda,
+                    dev_gemv_x,
+                    1,
+                    &gemv_beta,
+                    dev_gemv_y,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemv (N) failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_gemv_y_n.data(),
+                   dev_gemv_y,
+                   host_gemv_y_n.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SGEMV (N) failed\n");
+        return 1;
+    }
+    for (int i = 0; i < gemv_m; ++i) {
+        if (!nearly_equal(host_gemv_y_n[i], expected_gemv_y_n[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SGEMV (N) mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_gemv_y_n[i]),
+                         static_cast<double>(expected_gemv_y_n[i]));
+            return 1;
+        }
+    }
+
+    std::vector<float> host_gemv_x_t(gemv_m);
+    std::vector<float> host_gemv_y_t(gemv_n);
+    std::vector<float> expected_gemv_y_t(gemv_n);
+    for (int i = 0; i < gemv_m; ++i) {
+        host_gemv_x_t[i] = 0.15f + static_cast<float>(i + 1) * 0.17f;
+    }
+    for (int i = 0; i < gemv_n; ++i) {
+        host_gemv_y_t[i] = 0.05f * static_cast<float>(i + 1);
+        expected_gemv_y_t[i] = host_gemv_y_t[i];
+    }
+    for (int col = 0; col < gemv_n; ++col) {
+        float sum = 0.0f;
+        for (int row = 0; row < gemv_m; ++row) {
+            sum += host_gemv_a[row + col * gemv_lda] * host_gemv_x_t[row];
+        }
+        expected_gemv_y_t[col] = gemv_alpha * sum + gemv_beta * expected_gemv_y_t[col];
+    }
+    float* dev_gemv_x_t = nullptr;
+    float* dev_gemv_y_t = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_gemv_x_t), host_gemv_x_t.size() * sizeof(float)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_gemv_y_t), host_gemv_y_t.size() * sizeof(float)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SGEMV transpose failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_gemv_x_t,
+                   host_gemv_x_t.data(),
+                   host_gemv_x_t.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_gemv_y_t,
+                   host_gemv_y_t.data(),
+                   host_gemv_y_t.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SGEMV transpose failed\n");
+        return 1;
+    }
+    if (cublasSgemv(handle,
+                    CUBLAS_OP_T,
+                    gemv_m,
+                    gemv_n,
+                    &gemv_alpha,
+                    dev_gemv_a,
+                    gemv_lda,
+                    dev_gemv_x_t,
+                    1,
+                    &gemv_beta,
+                    dev_gemv_y_t,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemv (T) failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_gemv_y_t.data(),
+                   dev_gemv_y_t,
+                   host_gemv_y_t.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SGEMV (T) failed\n");
+        return 1;
+    }
+    for (int i = 0; i < gemv_n; ++i) {
+        if (!nearly_equal(host_gemv_y_t[i], expected_gemv_y_t[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SGEMV (T) mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_gemv_y_t[i]),
+                         static_cast<double>(expected_gemv_y_t[i]));
+            return 1;
+        }
+    }
+    if (cublasSgemv(handle,
+                    CUBLAS_OP_N,
+                    gemv_m,
+                    gemv_n,
+                    &gemv_alpha,
+                    host_gemv_a.data(),
+                    gemv_lda,
+                    dev_gemv_x,
+                    1,
+                    &gemv_beta,
+                    dev_gemv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host A in SGEMV\n");
+        return 1;
+    }
+    if (cublasSgemv(handle,
+                    CUBLAS_OP_N,
+                    gemv_m,
+                    gemv_n,
+                    &gemv_alpha,
+                    dev_gemv_a,
+                    gemv_m - 1,
+                    dev_gemv_x,
+                    1,
+                    &gemv_beta,
+                    dev_gemv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid lda in SGEMV\n");
+        return 1;
+    }
+
+    if (cudaFree(dev_gemv_a) != cudaSuccess || cudaFree(dev_gemv_x) != cudaSuccess ||
+        cudaFree(dev_gemv_y) != cudaSuccess || cudaFree(dev_gemv_x_t) != cudaSuccess ||
+        cudaFree(dev_gemv_y_t) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for SGEMV buffers failed\n");
+        return 1;
+    }
+
+    constexpr int dgemv_m = 2;
+    constexpr int dgemv_n = 3;
+    constexpr int dgemv_lda = dgemv_m;
+    std::vector<double> host_dgemv_a(dgemv_lda * dgemv_n);
+    std::vector<double> host_dgemv_x_n(dgemv_n);
+    std::vector<double> host_dgemv_y_n(dgemv_m);
+    std::vector<double> expected_dgemv_y_n(dgemv_m);
+    for (int col = 0; col < dgemv_n; ++col) {
+        for (int row = 0; row < dgemv_m; ++row) {
+            host_dgemv_a[row + col * dgemv_lda] =
+                0.2 + static_cast<double>(row + 1) * static_cast<double>(col + 1) * 0.07;
+        }
+    }
+    for (int i = 0; i < dgemv_n; ++i) {
+        host_dgemv_x_n[i] = 0.1 + static_cast<double>(i + 1) * 0.25;
+    }
+    for (int i = 0; i < dgemv_m; ++i) {
+        host_dgemv_y_n[i] = -0.2 + static_cast<double>(i + 1) * 0.11;
+        expected_dgemv_y_n[i] = host_dgemv_y_n[i];
+    }
+    const double dgemv_alpha = 0.95;
+    const double dgemv_beta = -0.3;
+    for (int row = 0; row < dgemv_m; ++row) {
+        double sum = 0.0;
+        for (int col = 0; col < dgemv_n; ++col) {
+            sum += host_dgemv_a[row + col * dgemv_lda] * host_dgemv_x_n[col];
+        }
+        expected_dgemv_y_n[row] = dgemv_alpha * sum + dgemv_beta * expected_dgemv_y_n[row];
+    }
+    double* dev_dgemv_a = nullptr;
+    double* dev_dgemv_x = nullptr;
+    double* dev_dgemv_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_dgemv_a), host_dgemv_a.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dgemv_x), host_dgemv_x_n.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dgemv_y), host_dgemv_y_n.size() * sizeof(double)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DGEMV failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_dgemv_a,
+                   host_dgemv_a.data(),
+                   host_dgemv_a.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dgemv_x,
+                   host_dgemv_x_n.data(),
+                   host_dgemv_x_n.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dgemv_y,
+                   host_dgemv_y_n.data(),
+                   host_dgemv_y_n.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DGEMV failed\n");
+        return 1;
+    }
+    if (cublasDgemv(handle,
+                    CUBLAS_OP_N,
+                    dgemv_m,
+                    dgemv_n,
+                    &dgemv_alpha,
+                    dev_dgemv_a,
+                    dgemv_lda,
+                    dev_dgemv_x,
+                    1,
+                    &dgemv_beta,
+                    dev_dgemv_y,
+                    1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDgemv (N) failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_dgemv_y_n.data(),
+                   dev_dgemv_y,
+                   host_dgemv_y_n.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DGEMV (N) failed\n");
+        return 1;
+    }
+    for (int i = 0; i < dgemv_m; ++i) {
+        if (std::fabs(host_dgemv_y_n[i] - expected_dgemv_y_n[i]) > 1e-10) {
+            std::fprintf(stderr,
+                         "FAIL: DGEMV (N) mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         host_dgemv_y_n[i],
+                         expected_dgemv_y_n[i]);
+            return 1;
+        }
+    }
+    if (cublasDgemv(handle,
+                    CUBLAS_OP_N,
+                    dgemv_m,
+                    dgemv_n,
+                    &dgemv_alpha,
+                    dev_dgemv_a,
+                    dgemv_lda,
+                    host_dgemv_x_n.data(),
+                    1,
+                    &dgemv_beta,
+                    dev_dgemv_y,
+                    1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DGEMV\n");
+        return 1;
+    }
+    if (cudaFree(dev_dgemv_a) != cudaSuccess || cudaFree(dev_dgemv_x) != cudaSuccess ||
+        cudaFree(dev_dgemv_y) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for DGEMV buffers failed\n");
+        return 1;
+    }
+
     constexpr int kDoubleCount = 1536;
     std::vector<double> host_dx(kDoubleCount);
     std::vector<double> host_dy(kDoubleCount);

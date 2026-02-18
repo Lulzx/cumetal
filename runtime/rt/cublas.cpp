@@ -850,4 +850,132 @@ cublasStatus_t cublasDgemm(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasSgemv(cublasHandle_t handle,
+                           cublasOperation_t trans,
+                           int m,
+                           int n,
+                           const float* alpha,
+                           const float* a,
+                           int lda,
+                           const float* x,
+                           int incx,
+                           const float* beta,
+                           float* y,
+                           int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_operation(trans)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m < 0 || n < 0 || alpha == nullptr || beta == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const int output_len = (trans == CUBLAS_OP_N) ? m : n;
+    if (output_len == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(x) == 0 ||
+        cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const float alpha_value = *alpha;
+    const float beta_value = *beta;
+    if (trans == CUBLAS_OP_N) {
+        for (int row = 0; row < m; ++row) {
+            float sum = 0.0f;
+            for (int col = 0; col < n; ++col) {
+                sum += a[row + col * lda] * x[col * incx];
+            }
+            y[row * incy] = alpha_value * sum + beta_value * y[row * incy];
+        }
+    } else {
+        for (int col = 0; col < n; ++col) {
+            float sum = 0.0f;
+            for (int row = 0; row < m; ++row) {
+                sum += a[row + col * lda] * x[row * incx];
+            }
+            y[col * incy] = alpha_value * sum + beta_value * y[col * incy];
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDgemv(cublasHandle_t handle,
+                           cublasOperation_t trans,
+                           int m,
+                           int n,
+                           const double* alpha,
+                           const double* a,
+                           int lda,
+                           const double* x,
+                           int incx,
+                           const double* beta,
+                           double* y,
+                           int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_operation(trans)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m < 0 || n < 0 || alpha == nullptr || beta == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const int output_len = (trans == CUBLAS_OP_N) ? m : n;
+    if (output_len == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(x) == 0 ||
+        cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    const double beta_value = *beta;
+    if (trans == CUBLAS_OP_N) {
+        for (int row = 0; row < m; ++row) {
+            double sum = 0.0;
+            for (int col = 0; col < n; ++col) {
+                sum += a[row + col * lda] * x[col * incx];
+            }
+            y[row * incy] = alpha_value * sum + beta_value * y[row * incy];
+        }
+    } else {
+        for (int col = 0; col < n; ++col) {
+            double sum = 0.0;
+            for (int row = 0; row < m; ++row) {
+                sum += a[row + col * lda] * x[row * incx];
+            }
+            y[col * incy] = alpha_value * sum + beta_value * y[col * incy];
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 }  // extern "C"
