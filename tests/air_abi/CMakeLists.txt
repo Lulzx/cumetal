@@ -169,6 +169,17 @@ add_test(
 )
 
 add_test(
+    NAME air_abi_cumetalc_cu_default_output_validate
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_cu_default_output_validate.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:air_validate>
+            $<TARGET_FILE:air_inspect>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.cu
+            ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+add_test(
     NAME air_abi_cumetalc_ptx_default_output_validate
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_ptx_default_output_validate.sh
@@ -220,6 +231,7 @@ set_tests_properties(
     air_abi_cumetalc_ptx_emit_load_xcrun
     air_abi_cumetalc_matrix_ptx_emit_load_xcrun
     air_abi_cumetalc_cu_experimental_validate
+    air_abi_cumetalc_cu_default_output_validate
     PROPERTIES
         SKIP_RETURN_CODE 77
 )
