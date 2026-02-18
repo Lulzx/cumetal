@@ -451,7 +451,14 @@ cudaError_t cudaDeviceSynchronize(void) {
 }
 
 cudaError_t cudaStreamCreate(cudaStream_t* stream) {
+    return cudaStreamCreateWithFlags(stream, cudaStreamDefault);
+}
+
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags) {
     if (stream == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    if (flags != cudaStreamDefault && flags != cudaStreamNonBlocking) {
         return fail(cudaErrorInvalidValue);
     }
 

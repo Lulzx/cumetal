@@ -27,7 +27,8 @@ Supported runtime API subset:
 - `cudaMemcpy`, `cudaMemcpyAsync`
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
-- `cudaStreamCreate`, `cudaStreamDestroy`, `cudaStreamSynchronize`, `cudaStreamQuery`
+- `cudaStreamCreate`, `cudaStreamCreateWithFlags`, `cudaStreamDestroy`
+- `cudaStreamSynchronize`, `cudaStreamQuery`
 - `cudaStreamWaitEvent`
 - `cudaEventCreate`, `cudaEventCreateWithFlags`, `cudaEventRecord`
 - `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
@@ -83,7 +84,9 @@ ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
+ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
+ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure

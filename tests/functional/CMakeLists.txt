@@ -31,8 +31,16 @@ add_executable(cumetal_runtime_memcpy_kind_test
     runtime_memcpy_kind_test.cpp
 )
 
+add_executable(cumetal_runtime_stream_flags_test
+    runtime_stream_flags_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
+)
+
+add_executable(cumetal_driver_stream_flags_test
+    driver_stream_flags_test.cpp
 )
 
 add_executable(cumetal_driver_stream_wait_event_test
@@ -78,7 +86,17 @@ target_link_libraries(cumetal_runtime_memcpy_kind_test
         cumetal_runtime
 )
 
+target_link_libraries(cumetal_runtime_stream_flags_test
+    PRIVATE
+        cumetal_runtime
+)
+
 target_link_libraries(cumetal_driver_vector_add_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_stream_flags_test
     PRIVATE
         cumetal_runtime
 )
@@ -142,7 +160,21 @@ target_compile_options(cumetal_runtime_memcpy_kind_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_runtime_stream_flags_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_driver_vector_add_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_stream_flags_test
     PRIVATE
         -Wall
         -Wextra
@@ -229,6 +261,11 @@ add_test(
 )
 
 add_test(
+    NAME functional_runtime_stream_flags
+    COMMAND cumetal_runtime_stream_flags_test
+)
+
+add_test(
     NAME functional_driver_vector_add
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
             ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
@@ -237,6 +274,11 @@ add_test(
 )
 
 set_tests_properties(functional_driver_vector_add PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_stream_flags
+    COMMAND cumetal_driver_stream_flags_test
+)
 
 add_test(
     NAME functional_driver_stream_wait_event

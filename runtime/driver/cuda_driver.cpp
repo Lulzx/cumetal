@@ -186,10 +186,10 @@ CUresult cuCtxSynchronize(void) {
 }
 
 CUresult cuStreamCreate(CUstream* phStream, unsigned int flags) {
-    if (flags != 0) {
+    if (flags != CU_STREAM_DEFAULT && flags != CU_STREAM_NON_BLOCKING) {
         return CUDA_ERROR_INVALID_VALUE;
     }
-    return map_cuda_error(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(phStream)));
+    return map_cuda_error(cudaStreamCreateWithFlags(reinterpret_cast<cudaStream_t*>(phStream), flags));
 }
 
 CUresult cuStreamDestroy(CUstream hStream) {

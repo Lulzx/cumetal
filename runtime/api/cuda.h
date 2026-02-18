@@ -16,6 +16,11 @@ typedef struct CUfunc_st* CUfunction;
 typedef struct cudaStream_st* CUstream;
 typedef struct cudaEvent_st* CUevent;
 
+enum {
+    CU_STREAM_DEFAULT = 0x0,
+    CU_STREAM_NON_BLOCKING = 0x1,
+};
+
 typedef enum CUresult {
     CUDA_SUCCESS = 0,
     CUDA_ERROR_INVALID_VALUE = 1,

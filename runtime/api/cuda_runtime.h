@@ -45,6 +45,11 @@ enum {
     cudaEventInterprocess = 0x4,
 };
 
+enum {
+    cudaStreamDefault = 0x0,
+    cudaStreamNonBlocking = 0x1,
+};
+
 typedef enum cumetalArgKind {
     CUMETAL_ARG_BUFFER = 0,
     CUMETAL_ARG_BYTES = 1,
@@ -76,6 +81,7 @@ cudaError_t cudaMemcpyAsync(void* dst,
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
 cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaStreamQuery(cudaStream_t stream);
