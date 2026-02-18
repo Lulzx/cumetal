@@ -170,6 +170,36 @@ CUresult cuCtxDestroy(CUcontext ctx) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuCtxSetCurrent(CUcontext ctx) {
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+
+    if (ctx != nullptr && state.contexts.find(ctx) == state.contexts.end()) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+
+    state.current_context = ctx;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuCtxGetCurrent(CUcontext* pctx) {
+    if (pctx == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+
+    *pctx = state.current_context;
+    return CUDA_SUCCESS;
+}
+
 CUresult cuCtxSynchronize(void) {
     DriverState& state = driver_state();
     {

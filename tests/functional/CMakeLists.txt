@@ -43,6 +43,10 @@ add_executable(cumetal_driver_stream_flags_test
     driver_stream_flags_test.cpp
 )
 
+add_executable(cumetal_driver_context_switch_test
+    driver_context_switch_test.cpp
+)
+
 add_executable(cumetal_driver_launch_extra_test
     driver_launch_extra_test.cpp
 )
@@ -101,6 +105,11 @@ target_link_libraries(cumetal_driver_vector_add_test
 )
 
 target_link_libraries(cumetal_driver_stream_flags_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_context_switch_test
     PRIVATE
         cumetal_runtime
 )
@@ -184,6 +193,13 @@ target_compile_options(cumetal_driver_vector_add_test
 )
 
 target_compile_options(cumetal_driver_stream_flags_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_context_switch_test
     PRIVATE
         -Wall
         -Wextra
@@ -294,6 +310,11 @@ set_tests_properties(functional_driver_vector_add PROPERTIES SKIP_RETURN_CODE 77
 add_test(
     NAME functional_driver_stream_flags
     COMMAND cumetal_driver_stream_flags_test
+)
+
+add_test(
+    NAME functional_driver_context_switch
+    COMMAND cumetal_driver_context_switch_test
 )
 
 add_test(

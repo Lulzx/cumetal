@@ -38,7 +38,7 @@ Supported runtime API subset:
 Supported driver API subset:
 
 - `cuInit`, `cuDeviceGet`
-- `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSynchronize`
+- `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxSynchronize`
 - `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
 - `cuModuleLoad`, `cuModuleUnload`, `cuModuleGetFunction`
@@ -87,6 +87,7 @@ ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
+ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
