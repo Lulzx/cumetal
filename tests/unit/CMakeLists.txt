@@ -264,3 +264,14 @@ add_test(
             $<TARGET_FILE_DIR:cumetal_runtime>/libcublas.dylib
             $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
 )
+
+add_test(
+    NAME unit_library_link_aliases
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_library_link_aliases_test.sh
+            ${CMAKE_CXX_COMPILER}
+            ${CMAKE_SOURCE_DIR}/runtime/api
+            $<TARGET_FILE_DIR:cumetal_runtime>
+            ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(unit_library_link_aliases PROPERTIES SKIP_RETURN_CODE 77)
