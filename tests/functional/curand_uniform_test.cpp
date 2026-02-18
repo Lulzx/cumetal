@@ -104,6 +104,53 @@ int main() {
         return 1;
     }
 
+    float* device_output_normal = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_normal), kCount * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for normal output failed\n");
+        return 1;
+    }
+    constexpr float kNormalMean = 1.5f;
+    constexpr float kNormalStddev = 0.7f;
+    if (curandGenerateNormal(generator, device_output_normal, kCount, kNormalMean, kNormalStddev) !=
+        CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerateNormal failed\n");
+        return 1;
+    }
+
+    std::vector<float> host_normal(kCount, 0.0f);
+    if (cudaMemcpy(host_normal.data(),
+                   device_output_normal,
+                   kCount * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for normal output failed\n");
+        return 1;
+    }
+    double sum = 0.0;
+    bool has_normal_variation = false;
+    for (std::size_t i = 0; i < kCount; ++i) {
+        sum += static_cast<double>(host_normal[i]);
+        if (i > 0 && host_normal[i] != host_normal[i - 1]) {
+            has_normal_variation = true;
+        }
+    }
+    const double sample_mean = sum / static_cast<double>(kCount);
+    if (!has_normal_variation) {
+        std::fprintf(stderr, "FAIL: generated normal sequence has no variation\n");
+        return 1;
+    }
+    if (sample_mean < 1.2 || sample_mean > 1.8) {
+        std::fprintf(stderr,
+                     "FAIL: normal sample mean out of expected range (got=%f expected~%f)\n",
+                     sample_mean,
+                     static_cast<double>(kNormalMean));
+        return 1;
+    }
+    if (curandGenerateNormal(generator, device_output_normal, kCount, kNormalMean, 0.0f) !=
+        CURAND_STATUS_OUT_OF_RANGE) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_OUT_OF_RANGE for zero stddev\n");
+        return 1;
+    }
+
     std::vector<float> host_output(kCount, 0.0f);
     if (curandGenerateUniform(generator, host_output.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host output pointer\n");
@@ -121,6 +168,10 @@ int main() {
     }
     if (cudaFree(device_output_double) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree for double output failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_normal) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for normal output failed\n");
         return 1;
     }
     if (curandDestroyGenerator(generator) != CURAND_STATUS_SUCCESS) {
