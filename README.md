@@ -32,7 +32,7 @@ Implemented today:
   - synchronous `cudaMemcpy` on UMA via `memcpy`
   - kernel launch through Metal compute pipelines (`setBuffer` + `setBytes`)
   - default-stream and user-stream execution (`cudaStreamCreate/Destroy/Synchronize`)
-  - runtime functional tests for vector add and saxpy
+  - runtime functional tests for vector add, matrix multiply, and saxpy
   - driver module loading from both in-memory metallib bytes and filesystem paths
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
@@ -126,6 +126,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 
 ```bash
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
 ctest --test-dir build -R functional_runtime_event --output-on-failure
