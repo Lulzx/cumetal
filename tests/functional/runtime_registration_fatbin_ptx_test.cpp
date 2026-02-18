@@ -13,6 +13,7 @@
 
 extern "C" {
 void** __cudaRegisterFatBinary(const void* fat_cubin);
+void** __cudaRegisterFatBinary3(const void* fat_cubin, ...);
 void __cudaUnregisterFatBinary(void** fat_cubin_handle);
 void __cudaRegisterFunction(void** fat_cubin_handle,
                             const void* host_function,
@@ -299,12 +300,63 @@ int main(int argc, char** argv) {
 
     __cudaUnregisterFatBinary(fatbin_handle);
 
+    fatbin_handle = __cudaRegisterFatBinary3(&wrapper, 0, nullptr, nullptr);
+    if (fatbin_handle == nullptr) {
+        std::fprintf(stderr, "FAIL: __cudaRegisterFatBinary3 returned null\n");
+        return 1;
+    }
+
+    __cudaRegisterFunction(fatbin_handle,
+                           reinterpret_cast<const void*>(&vector_add_host_stub),
+                           device_function,
+                           nullptr,
+                           0,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr);
+
+    if (cudaLaunchKernel(reinterpret_cast<const void*>(&vector_add_host_stub),
+                         grid_dim,
+                         block_dim,
+                         args,
+                         0,
+                         nullptr) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaLaunchKernel through fatbinary3 registration failed\n");
+        return 1;
+    }
+
+    if (cudaDeviceSynchronize() != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaDeviceSynchronize after fatbinary3 launch failed\n");
+        return 1;
+    }
+
+    if (cudaMemcpy(host_c.data(), dev_c, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host after fatbinary3 launch failed\n");
+        return 1;
+    }
+
+    for (std::size_t i = 0; i < kElementCount; ++i) {
+        const float expected = host_a[i] + host_b[i];
+        if (!nearly_equal(host_c[i], expected)) {
+            std::fprintf(stderr,
+                         "FAIL: fatbinary3 mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_c[i]),
+                         static_cast<double>(expected));
+            return 1;
+        }
+    }
+
+    __cudaUnregisterFatBinary(fatbin_handle);
+
     if (cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }
 
-    std::printf("PASS: runtime registration supports fatbin PTX launch path (wrapper and direct blob)\n");
+    std::printf("PASS: runtime registration supports fatbin PTX launch path (FatBinary/FatBinary3)\n");
     return 0;
 }
