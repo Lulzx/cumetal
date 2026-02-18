@@ -9,3 +9,6 @@ Current status:
   - barriers (`bar.sync*`)
   - basic math (`add*`, `sub*`, `mul*`, `mad*`)
 - strict mode reports unmapped opcodes as hard errors.
+- `addrspace` rewrite scaffold maps:
+  - `ld.*`/`st.*` in `.shared`, `.global`, `.local` spaces
+  - `cvta.to.*` casts to explicit LLVM address spaces

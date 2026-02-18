@@ -43,6 +43,7 @@ target_compile_options(cumetal_ptx
 )
 
 add_library(cumetal_passes STATIC
+    compiler/passes/src/addrspace.cpp
     compiler/passes/src/intrinsic_lower.cpp
 )
 
