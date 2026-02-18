@@ -33,6 +33,10 @@ add_executable(cumetal_metadata_pass_test
     metadata_pass_test.cpp
 )
 
+add_executable(cumetal_phase1_pipeline_test
+    phase1_pipeline_test.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -71,6 +75,11 @@ target_link_libraries(cumetal_addrspace_pass_test
 )
 
 target_link_libraries(cumetal_metadata_pass_test
+    PRIVATE
+        cumetal_passes
+)
+
+target_link_libraries(cumetal_phase1_pipeline_test
     PRIVATE
         cumetal_passes
 )
@@ -131,6 +140,13 @@ target_compile_options(cumetal_metadata_pass_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_phase1_pipeline_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -171,6 +187,11 @@ add_test(
 add_test(
     NAME unit_metadata_pass
     COMMAND cumetal_metadata_pass_test
+)
+
+add_test(
+    NAME unit_phase1_pipeline
+    COMMAND cumetal_phase1_pipeline_test
 )
 
 add_test(

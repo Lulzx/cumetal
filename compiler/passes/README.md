@@ -15,3 +15,5 @@ Current status:
 - `metadata` scaffold emits kernel metadata fields:
   - `air.kernel`, `air.version`, `language.version`
   - per-argument `type` and `name` records
+- `phase1_pipeline` scaffold chains parser + passes for one PTX entry and returns
+  lowered instructions, addrspace rewrites, metadata, and warnings.
