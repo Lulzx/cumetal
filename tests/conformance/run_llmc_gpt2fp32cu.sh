@@ -43,4 +43,15 @@ if rg -qi "\\b(fail|error|nan|inf)\\b" "$OUTPUT_FILE"; then
   exit 1
 fi
 
-echo "PASS: llm.c test_gpt2fp32cu completed with loss output"
+if rg -q "overall okay: 1" "$OUTPUT_FILE"; then
+  echo "PASS: llm.c test_gpt2fp32cu reached numerical parity (overall okay: 1)"
+  exit 0
+fi
+
+if rg -q "overall okay: 0" "$OUTPUT_FILE" || rg -q "MISMATCH" "$OUTPUT_FILE"; then
+  echo "FAIL: llm.c numerical parity mismatch detected"
+  exit 1
+fi
+
+echo "FAIL: llm.c output missing explicit parity status"
+exit 1

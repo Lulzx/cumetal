@@ -6,7 +6,9 @@
 #include "registration.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -14,6 +16,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -459,6 +462,835 @@ cudaError_t update_event_completion(cudaEvent_t event, bool wait_for_completion)
         event->timestamp = std::chrono::steady_clock::now();
         event->timing_valid = true;
     }
+    return cudaSuccess;
+}
+
+template <typename T>
+T read_scalar_launch_arg(void** args, std::uint32_t index) {
+    T value{};
+    std::memcpy(&value, args[index], sizeof(T));
+    return value;
+}
+
+template <typename T>
+T* read_pointer_launch_arg(void** args, std::uint32_t index) {
+    T* value = nullptr;
+    std::memcpy(&value, args[index], sizeof(value));
+    return value;
+}
+
+bool kernel_name_contains(const std::string& kernel_name, std::string_view needle) {
+    return kernel_name.find(needle) != std::string::npos;
+}
+
+std::uint32_t llmc_expected_arg_count(const std::string& kernel_name) {
+    if (kernel_name_contains(kernel_name, "encoder_forward_kernel3")) {
+        return 7;
+    }
+    if (kernel_name_contains(kernel_name, "encoder_backward_kernel")) {
+        return 7;
+    }
+    if (kernel_name_contains(kernel_name, "layernorm_forward_kernel3")) {
+        return 8;
+    }
+    if (kernel_name_contains(kernel_name, "unpermute_kernel_backward")) {
+        return 6;
+    }
+    if (kernel_name_contains(kernel_name, "unpermute_kernel")) {
+        return 6;
+    }
+    if (kernel_name_contains(kernel_name, "permute_kernel_backward") &&
+        !kernel_name_contains(kernel_name, "unpermute_kernel_backward")) {
+        return 8;
+    }
+    if (kernel_name_contains(kernel_name, "permute_kernel") &&
+        !kernel_name_contains(kernel_name, "unpermute_kernel")) {
+        return 8;
+    }
+    if (kernel_name_contains(kernel_name, "softmax_forward_kernel5")) {
+        return 5;
+    }
+    if (kernel_name_contains(kernel_name, "residual_forward_kernel")) {
+        return 4;
+    }
+    if (kernel_name_contains(kernel_name, "gelu_forward_kernel")) {
+        return 3;
+    }
+    if (kernel_name_contains(kernel_name, "gelu_backward_kernel")) {
+        return 4;
+    }
+    if (kernel_name_contains(kernel_name, "matmul_backward_bias_kernel4")) {
+        return 5;
+    }
+    if (kernel_name_contains(kernel_name, "layernorm_backward_kernel2")) {
+        return 11;
+    }
+    if (kernel_name_contains(kernel_name, "softmax_autoregressive_backward_kernel")) {
+        return 7;
+    }
+    if (kernel_name_contains(kernel_name, "adamw_kernel2")) {
+        return 12;
+    }
+    if (kernel_name_contains(kernel_name, "fused_classifier_kernel3")) {
+        return 9;
+    }
+    if (kernel_name_contains(kernel_name, "matmul_forward_kernel4")) {
+        return 6;
+    }
+    return 0;
+}
+
+cudaError_t synchronize_for_emulated_kernel(
+    bool legacy_stream,
+    const std::shared_ptr<cumetal::metal_backend::Stream>& backend_stream) {
+    if (legacy_stream || backend_stream == nullptr) {
+        return cudaSuccess;
+    }
+
+    std::string error;
+    return cumetal::metal_backend::stream_synchronize(backend_stream, &error);
+}
+
+cudaError_t emulate_matmul_forward_kernel4(
+    dim3 grid_dim,
+    dim3 block_dim,
+    void** args,
+    bool legacy_stream,
+    const std::shared_ptr<cumetal::metal_backend::Stream>& backend_stream) {
+    float* out = read_pointer_launch_arg<float>(args, 0);
+    const float* inp = read_pointer_launch_arg<const float>(args, 1);
+    const float* weight = read_pointer_launch_arg<const float>(args, 2);
+    const float* bias = read_pointer_launch_arg<const float>(args, 3);
+    const int c = read_scalar_launch_arg<int>(args, 4);
+    const int oc = read_scalar_launch_arg<int>(args, 5);
+
+    if (out == nullptr || inp == nullptr || weight == nullptr || c <= 0 || oc <= 0) {
+        return cudaErrorInvalidValue;
+    }
+
+    const int tile_rows = static_cast<int>(block_dim.x) * 8;
+    const int tile_cols = static_cast<int>(block_dim.y) * 8;
+    if (tile_rows <= 0 || tile_cols <= 0) {
+        return cudaErrorInvalidValue;
+    }
+
+    const int m = static_cast<int>(grid_dim.x) * tile_rows;
+    if (m <= 0) {
+        return cudaSuccess;
+    }
+
+    const cudaError_t sync_status = synchronize_for_emulated_kernel(legacy_stream, backend_stream);
+    if (sync_status != cudaSuccess) {
+        return sync_status;
+    }
+
+    if (bias != nullptr) {
+        for (int row = 0; row < m; ++row) {
+            std::memcpy(out + static_cast<std::size_t>(row) * static_cast<std::size_t>(oc),
+                        bias,
+                        static_cast<std::size_t>(oc) * sizeof(float));
+        }
+    }
+
+    RuntimeState& state = runtime_state();
+    cumetal::rt::AllocationTable::ResolvedAllocation weight_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation inp_resolved;
+    cumetal::rt::AllocationTable::ResolvedAllocation out_resolved;
+    if (!state.allocations.resolve(weight, &weight_resolved) ||
+        !state.allocations.resolve(inp, &inp_resolved) ||
+        !state.allocations.resolve(out, &out_resolved)) {
+        return cudaErrorInvalidDevicePointer;
+    }
+
+    std::string error;
+    return cumetal::metal_backend::gemm_f32(
+        /*transpose_left=*/true,
+        /*transpose_right=*/false,
+        oc,
+        m,
+        c,
+        1.0f,
+        weight_resolved.buffer,
+        weight_resolved.offset,
+        c,
+        inp_resolved.buffer,
+        inp_resolved.offset,
+        c,
+        bias != nullptr ? 1.0f : 0.0f,
+        out_resolved.buffer,
+        out_resolved.offset,
+        oc,
+        backend_stream,
+        &error);
+}
+
+cudaError_t try_emulate_llmc_registered_kernel(
+    const std::string& kernel_name,
+    std::uint32_t arg_count,
+    dim3 grid_dim,
+    dim3 block_dim,
+    void** args,
+    bool legacy_stream,
+    const std::shared_ptr<cumetal::metal_backend::Stream>& backend_stream,
+    bool* handled) {
+    if (handled == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+    *handled = false;
+
+    if (args == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    if (kernel_name_contains(kernel_name, "matmul_forward_kernel4")) {
+        *handled = true;
+        if (arg_count < 6) {
+            return cudaErrorInvalidValue;
+        }
+        return emulate_matmul_forward_kernel4(grid_dim, block_dim, args, legacy_stream, backend_stream);
+    }
+
+    const bool known_llmc_kernel =
+        kernel_name_contains(kernel_name, "encoder_forward_kernel3") ||
+        kernel_name_contains(kernel_name, "encoder_backward_kernel") ||
+        kernel_name_contains(kernel_name, "layernorm_forward_kernel3") ||
+        kernel_name_contains(kernel_name, "permute_kernel") ||
+        kernel_name_contains(kernel_name, "unpermute_kernel") ||
+        kernel_name_contains(kernel_name, "softmax_forward_kernel5") ||
+        kernel_name_contains(kernel_name, "residual_forward_kernel") ||
+        kernel_name_contains(kernel_name, "gelu_forward_kernel") ||
+        kernel_name_contains(kernel_name, "gelu_backward_kernel") ||
+        kernel_name_contains(kernel_name, "matmul_backward_bias_kernel4") ||
+        kernel_name_contains(kernel_name, "layernorm_backward_kernel2") ||
+        kernel_name_contains(kernel_name, "softmax_autoregressive_backward_kernel") ||
+        kernel_name_contains(kernel_name, "adamw_kernel2") ||
+        kernel_name_contains(kernel_name, "fused_classifier_kernel3");
+    if (!known_llmc_kernel) {
+        return cudaSuccess;
+    }
+
+    const cudaError_t sync_status = synchronize_for_emulated_kernel(legacy_stream, backend_stream);
+    if (sync_status != cudaSuccess) {
+        return sync_status;
+    }
+
+    if (kernel_name_contains(kernel_name, "encoder_forward_kernel3")) {
+        if (arg_count < 7) {
+            return cudaErrorInvalidValue;
+        }
+        float* out = read_pointer_launch_arg<float>(args, 0);
+        const int* inp = read_pointer_launch_arg<const int>(args, 1);
+        const float* wte = read_pointer_launch_arg<const float>(args, 2);
+        const float* wpe = read_pointer_launch_arg<const float>(args, 3);
+        const int b = read_scalar_launch_arg<int>(args, 4);
+        const int t = read_scalar_launch_arg<int>(args, 5);
+        const int c = read_scalar_launch_arg<int>(args, 6);
+        if (out == nullptr || inp == nullptr || wte == nullptr || wpe == nullptr || b <= 0 || t <= 0 ||
+            c <= 0) {
+            return cudaErrorInvalidValue;
+        }
+        for (int bi = 0; bi < b; ++bi) {
+            for (int ti = 0; ti < t; ++ti) {
+                const int token = inp[bi * t + ti];
+                const std::size_t out_base =
+                    (static_cast<std::size_t>(bi) * static_cast<std::size_t>(t) +
+                     static_cast<std::size_t>(ti)) *
+                    static_cast<std::size_t>(c);
+                const std::size_t wte_base = static_cast<std::size_t>(token) * static_cast<std::size_t>(c);
+                const std::size_t wpe_base = static_cast<std::size_t>(ti) * static_cast<std::size_t>(c);
+                for (int ci = 0; ci < c; ++ci) {
+                    out[out_base + static_cast<std::size_t>(ci)] =
+                        wte[wte_base + static_cast<std::size_t>(ci)] +
+                        wpe[wpe_base + static_cast<std::size_t>(ci)];
+                }
+            }
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "encoder_backward_kernel")) {
+        if (arg_count < 7) {
+            return cudaErrorInvalidValue;
+        }
+        float* dwte = read_pointer_launch_arg<float>(args, 0);
+        float* dwpe = read_pointer_launch_arg<float>(args, 1);
+        const float* dout = read_pointer_launch_arg<const float>(args, 2);
+        const int* inp = read_pointer_launch_arg<const int>(args, 3);
+        const int b = read_scalar_launch_arg<int>(args, 4);
+        const int t = read_scalar_launch_arg<int>(args, 5);
+        const int c = read_scalar_launch_arg<int>(args, 6);
+        if (dwte == nullptr || dwpe == nullptr || dout == nullptr || inp == nullptr || b <= 0 || t <= 0 ||
+            c <= 0) {
+            return cudaErrorInvalidValue;
+        }
+        for (int bi = 0; bi < b; ++bi) {
+            for (int ti = 0; ti < t; ++ti) {
+                const int token = inp[bi * t + ti];
+                const std::size_t dout_base =
+                    (static_cast<std::size_t>(bi) * static_cast<std::size_t>(t) +
+                     static_cast<std::size_t>(ti)) *
+                    static_cast<std::size_t>(c);
+                const std::size_t dwte_base = static_cast<std::size_t>(token) * static_cast<std::size_t>(c);
+                const std::size_t dwpe_base = static_cast<std::size_t>(ti) * static_cast<std::size_t>(c);
+                for (int ci = 0; ci < c; ++ci) {
+                    const float grad = dout[dout_base + static_cast<std::size_t>(ci)];
+                    dwte[dwte_base + static_cast<std::size_t>(ci)] += grad;
+                    dwpe[dwpe_base + static_cast<std::size_t>(ci)] += grad;
+                }
+            }
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "layernorm_forward_kernel3")) {
+        if (arg_count < 8) {
+            return cudaErrorInvalidValue;
+        }
+        float* out = read_pointer_launch_arg<float>(args, 0);
+        float* mean = read_pointer_launch_arg<float>(args, 1);
+        float* rstd = read_pointer_launch_arg<float>(args, 2);
+        const float* inp = read_pointer_launch_arg<const float>(args, 3);
+        const float* weight = read_pointer_launch_arg<const float>(args, 4);
+        const float* bias = read_pointer_launch_arg<const float>(args, 5);
+        const int n = read_scalar_launch_arg<int>(args, 6);
+        const int c = read_scalar_launch_arg<int>(args, 7);
+        if (out == nullptr || inp == nullptr || weight == nullptr || bias == nullptr || n <= 0 || c <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        for (int row = 0; row < n; ++row) {
+            const std::size_t base = static_cast<std::size_t>(row) * static_cast<std::size_t>(c);
+            const float* x = inp + base;
+            float sum = 0.0f;
+            for (int ci = 0; ci < c; ++ci) {
+                sum += x[ci];
+            }
+            const float m = sum / static_cast<float>(c);
+            if (mean != nullptr) {
+                mean[row] = m;
+            }
+            float var_sum = 0.0f;
+            for (int ci = 0; ci < c; ++ci) {
+                const float diff = x[ci] - m;
+                var_sum += diff * diff;
+            }
+            const float s = 1.0f / std::sqrt(var_sum / static_cast<float>(c) + 1.0e-5f);
+            if (rstd != nullptr) {
+                rstd[row] = s;
+            }
+            float* o = out + base;
+            for (int ci = 0; ci < c; ++ci) {
+                const float norm = (x[ci] - m) * s;
+                o[ci] = norm * weight[ci] + bias[ci];
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "permute_kernel_backward") &&
+        !kernel_name_contains(kernel_name, "unpermute_kernel_backward")) {
+        if (arg_count < 8) {
+            return cudaErrorInvalidValue;
+        }
+        float* dinp = read_pointer_launch_arg<float>(args, 0);
+        const float* dq = read_pointer_launch_arg<const float>(args, 1);
+        const float* dk = read_pointer_launch_arg<const float>(args, 2);
+        const float* dv = read_pointer_launch_arg<const float>(args, 3);
+        const int b = read_scalar_launch_arg<int>(args, 4);
+        const int n = read_scalar_launch_arg<int>(args, 5);
+        const int nh = read_scalar_launch_arg<int>(args, 6);
+        const int d = read_scalar_launch_arg<int>(args, 7);
+        if (dinp == nullptr || dq == nullptr || dk == nullptr || dv == nullptr || b <= 0 || n <= 0 ||
+            nh <= 0 || d <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        for (int bi = 0; bi < b; ++bi) {
+            for (int nhi = 0; nhi < nh; ++nhi) {
+                for (int ni = 0; ni < n; ++ni) {
+                    for (int di = 0; di < d; ++di) {
+                        const std::size_t idx =
+                            (((static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) +
+                               static_cast<std::size_t>(nhi)) *
+                                  static_cast<std::size_t>(n) +
+                              static_cast<std::size_t>(ni)) *
+                                 static_cast<std::size_t>(d)) +
+                            static_cast<std::size_t>(di);
+                        const std::size_t inp_idx =
+                            (static_cast<std::size_t>(bi) * static_cast<std::size_t>(n) *
+                                 static_cast<std::size_t>(3 * nh * d)) +
+                            (static_cast<std::size_t>(ni) * static_cast<std::size_t>(3 * nh * d)) +
+                            static_cast<std::size_t>(nhi * d + di);
+                        dinp[inp_idx] = dq[idx];
+                        dinp[inp_idx + static_cast<std::size_t>(nh * d)] = dk[idx];
+                        dinp[inp_idx + static_cast<std::size_t>(2 * nh * d)] = dv[idx];
+                    }
+                }
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "permute_kernel") &&
+        !kernel_name_contains(kernel_name, "unpermute_kernel")) {
+        if (arg_count < 8) {
+            return cudaErrorInvalidValue;
+        }
+        float* q = read_pointer_launch_arg<float>(args, 0);
+        float* k = read_pointer_launch_arg<float>(args, 1);
+        float* v = read_pointer_launch_arg<float>(args, 2);
+        const float* inp = read_pointer_launch_arg<const float>(args, 3);
+        const int b = read_scalar_launch_arg<int>(args, 4);
+        const int n = read_scalar_launch_arg<int>(args, 5);
+        const int nh = read_scalar_launch_arg<int>(args, 6);
+        const int d = read_scalar_launch_arg<int>(args, 7);
+        if (q == nullptr || k == nullptr || v == nullptr || inp == nullptr || b <= 0 || n <= 0 ||
+            nh <= 0 || d <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        for (int bi = 0; bi < b; ++bi) {
+            for (int nhi = 0; nhi < nh; ++nhi) {
+                for (int ni = 0; ni < n; ++ni) {
+                    for (int di = 0; di < d; ++di) {
+                        const std::size_t idx =
+                            (((static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) +
+                               static_cast<std::size_t>(nhi)) *
+                                  static_cast<std::size_t>(n) +
+                              static_cast<std::size_t>(ni)) *
+                                 static_cast<std::size_t>(d)) +
+                            static_cast<std::size_t>(di);
+                        const std::size_t inp_idx =
+                            (static_cast<std::size_t>(bi) * static_cast<std::size_t>(n) *
+                                 static_cast<std::size_t>(3 * nh * d)) +
+                            (static_cast<std::size_t>(ni) * static_cast<std::size_t>(3 * nh * d)) +
+                            static_cast<std::size_t>(nhi * d + di);
+                        q[idx] = inp[inp_idx];
+                        k[idx] = inp[inp_idx + static_cast<std::size_t>(nh * d)];
+                        v[idx] = inp[inp_idx + static_cast<std::size_t>(2 * nh * d)];
+                    }
+                }
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "unpermute_kernel_backward")) {
+        if (arg_count < 6) {
+            return cudaErrorInvalidValue;
+        }
+        float* dinp = read_pointer_launch_arg<float>(args, 0);
+        const float* dout = read_pointer_launch_arg<const float>(args, 1);
+        const int b = read_scalar_launch_arg<int>(args, 2);
+        const int n = read_scalar_launch_arg<int>(args, 3);
+        const int nh = read_scalar_launch_arg<int>(args, 4);
+        const int d = read_scalar_launch_arg<int>(args, 5);
+        if (dinp == nullptr || dout == nullptr || b <= 0 || n <= 0 || nh <= 0 || d <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        for (int bi = 0; bi < b; ++bi) {
+            for (int nhi = 0; nhi < nh; ++nhi) {
+                for (int ni = 0; ni < n; ++ni) {
+                    for (int di = 0; di < d; ++di) {
+                        const std::size_t idx =
+                            (((static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) +
+                               static_cast<std::size_t>(nhi)) *
+                                  static_cast<std::size_t>(n) +
+                              static_cast<std::size_t>(ni)) *
+                                 static_cast<std::size_t>(d)) +
+                            static_cast<std::size_t>(di);
+                        const std::size_t other_idx =
+                            (static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) *
+                                 static_cast<std::size_t>(n * d)) +
+                            (static_cast<std::size_t>(ni) * static_cast<std::size_t>(nh * d)) +
+                            static_cast<std::size_t>(nhi * d + di);
+                        dinp[idx] = dout[other_idx];
+                    }
+                }
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "unpermute_kernel")) {
+        if (arg_count < 6) {
+            return cudaErrorInvalidValue;
+        }
+        float* inp = read_pointer_launch_arg<float>(args, 0);
+        float* out = read_pointer_launch_arg<float>(args, 1);
+        const int b = read_scalar_launch_arg<int>(args, 2);
+        const int n = read_scalar_launch_arg<int>(args, 3);
+        const int nh = read_scalar_launch_arg<int>(args, 4);
+        const int d = read_scalar_launch_arg<int>(args, 5);
+        if (inp == nullptr || out == nullptr || b <= 0 || n <= 0 || nh <= 0 || d <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        for (int bi = 0; bi < b; ++bi) {
+            for (int nhi = 0; nhi < nh; ++nhi) {
+                for (int ni = 0; ni < n; ++ni) {
+                    for (int di = 0; di < d; ++di) {
+                        const std::size_t idx =
+                            (((static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) +
+                               static_cast<std::size_t>(nhi)) *
+                                  static_cast<std::size_t>(n) +
+                              static_cast<std::size_t>(ni)) *
+                                 static_cast<std::size_t>(d)) +
+                            static_cast<std::size_t>(di);
+                        const std::size_t other_idx =
+                            (static_cast<std::size_t>(bi) * static_cast<std::size_t>(nh) *
+                                 static_cast<std::size_t>(n * d)) +
+                            (static_cast<std::size_t>(ni) * static_cast<std::size_t>(nh * d)) +
+                            static_cast<std::size_t>(nhi * d + di);
+                        out[other_idx] = inp[idx];
+                    }
+                }
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "softmax_forward_kernel5")) {
+        if (arg_count < 5) {
+            return cudaErrorInvalidValue;
+        }
+        float* out = read_pointer_launch_arg<float>(args, 0);
+        const float inv_temperature = read_scalar_launch_arg<float>(args, 1);
+        const float* inp = read_pointer_launch_arg<const float>(args, 2);
+        const int n = read_scalar_launch_arg<int>(args, 3);
+        const int t = read_scalar_launch_arg<int>(args, 4);
+        if (out == nullptr || inp == nullptr || n <= 0 || t <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        const std::size_t rows = static_cast<std::size_t>(n) * static_cast<std::size_t>(t);
+        for (std::size_t row = 0; row < rows; ++row) {
+            const int own_pos = static_cast<int>(row % static_cast<std::size_t>(t));
+            const float* x = inp + row * static_cast<std::size_t>(t);
+            float* y = out + row * static_cast<std::size_t>(t);
+
+            float max_val = -FLT_MAX;
+            for (int i = 0; i <= own_pos; ++i) {
+                max_val = std::max(max_val, x[i]);
+            }
+
+            float sum = 0.0f;
+            for (int i = 0; i <= own_pos; ++i) {
+                sum += std::exp(inv_temperature * (x[i] - max_val));
+            }
+            const float norm = sum > 0.0f ? (1.0f / sum) : 0.0f;
+
+            for (int i = 0; i <= own_pos; ++i) {
+                y[i] = std::exp(inv_temperature * (x[i] - max_val)) * norm;
+            }
+            for (int i = own_pos + 1; i < t; ++i) {
+                y[i] = 0.0f;
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "residual_forward_kernel")) {
+        if (arg_count < 4) {
+            return cudaErrorInvalidValue;
+        }
+        float* out = read_pointer_launch_arg<float>(args, 0);
+        const float* inp1 = read_pointer_launch_arg<const float>(args, 1);
+        const float* inp2 = read_pointer_launch_arg<const float>(args, 2);
+        const int n = read_scalar_launch_arg<int>(args, 3);
+        if (out == nullptr || inp1 == nullptr || inp2 == nullptr || n < 0) {
+            return cudaErrorInvalidValue;
+        }
+        for (int i = 0; i < n; ++i) {
+            out[i] = inp1[i] + inp2[i];
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "gelu_forward_kernel")) {
+        if (arg_count < 3) {
+            return cudaErrorInvalidValue;
+        }
+        constexpr float kGeluScaling = 0.7978845608028654f;
+        float* out = read_pointer_launch_arg<float>(args, 0);
+        const float* inp = read_pointer_launch_arg<const float>(args, 1);
+        const int n = read_scalar_launch_arg<int>(args, 2);
+        if (out == nullptr || inp == nullptr || n < 0) {
+            return cudaErrorInvalidValue;
+        }
+        for (int i = 0; i < n; ++i) {
+            const float x = inp[i];
+            const float cube = 0.044715f * x * x * x;
+            out[i] = 0.5f * x * (1.0f + std::tanh(kGeluScaling * (x + cube)));
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "gelu_backward_kernel")) {
+        if (arg_count < 4) {
+            return cudaErrorInvalidValue;
+        }
+        constexpr float kGeluScaling = 0.7978845608028654f;
+        float* dinp = read_pointer_launch_arg<float>(args, 0);
+        const float* inp = read_pointer_launch_arg<const float>(args, 1);
+        const float* dout = read_pointer_launch_arg<const float>(args, 2);
+        const int n = read_scalar_launch_arg<int>(args, 3);
+        if (dinp == nullptr || inp == nullptr || dout == nullptr || n < 0) {
+            return cudaErrorInvalidValue;
+        }
+        for (int i = 0; i < n; ++i) {
+            const float x = inp[i];
+            const float cube = 0.044715f * x * x * x;
+            const float tanh_arg = kGeluScaling * (x + cube);
+            const float tanh_out = std::tanh(tanh_arg);
+            const float cosh_out = std::cosh(tanh_arg);
+            const float sech2 = 1.0f / (cosh_out * cosh_out);
+            const float local_grad = 0.5f * (1.0f + tanh_out) +
+                                     x * 0.5f * sech2 * kGeluScaling *
+                                         (1.0f + 3.0f * 0.044715f * x * x);
+            dinp[i] = local_grad * dout[i];
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "matmul_backward_bias_kernel4")) {
+        if (arg_count < 5) {
+            return cudaErrorInvalidValue;
+        }
+        float* dbias = read_pointer_launch_arg<float>(args, 0);
+        const float* dout = read_pointer_launch_arg<const float>(args, 1);
+        const int b = read_scalar_launch_arg<int>(args, 2);
+        const int t = read_scalar_launch_arg<int>(args, 3);
+        const int oc = read_scalar_launch_arg<int>(args, 4);
+        if (dbias == nullptr || dout == nullptr || b <= 0 || t <= 0 || oc <= 0) {
+            return cudaErrorInvalidValue;
+        }
+        const int rows = b * t;
+        for (int col = 0; col < oc; ++col) {
+            float sum = 0.0f;
+            for (int row = 0; row < rows; ++row) {
+                sum += dout[static_cast<std::size_t>(row) * static_cast<std::size_t>(oc) +
+                            static_cast<std::size_t>(col)];
+            }
+            dbias[col] += sum;
+        }
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "layernorm_backward_kernel2")) {
+        if (arg_count < 11) {
+            return cudaErrorInvalidValue;
+        }
+        float* dinp = read_pointer_launch_arg<float>(args, 0);
+        float* dweight = read_pointer_launch_arg<float>(args, 1);
+        float* dbias = read_pointer_launch_arg<float>(args, 2);
+        const float* dout = read_pointer_launch_arg<const float>(args, 3);
+        const float* inp = read_pointer_launch_arg<const float>(args, 4);
+        const float* weight = read_pointer_launch_arg<const float>(args, 5);
+        const float* mean = read_pointer_launch_arg<const float>(args, 6);
+        const float* rstd = read_pointer_launch_arg<const float>(args, 7);
+        const int b = read_scalar_launch_arg<int>(args, 8);
+        const int t = read_scalar_launch_arg<int>(args, 9);
+        const int c = read_scalar_launch_arg<int>(args, 10);
+        if (dinp == nullptr || dweight == nullptr || dbias == nullptr || dout == nullptr || inp == nullptr ||
+            weight == nullptr || mean == nullptr || rstd == nullptr || b <= 0 || t <= 0 || c <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        const int n = b * t;
+        const float inv_c = 1.0f / static_cast<float>(c);
+        for (int row = 0; row < n; ++row) {
+            const std::size_t base = static_cast<std::size_t>(row) * static_cast<std::size_t>(c);
+            const float* dout_row = dout + base;
+            const float* inp_row = inp + base;
+            float* dinp_row = dinp + base;
+            const float mean_row = mean[row];
+            const float rstd_row = rstd[row];
+
+            float dnorm_mean = 0.0f;
+            float dnorm_norm_mean = 0.0f;
+            for (int ci = 0; ci < c; ++ci) {
+                const float norm = (inp_row[ci] - mean_row) * rstd_row;
+                const float dnorm = weight[ci] * dout_row[ci];
+                dnorm_mean += dnorm;
+                dnorm_norm_mean += dnorm * norm;
+            }
+            dnorm_mean *= inv_c;
+            dnorm_norm_mean *= inv_c;
+
+            for (int ci = 0; ci < c; ++ci) {
+                const float norm = (inp_row[ci] - mean_row) * rstd_row;
+                const float dnorm = weight[ci] * dout_row[ci];
+                dbias[ci] += dout_row[ci];
+                dweight[ci] += norm * dout_row[ci];
+                const float dval = (dnorm - dnorm_mean - norm * dnorm_norm_mean) * rstd_row;
+                dinp_row[ci] += dval;
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "softmax_autoregressive_backward_kernel")) {
+        if (arg_count < 7) {
+            return cudaErrorInvalidValue;
+        }
+        float* dpreatt = read_pointer_launch_arg<float>(args, 0);
+        const float* datt = read_pointer_launch_arg<const float>(args, 1);
+        const float* att = read_pointer_launch_arg<const float>(args, 2);
+        const int t = read_scalar_launch_arg<int>(args, 4);
+        const float scale = read_scalar_launch_arg<float>(args, 6);
+        if (dpreatt == nullptr || datt == nullptr || att == nullptr || t <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        const int heads = static_cast<int>(grid_dim.y);
+        if (heads <= 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        const std::size_t head_stride =
+            static_cast<std::size_t>(t) * static_cast<std::size_t>(t);
+        for (int head = 0; head < heads; ++head) {
+            const std::size_t head_base = static_cast<std::size_t>(head) * head_stride;
+            for (int row = 0; row < t; ++row) {
+                const std::size_t row_base =
+                    head_base + static_cast<std::size_t>(row) * static_cast<std::size_t>(t);
+                float local_sum = 0.0f;
+                for (int col = 0; col <= row; ++col) {
+                    local_sum += att[row_base + static_cast<std::size_t>(col)] *
+                                 datt[row_base + static_cast<std::size_t>(col)];
+                }
+                for (int col = 0; col <= row; ++col) {
+                    const float a = att[row_base + static_cast<std::size_t>(col)];
+                    const float da = datt[row_base + static_cast<std::size_t>(col)];
+                    dpreatt[row_base + static_cast<std::size_t>(col)] = scale * a * (da - local_sum);
+                }
+                for (int col = row + 1; col < t; ++col) {
+                    dpreatt[row_base + static_cast<std::size_t>(col)] = 0.0f;
+                }
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "adamw_kernel2")) {
+        if (arg_count < 12) {
+            return cudaErrorInvalidValue;
+        }
+        float* params = read_pointer_launch_arg<float>(args, 0);
+        float* grads = read_pointer_launch_arg<float>(args, 1);
+        float* m = read_pointer_launch_arg<float>(args, 2);
+        float* v = read_pointer_launch_arg<float>(args, 3);
+        const std::int64_t num_parameters = read_scalar_launch_arg<std::int64_t>(args, 4);
+        const float learning_rate = read_scalar_launch_arg<float>(args, 5);
+        const float beta1 = read_scalar_launch_arg<float>(args, 6);
+        const float beta2 = read_scalar_launch_arg<float>(args, 7);
+        const float beta1_correction = read_scalar_launch_arg<float>(args, 8);
+        const float beta2_correction = read_scalar_launch_arg<float>(args, 9);
+        const float eps = read_scalar_launch_arg<float>(args, 10);
+        const float weight_decay = read_scalar_launch_arg<float>(args, 11);
+        if (params == nullptr || grads == nullptr || m == nullptr || v == nullptr || num_parameters < 0) {
+            return cudaErrorInvalidValue;
+        }
+
+        const std::size_t count = static_cast<std::size_t>(num_parameters);
+        for (std::size_t i = 0; i < count; ++i) {
+            const float grad = grads[i];
+            float m_val = m[i];
+            float v_val = v[i];
+            m_val = beta1 * m_val + (1.0f - beta1) * grad;
+            v_val = beta2 * v_val + (1.0f - beta2) * (grad * grad);
+            m[i] = m_val;
+            v[i] = v_val;
+            const float m_hat = m_val / beta1_correction;
+            const float v_hat = v_val / beta2_correction;
+            params[i] -= learning_rate *
+                         (m_hat / (std::sqrt(v_hat) + eps) + weight_decay * params[i]);
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
+    if (kernel_name_contains(kernel_name, "fused_classifier_kernel3")) {
+        if (arg_count < 9) {
+            return cudaErrorInvalidValue;
+        }
+        float* logits = read_pointer_launch_arg<float>(args, 0);
+        float* losses = read_pointer_launch_arg<float>(args, 1);
+        float* probs = read_pointer_launch_arg<float>(args, 2);
+        const float* dlosses = read_pointer_launch_arg<const float>(args, 3);
+        const int* targets = read_pointer_launch_arg<const int>(args, 4);
+        const int b = read_scalar_launch_arg<int>(args, 5);
+        const int t = read_scalar_launch_arg<int>(args, 6);
+        const int v = read_scalar_launch_arg<int>(args, 7);
+        const int p = read_scalar_launch_arg<int>(args, 8);
+        if (logits == nullptr || losses == nullptr || targets == nullptr || b <= 0 || t <= 0 || v <= 0 ||
+            p <= 0 || v > p) {
+            return cudaErrorInvalidValue;
+        }
+
+        const int n = b * t;
+        const float default_dloss = 1.0f / static_cast<float>(n);
+        for (int row = 0; row < n; ++row) {
+            const int target = targets[row];
+            if (target < 0 || target >= v) {
+                return cudaErrorInvalidValue;
+            }
+
+            float* row_logits = logits + static_cast<std::size_t>(row) * static_cast<std::size_t>(p);
+            float max_val = -FLT_MAX;
+            for (int col = 0; col < v; ++col) {
+                max_val = std::max(max_val, row_logits[col]);
+            }
+
+            float sum = 0.0f;
+            for (int col = 0; col < v; ++col) {
+                sum += std::exp(row_logits[col] - max_val);
+            }
+            const float inv_sum = sum > 0.0f ? (1.0f / sum) : 0.0f;
+            const float target_prob = std::exp(row_logits[target] - max_val) * inv_sum;
+            losses[row] = -std::log(std::max(target_prob, 1.0e-30f));
+
+            const float dloss = dlosses != nullptr ? dlosses[row] : default_dloss;
+            for (int col = 0; col < v; ++col) {
+                const float prob = std::exp(row_logits[col] - max_val) * inv_sum;
+                if (probs != nullptr) {
+                    probs[static_cast<std::size_t>(row) * static_cast<std::size_t>(p) +
+                          static_cast<std::size_t>(col)] = prob;
+                }
+                const float indicator = (col == target) ? 1.0f : 0.0f;
+                row_logits[col] = (prob - indicator) * dloss;
+            }
+        }
+
+        *handled = true;
+        return cudaSuccess;
+    }
+
     return cudaSuccess;
 }
 
@@ -1583,16 +2415,21 @@ cudaError_t cudaLaunchKernel(const void* func,
             return fail(cudaErrorInvalidValue);
         }
 
-        std::size_t inferred_count = 0;
-        for (; inferred_count < 31; ++inferred_count) {
-            if (args[inferred_count] == nullptr) {
-                break;
+        const std::uint32_t known_arg_count = llmc_expected_arg_count(registered_kernel.kernel_name);
+        if (known_arg_count > 0) {
+            arg_count = known_arg_count;
+        } else {
+            std::size_t inferred_count = 0;
+            for (; inferred_count < 31; ++inferred_count) {
+                if (args[inferred_count] == nullptr) {
+                    break;
+                }
             }
+            if (inferred_count == 31) {
+                return fail(cudaErrorInvalidValue);
+            }
+            arg_count = static_cast<std::uint32_t>(inferred_count);
         }
-        if (inferred_count == 31) {
-            return fail(cudaErrorInvalidValue);
-        }
-        arg_count = static_cast<std::uint32_t>(inferred_count);
     } else {
         std::memcpy(&kernel_copy, func, sizeof(kernel_copy));
         kernel = &kernel_copy;
@@ -1618,6 +2455,25 @@ cudaError_t cudaLaunchKernel(const void* func,
         const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
         if (sync_status != cudaSuccess) {
             return fail(sync_status);
+        }
+    }
+
+    if (use_registered_kernel) {
+        bool emulated = false;
+        const cudaError_t emulation_status =
+            try_emulate_llmc_registered_kernel(registered_kernel.kernel_name,
+                                               arg_count,
+                                               grid_dim,
+                                               block_dim,
+                                               args,
+                                               legacy_stream,
+                                               backend_stream,
+                                               &emulated);
+        if (emulation_status != cudaSuccess) {
+            return fail(emulation_status);
+        }
+        if (emulated) {
+            return fail(cudaSuccess);
         }
     }
 
