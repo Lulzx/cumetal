@@ -66,6 +66,12 @@ CUresult cuEventQuery(CUevent hEvent);
 CUresult cuEventElapsedTime(float* pMilliseconds, CUevent hStart, CUevent hEnd);
 
 CUresult cuModuleLoad(CUmodule* module, const char* fname);
+CUresult cuModuleLoadData(CUmodule* module, const void* image);
+CUresult cuModuleLoadDataEx(CUmodule* module,
+                            const void* image,
+                            unsigned int numOptions,
+                            void* options,
+                            void* optionValues);
 CUresult cuModuleUnload(CUmodule module);
 CUresult cuModuleGetFunction(CUfunction* hfunc, CUmodule hmod, const char* name);
 

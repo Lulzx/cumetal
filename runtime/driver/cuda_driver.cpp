@@ -2,8 +2,11 @@
 
 #include "cuda_runtime.h"
 
+#include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <new>
 #include <string>
@@ -18,6 +21,7 @@ struct CUfunc_st;
 
 struct CUmod_st {
     std::string metallib_path;
+    bool owns_metallib_path = false;
     std::vector<CUfunc_st*> functions;
 };
 
@@ -71,6 +75,77 @@ bool is_valid_function_locked(const DriverState& state, CUfunction function) {
 
 bool is_valid_module_locked(const DriverState& state, CUmodule module) {
     return module != nullptr && state.modules.find(module) != state.modules.end();
+}
+
+CUresult create_module_from_path(const std::string& path, bool owns_path, CUmodule* out_module) {
+    if (out_module == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    if (!std::filesystem::exists(path)) {
+        return CUDA_ERROR_INVALID_IMAGE;
+    }
+
+    auto* loaded = new (std::nothrow) CUmod_st{};
+    if (loaded == nullptr) {
+        return CUDA_ERROR_OUT_OF_MEMORY;
+    }
+    loaded->metallib_path = path;
+    loaded->owns_metallib_path = owns_path;
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.modules.insert(loaded);
+    }
+
+    *out_module = loaded;
+    return CUDA_SUCCESS;
+}
+
+bool parse_metallib_size(const void* image, std::size_t* out_size) {
+    if (image == nullptr || out_size == nullptr) {
+        return false;
+    }
+
+    const auto* bytes = static_cast<const std::uint8_t*>(image);
+    if (std::memcmp(bytes, "MTLB", 4) != 0) {
+        return false;
+    }
+
+    std::uint64_t raw_size = 0;
+    std::memcpy(&raw_size, bytes + 0x10, sizeof(raw_size));
+    if (raw_size < 0x20 || raw_size > (1ull << 31)) {
+        return false;
+    }
+
+    *out_size = static_cast<std::size_t>(raw_size);
+    return true;
+}
+
+bool stage_module_image_to_tempfile(const void* image, std::size_t size, std::string* out_path) {
+    if (image == nullptr || size == 0 || out_path == nullptr) {
+        return false;
+    }
+
+    const std::string filename =
+        "cumetal_module_" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".metallib";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / filename;
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+    out.write(static_cast<const char*>(image), static_cast<std::streamsize>(size));
+    out.close();
+    if (!out.good()) {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+        return false;
+    }
+
+    *out_path = path.string();
+    return true;
 }
 
 }  // namespace
@@ -283,23 +358,52 @@ CUresult cuModuleLoad(CUmodule* module, const char* fname) {
         }
     }
 
-    if (!std::filesystem::exists(fname)) {
+    return create_module_from_path(fname, /*owns_path=*/false, module);
+}
+
+CUresult cuModuleLoadData(CUmodule* module, const void* image) {
+    if (module == nullptr || image == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+        if (!has_current_context_locked(state)) {
+            return CUDA_ERROR_INVALID_CONTEXT;
+        }
+    }
+
+    std::size_t size = 0;
+    if (!parse_metallib_size(image, &size)) {
         return CUDA_ERROR_INVALID_IMAGE;
     }
 
-    auto* loaded = new (std::nothrow) CUmod_st{};
-    if (loaded == nullptr) {
-        return CUDA_ERROR_OUT_OF_MEMORY;
-    }
-    loaded->metallib_path = fname;
-
-    {
-        std::lock_guard<std::mutex> lock(state.mutex);
-        state.modules.insert(loaded);
+    std::string staged_path;
+    if (!stage_module_image_to_tempfile(image, size, &staged_path)) {
+        return CUDA_ERROR_UNKNOWN;
     }
 
-    *module = loaded;
-    return CUDA_SUCCESS;
+    const CUresult load_status = create_module_from_path(staged_path, /*owns_path=*/true, module);
+    if (load_status != CUDA_SUCCESS) {
+        std::error_code ec;
+        std::filesystem::remove(staged_path, ec);
+    }
+    return load_status;
+}
+
+CUresult cuModuleLoadDataEx(CUmodule* module,
+                            const void* image,
+                            unsigned int numOptions,
+                            void* options,
+                            void* optionValues) {
+    if (numOptions != 0 || options != nullptr || optionValues != nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    return cuModuleLoadData(module, image);
 }
 
 CUresult cuModuleUnload(CUmodule module) {
@@ -308,6 +412,8 @@ CUresult cuModuleUnload(CUmodule module) {
     }
 
     DriverState& state = driver_state();
+    std::string owned_path;
+    bool remove_owned_path = false;
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         if (!is_valid_module_locked(state, module)) {
@@ -319,10 +425,18 @@ CUresult cuModuleUnload(CUmodule module) {
             delete function;
         }
         module->functions.clear();
+        if (module->owns_metallib_path) {
+            owned_path = module->metallib_path;
+            remove_owned_path = true;
+        }
         state.modules.erase(module);
     }
 
     delete module;
+    if (remove_owned_path) {
+        std::error_code ec;
+        std::filesystem::remove(owned_path, ec);
+    }
     return CUDA_SUCCESS;
 }
 

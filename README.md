@@ -42,7 +42,7 @@ Supported driver API subset:
 - `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxSynchronize`
 - `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
-- `cuModuleLoad`, `cuModuleUnload`, `cuModuleGetFunction`
+- `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
 - `cuMemAlloc`, `cuMemFree`
 - `cuMemAllocHost`, `cuMemFreeHost`
@@ -96,6 +96,7 @@ ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
 ctest --test-dir build -R functional_driver_memset --output-on-failure
 ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
+ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
