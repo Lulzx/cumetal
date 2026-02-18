@@ -59,6 +59,13 @@ cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 cudaError_t cudaMallocHost(void** ptr, size_t size);
 cudaError_t cudaFree(void* dev_ptr);
 cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, cudaMemcpyKind kind);
+cudaError_t cudaMemcpyAsync(void* dst,
+                            const void* src,
+                            size_t count,
+                            cudaMemcpyKind kind,
+                            cudaStream_t stream);
+cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
+cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);

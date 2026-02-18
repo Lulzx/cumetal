@@ -24,7 +24,8 @@ Supported runtime API subset:
 
 - `cudaInit`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
-- `cudaMemcpy`
+- `cudaMemcpy`, `cudaMemcpyAsync`
+- `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
 - `cudaStreamCreate`, `cudaStreamDestroy`, `cudaStreamSynchronize`
 - `cudaDeviceSynchronize`
@@ -62,6 +63,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 ```bash
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ```
