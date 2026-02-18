@@ -258,6 +258,32 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    FatbinWrapper invalid_wrapper{};
+    invalid_wrapper.magic = 0x12345678u;
+    invalid_wrapper.data = fatbin_blob.data();
+    if (cuModuleLoadData(&module, &invalid_wrapper) != CUDA_ERROR_INVALID_IMAGE) {
+        std::fprintf(stderr, "FAIL: invalid fatbin wrapper magic should return CUDA_ERROR_INVALID_IMAGE\n");
+        return 1;
+    }
+
+    FatbinBlobHeader invalid_zero_size{};
+    invalid_zero_size.fat_size = 0;
+    std::vector<std::uint8_t> invalid_zero_blob(sizeof(FatbinBlobHeader), 0);
+    std::memcpy(invalid_zero_blob.data(), &invalid_zero_size, sizeof(invalid_zero_size));
+    if (cuModuleLoadData(&module, invalid_zero_blob.data()) != CUDA_ERROR_INVALID_IMAGE) {
+        std::fprintf(stderr, "FAIL: zero-size fatbin blob should return CUDA_ERROR_INVALID_IMAGE\n");
+        return 1;
+    }
+
+    FatbinBlobHeader invalid_huge_size{};
+    invalid_huge_size.fat_size = ~static_cast<std::uint64_t>(0);
+    std::vector<std::uint8_t> invalid_huge_blob(sizeof(FatbinBlobHeader), 0);
+    std::memcpy(invalid_huge_blob.data(), &invalid_huge_size, sizeof(invalid_huge_size));
+    if (cuModuleLoadData(&module, invalid_huge_blob.data()) != CUDA_ERROR_INVALID_IMAGE) {
+        std::fprintf(stderr, "FAIL: huge-size fatbin blob should return CUDA_ERROR_INVALID_IMAGE\n");
+        return 1;
+    }
+
     if (cuCtxDestroy(context) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
