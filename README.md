@@ -19,6 +19,7 @@ Implemented today:
   - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline
+  - initial PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
   - initial `metadata` pass for AIR-style kernel metadata fields
@@ -165,6 +166,8 @@ ctest --test-dir build -R unit_addrspace_pass --output-on-failure
 ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure
 ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
+ctest --test-dir build -R ptx_sweep_supported_ops --output-on-failure
+ctest --test-dir build -R ptx_sweep_unsupported_ops --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 

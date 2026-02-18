@@ -16,3 +16,4 @@ Current status:
   LLVM IR text with AIR-style kernel metadata.
 - `cumetal-ptx2llvm` CLI writes `.ll` from `.ptx`:
   - `cumetal-ptx2llvm --input kernel.ptx --output kernel.ll --entry kernel_name`
+- `tests/ptx_sweep/` now includes initial strict-mode instruction sweep coverage.
