@@ -303,8 +303,19 @@ cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags) {
     return cudaMalloc(dev_ptr, size);
 }
 
+cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
+    if (flags != cudaHostAllocDefault) {
+        return fail(cudaErrorInvalidValue);
+    }
+    return cudaMalloc(ptr, size);
+}
+
 cudaError_t cudaMallocHost(void** ptr, size_t size) {
     return cudaMalloc(ptr, size);
+}
+
+cudaError_t cudaFreeHost(void* ptr) {
+    return cudaFree(ptr);
 }
 
 cudaError_t cudaFree(void* dev_ptr) {

@@ -24,6 +24,7 @@ Supported runtime API subset:
 
 - `cudaInit`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
+- `cudaHostAlloc`, `cudaFreeHost`
 - `cudaMemcpy`, `cudaMemcpyAsync`
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
@@ -86,6 +87,7 @@ ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
+ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
