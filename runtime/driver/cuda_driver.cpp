@@ -274,6 +274,72 @@ CUresult cuDeviceTotalMem(size_t* bytes, CUdevice dev) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev) {
+    if (pi == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.initialized) {
+            return CUDA_ERROR_NOT_INITIALIZED;
+        }
+    }
+
+    if (dev != 0) {
+        return CUDA_ERROR_INVALID_DEVICE;
+    }
+
+    cudaDeviceProp prop{};
+    const cudaError_t status = cudaGetDeviceProperties(&prop, dev);
+    if (status != cudaSuccess) {
+        return map_cuda_error(status);
+    }
+
+    switch (attrib) {
+        case CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK:
+            *pi = prop.maxThreadsPerBlock;
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X:
+            *pi = prop.maxThreadsDim[0];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y:
+            *pi = prop.maxThreadsDim[1];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z:
+            *pi = prop.maxThreadsDim[2];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X:
+            *pi = prop.maxGridSize[0];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y:
+            *pi = prop.maxGridSize[1];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z:
+            *pi = prop.maxGridSize[2];
+            break;
+        case CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK:
+            *pi = prop.sharedMemPerBlock;
+            break;
+        case CU_DEVICE_ATTRIBUTE_WARP_SIZE:
+            *pi = prop.warpSize;
+            break;
+        case CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT:
+            *pi = prop.multiProcessorCount;
+            break;
+        case CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING:
+        case CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY:
+        case CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS:
+            *pi = 1;
+            break;
+        default:
+            return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    return CUDA_SUCCESS;
+}
+
 CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev) {
     if (pctx == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;

@@ -63,6 +63,10 @@ add_executable(cumetal_driver_device_query_test
     driver_device_query_test.cpp
 )
 
+add_executable(cumetal_driver_device_attribute_test
+    driver_device_attribute_test.cpp
+)
+
 add_executable(cumetal_driver_stream_flags_test
     driver_stream_flags_test.cpp
 )
@@ -174,6 +178,11 @@ target_link_libraries(cumetal_driver_device_api_test
 )
 
 target_link_libraries(cumetal_driver_device_query_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_device_attribute_test
     PRIVATE
         cumetal_runtime
 )
@@ -327,6 +336,13 @@ target_compile_options(cumetal_driver_device_api_test
 )
 
 target_compile_options(cumetal_driver_device_query_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_device_attribute_test
     PRIVATE
         -Wall
         -Wextra
@@ -516,6 +532,11 @@ add_test(
 add_test(
     NAME functional_driver_device_query
     COMMAND cumetal_driver_device_query_test
+)
+
+add_test(
+    NAME functional_driver_device_attribute
+    COMMAND cumetal_driver_device_attribute_test
 )
 
 add_test(

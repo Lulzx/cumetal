@@ -46,11 +46,28 @@ typedef enum CUresult {
 
 typedef void (*CUstreamCallback)(CUstream hStream, CUresult status, void* userData);
 
+typedef enum CUdevice_attribute {
+    CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 1,
+    CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X = 2,
+    CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y = 3,
+    CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z = 4,
+    CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X = 5,
+    CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y = 6,
+    CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z = 7,
+    CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK = 8,
+    CU_DEVICE_ATTRIBUTE_WARP_SIZE = 10,
+    CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT = 16,
+    CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING = 41,
+    CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY = 83,
+    CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS = 89,
+} CUdevice_attribute;
+
 CUresult cuInit(unsigned int flags);
 CUresult cuDeviceGetCount(int* count);
 CUresult cuDeviceGet(CUdevice* device, int ordinal);
 CUresult cuDeviceGetName(char* name, int len, CUdevice dev);
 CUresult cuDeviceTotalMem(size_t* bytes, CUdevice dev);
+CUresult cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev);
 CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev);
 CUresult cuCtxDestroy(CUcontext ctx);
 CUresult cuCtxSetCurrent(CUcontext ctx);
