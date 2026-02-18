@@ -215,7 +215,7 @@ bool extract_ptx_cstr(const char* chars, std::size_t max_bytes, std::string* out
     }
 
     const std::size_t size = static_cast<const char*>(terminator) - chars;
-    if (size == 0 || size >= max_bytes) {
+    if (size == 0) {
         return false;
     }
 
@@ -249,6 +249,31 @@ bool extract_ptx_from_blob(const std::uint8_t* bytes,
             *out_ptx = std::move(candidate);
             return true;
         }
+
+        const char* candidate_start = reinterpret_cast<const char*>(bytes + i);
+        std::size_t candidate_size = size - i;
+        const void* terminator = std::memchr(candidate_start, '\0', candidate_size);
+        if (terminator != nullptr) {
+            candidate_size = static_cast<const char*>(terminator) - candidate_start;
+        } else {
+            for (std::size_t j = candidate_size; j > 0; --j) {
+                if (candidate_start[j - 1] == '}') {
+                    candidate_size = j;
+                    break;
+                }
+            }
+        }
+
+        if (candidate_size == 0) {
+            continue;
+        }
+
+        const std::string sliced(candidate_start, candidate_size);
+        if (sliced.find(".version") == std::string::npos || sliced.find(".entry") == std::string::npos) {
+            continue;
+        }
+        *out_ptx = sliced;
+        return true;
     }
 
     return false;

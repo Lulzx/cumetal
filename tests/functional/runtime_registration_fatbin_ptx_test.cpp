@@ -68,18 +68,21 @@ int main(int argc, char** argv) {
     }
 
     std::ifstream ptx_in(ptx_path, std::ios::binary);
-    std::vector<char> ptx_bytes((std::istreambuf_iterator<char>(ptx_in)), std::istreambuf_iterator<char>());
-    if (ptx_bytes.empty()) {
+    std::vector<char> ptx_file_bytes((std::istreambuf_iterator<char>(ptx_in)),
+                                     std::istreambuf_iterator<char>());
+    if (ptx_file_bytes.empty()) {
         std::fprintf(stderr, "FAIL: failed to read PTX bytes\n");
         return 1;
     }
+
+    std::vector<char> ptx_bytes = ptx_file_bytes;
     ptx_bytes.push_back('\0');
 
-    std::vector<std::uint8_t> fatbin_blob(sizeof(FatbinBlobHeader) + ptx_bytes.size(), 0);
+    std::vector<std::uint8_t> fatbin_blob(sizeof(FatbinBlobHeader) + ptx_file_bytes.size(), 0);
     FatbinBlobHeader header{};
-    header.fat_size = static_cast<std::uint64_t>(ptx_bytes.size());
+    header.fat_size = static_cast<std::uint64_t>(ptx_file_bytes.size());
     std::memcpy(fatbin_blob.data(), &header, sizeof(header));
-    std::memcpy(fatbin_blob.data() + sizeof(header), ptx_bytes.data(), ptx_bytes.size());
+    std::memcpy(fatbin_blob.data() + sizeof(header), ptx_file_bytes.data(), ptx_file_bytes.size());
 
     FatbinWrapper wrapper{};
     wrapper.data = fatbin_blob.data();
@@ -191,6 +194,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("PASS: runtime registration supports fatbin-wrapper PTX launch path\n");
+    std::printf("PASS: runtime registration supports fatbin-wrapper PTX launch path (non-NUL blob PTX)\n");
     return 0;
 }
