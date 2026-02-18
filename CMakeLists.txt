@@ -274,6 +274,7 @@ target_compile_options(cumetal_bench
 if(CUMETAL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests/air_abi)
+    add_subdirectory(tests/conformance)
     add_subdirectory(tests/functional)
     add_subdirectory(tests/ptx_sweep)
     add_subdirectory(tests/unit)

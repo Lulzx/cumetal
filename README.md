@@ -237,6 +237,21 @@ ctest --test-dir build -R ptx_sweep_unsupported_ops --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 
+Conformance suite
+-----------------
+
+Phase 4 conformance gate over functional tests:
+
+```bash
+ctest --test-dir build -R conformance_phase4_functional --output-on-failure
+```
+
+Direct invocation with custom threshold/regex:
+
+```bash
+./tests/conformance/run_conformance_suite.sh build 90 '^functional_'
+```
+
 Benchmark runner
 ----------------
 
