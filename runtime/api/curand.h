@@ -32,6 +32,7 @@ typedef enum curandRngType {
 
 curandStatus_t curandCreateGenerator(curandGenerator_t* generator, curandRngType_t rng_type);
 curandStatus_t curandDestroyGenerator(curandGenerator_t generator);
+curandStatus_t curandGetVersion(int* version);
 curandStatus_t curandSetStream(curandGenerator_t generator, cudaStream_t stream);
 curandStatus_t curandGetStream(curandGenerator_t generator, cudaStream_t* stream);
 curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,

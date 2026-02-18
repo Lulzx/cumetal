@@ -14,6 +14,16 @@ int main() {
         return 1;
     }
 
+    int curand_version = 0;
+    if (curandGetVersion(&curand_version) != CURAND_STATUS_SUCCESS || curand_version <= 0) {
+        std::fprintf(stderr, "FAIL: curandGetVersion failed\n");
+        return 1;
+    }
+    if (curandGetVersion(nullptr) != CURAND_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_NOT_INITIALIZED for null version ptr\n");
+        return 1;
+    }
+
     curandGenerator_t generator = nullptr;
     if (curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT) != CURAND_STATUS_SUCCESS) {
         std::fprintf(stderr, "FAIL: curandCreateGenerator failed\n");

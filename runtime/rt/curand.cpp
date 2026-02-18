@@ -16,6 +16,10 @@ struct curandGenerator_st {
 
 extern "C" int cumetalRuntimeIsDevicePointer(const void* ptr);
 
+namespace {
+constexpr int kCurandCompatVersion = 12000;
+}  // namespace
+
 extern "C" {
 
 curandStatus_t curandCreateGenerator(curandGenerator_t* generator, curandRngType_t rng_type) {
@@ -41,6 +45,14 @@ curandStatus_t curandDestroyGenerator(curandGenerator_t generator) {
     }
 
     delete generator;
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandGetVersion(int* version) {
+    if (version == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    *version = kCurandCompatVersion;
     return CURAND_STATUS_SUCCESS;
 }
 

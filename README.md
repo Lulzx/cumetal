@@ -87,6 +87,7 @@ Supported library shim subset:
 
 - cuRAND (`curand.h`)
   - `curandCreateGenerator`, `curandDestroyGenerator`
+  - `curandGetVersion`
   - `curandSetStream`, `curandGetStream`
   - `curandSetPseudoRandomGeneratorSeed`
   - `curandGenerate` (uint32 output)
