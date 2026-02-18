@@ -1,0 +1,58 @@
+#pragma once
+
+#include "cuda_runtime.h"
+
+#include <cstddef>
+#include <string>
+
+namespace cumetal::registration {
+
+struct RegisteredKernel {
+    std::string metallib_path;
+    std::string kernel_name;
+};
+
+struct LaunchConfiguration {
+    dim3 grid_dim{};
+    dim3 block_dim{};
+    std::size_t shared_mem = 0;
+    cudaStream_t stream = nullptr;
+};
+
+bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out);
+void clear();
+
+}  // namespace cumetal::registration
+
+extern "C" {
+
+void** __cudaRegisterFatBinary(const void* fat_cubin);
+void __cudaUnregisterFatBinary(void** fat_cubin_handle);
+void __cudaRegisterFunction(void** fat_cubin_handle,
+                            const void* host_function,
+                            char* device_function,
+                            const char* device_name,
+                            int thread_limit,
+                            void* thread_id,
+                            void* block_id,
+                            void* block_dim,
+                            void* grid_dim,
+                            int* warp_size);
+void __cudaRegisterVar(void** fat_cubin_handle,
+                       char* host_var,
+                       char* device_address,
+                       const char* device_name,
+                       int ext,
+                       std::size_t size,
+                       int constant,
+                       int global);
+cudaError_t __cudaPushCallConfiguration(dim3 grid_dim,
+                                        dim3 block_dim,
+                                        std::size_t shared_mem,
+                                        cudaStream_t stream);
+cudaError_t __cudaPopCallConfiguration(dim3* grid_dim,
+                                       dim3* block_dim,
+                                       std::size_t* shared_mem,
+                                       void** stream);
+
+}  // extern "C"

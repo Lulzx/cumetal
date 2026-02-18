@@ -12,3 +12,10 @@ add_test(
 )
 
 set_tests_properties(conformance_phase4_functional PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME conformance_llmc_gpt2fp32cu
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_llmc_gpt2fp32cu.sh
+)
+
+set_tests_properties(conformance_llmc_gpt2fp32cu PROPERTIES SKIP_RETURN_CODE 77)

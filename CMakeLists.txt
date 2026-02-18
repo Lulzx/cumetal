@@ -92,6 +92,7 @@ add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
     runtime/error/library_conflict.cpp
+    runtime/registration/registration.cpp
     runtime/rt/allocation_table.cpp
     runtime/rt/cublas.cpp
     runtime/rt/curand.cpp
@@ -115,6 +116,7 @@ target_include_directories(cumetal_runtime
         runtime/api
         runtime/cache
         runtime/error
+        runtime/registration
         runtime/rt
         runtime/metal_backend
 )

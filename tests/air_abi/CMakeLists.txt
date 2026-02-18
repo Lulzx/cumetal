@@ -230,6 +230,15 @@ add_test(
             ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+add_test(
+    NAME air_abi_xcode_matrix_regression
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_xcode_matrix_regression.sh
+            $<TARGET_FILE:air_inspect>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/xcode-matrix
+)
+
 set_tests_properties(
     air_abi_validate_reference
     air_abi_emit_validate_xcrun
@@ -243,6 +252,7 @@ set_tests_properties(
     air_abi_cumetalc_cu_experimental_validate
     air_abi_cumetalc_cu_default_output_validate
     air_abi_cumetalc_cu_emit_load_xcrun
+    air_abi_xcode_matrix_regression
     PROPERTIES
         SKIP_RETURN_CODE 77
 )

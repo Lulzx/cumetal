@@ -3,6 +3,7 @@
 #include "allocation_table.h"
 #include "library_conflict.h"
 #include "metal_backend.h"
+#include "registration.h"
 
 #include <chrono>
 #include <cstdint>
@@ -1133,6 +1134,7 @@ cudaError_t cudaDeviceReset(void) {
     }
 
     state.allocations.clear();
+    cumetal::registration::clear();
     state.current_device = 0;
     state.device_flags = cudaDeviceScheduleAuto;
     return fail(cudaSuccess);
@@ -1517,12 +1519,42 @@ cudaError_t cudaLaunchKernel(const void* func,
         return fail(init_status);
     }
 
-    const auto* kernel = static_cast<const cumetalKernel_t*>(func);
-    if (kernel->metallib_path == nullptr || kernel->kernel_name == nullptr) {
-        return fail(cudaErrorInvalidValue);
-    }
-    if (kernel->arg_count > 31) {
-        return fail(cudaErrorInvalidValue);
+    cumetal::registration::RegisteredKernel registered_kernel;
+    const bool use_registered_kernel =
+        cumetal::registration::lookup_registered_kernel(func, &registered_kernel);
+
+    cumetalKernel_t kernel_copy{};
+    const cumetalKernel_t* kernel = nullptr;
+    std::uint32_t arg_count = 0;
+    const cumetalKernelArgInfo_t* arg_info = nullptr;
+
+    if (use_registered_kernel) {
+        if (registered_kernel.metallib_path.empty() || registered_kernel.kernel_name.empty() ||
+            args == nullptr) {
+            return fail(cudaErrorInvalidValue);
+        }
+
+        std::size_t inferred_count = 0;
+        for (; inferred_count < 31; ++inferred_count) {
+            if (args[inferred_count] == nullptr) {
+                break;
+            }
+        }
+        if (inferred_count == 31) {
+            return fail(cudaErrorInvalidValue);
+        }
+        arg_count = static_cast<std::uint32_t>(inferred_count);
+    } else {
+        std::memcpy(&kernel_copy, func, sizeof(kernel_copy));
+        kernel = &kernel_copy;
+        if (kernel->metallib_path == nullptr || kernel->kernel_name == nullptr || kernel->arg_count > 31) {
+            return fail(cudaErrorInvalidValue);
+        }
+        if (kernel->arg_count > 0 && args == nullptr) {
+            return fail(cudaErrorInvalidValue);
+        }
+        arg_count = kernel->arg_count;
+        arg_info = kernel->arg_info;
     }
 
     std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
@@ -1541,11 +1573,11 @@ cudaError_t cudaLaunchKernel(const void* func,
     }
 
     std::vector<cumetal::metal_backend::KernelArg> launch_args;
-    launch_args.reserve(kernel->arg_count);
+    launch_args.reserve(arg_count);
 
     RuntimeState& state = runtime_state();
 
-    for (std::uint32_t i = 0; i < kernel->arg_count; ++i) {
+    for (std::uint32_t i = 0; i < arg_count; ++i) {
         if (args == nullptr || args[i] == nullptr) {
             return fail(cudaErrorInvalidValue);
         }
@@ -1554,8 +1586,16 @@ cudaError_t cudaLaunchKernel(const void* func,
             .kind = CUMETAL_ARG_BUFFER,
             .size_bytes = static_cast<std::uint32_t>(sizeof(void*)),
         };
-        if (kernel->arg_info != nullptr) {
-            info = kernel->arg_info[i];
+        if (!use_registered_kernel && arg_info != nullptr) {
+            info = arg_info[i];
+        } else if (use_registered_kernel) {
+            std::uintptr_t value = 0;
+            std::memcpy(&value, args[i], sizeof(value));
+            cumetal::rt::AllocationTable::ResolvedAllocation resolved_ptr;
+            if (!state.allocations.resolve(reinterpret_cast<void*>(value), &resolved_ptr)) {
+                info.kind = CUMETAL_ARG_BYTES;
+                info.size_bytes = value <= 0xFFFFFFFFull ? 4u : 8u;
+            }
         }
 
         if (info.kind == CUMETAL_ARG_BUFFER) {
@@ -1589,10 +1629,15 @@ cudaError_t cudaLaunchKernel(const void* func,
         .shared_memory_bytes = shared_mem,
     };
 
+    const char* metallib_path =
+        use_registered_kernel ? registered_kernel.metallib_path.c_str() : kernel->metallib_path;
+    const char* kernel_name =
+        use_registered_kernel ? registered_kernel.kernel_name.c_str() : kernel->kernel_name;
+
     std::string error;
     const cudaError_t status =
-        cumetal::metal_backend::launch_kernel(kernel->metallib_path, kernel->kernel_name, config,
-                                              launch_args, backend_stream, &error);
+        cumetal::metal_backend::launch_kernel(metallib_path, kernel_name, config, launch_args,
+                                              backend_stream, &error);
     return fail(status);
 }
 
