@@ -101,6 +101,40 @@ int main() {
         return 1;
     }
 
+    const float alpha_scal = -0.5f;
+    std::vector<float> expected_scal = host_x;
+    for (float& value : expected_scal) {
+        value *= alpha_scal;
+    }
+    if (cublasSscal(handle, kVecCount, &alpha_scal, dev_x, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSscal failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_x.data(), dev_x, host_x.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SSCAL failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kVecCount; ++i) {
+        if (!nearly_equal(host_x[i], expected_scal[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SSCAL mismatch at %d (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_x[i]),
+                         static_cast<double>(expected_scal[i]));
+            return 1;
+        }
+    }
+    if (cublasSscal(handle, kVecCount, &alpha_scal, expected_scal.data(), 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host x in SSCAL\n");
+        return 1;
+    }
+    if (cublasSscal(handle, kVecCount, nullptr, dev_x, 1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for null alpha in SSCAL\n");
+        return 1;
+    }
+
     constexpr int m = 2;
     constexpr int n = 3;
     constexpr int k = 4;

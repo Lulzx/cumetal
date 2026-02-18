@@ -39,6 +39,7 @@ cublasStatus_t cublasSaxpy(cublasHandle_t handle,
                            int incx,
                            float* y,
                            int incy);
+cublasStatus_t cublasSscal(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
 
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
