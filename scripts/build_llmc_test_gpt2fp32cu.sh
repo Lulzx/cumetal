@@ -59,6 +59,7 @@ PATH="${ROOT_DIR}/scripts/cuda_toolchain:${PATH}" \
     -std=c++17 \
     -O2 \
     -DNDEBUG \
+    -Wno-pass-failed \
     --cuda-gpu-arch="${CUDA_ARCH}" \
     -nocudainc \
     -nocudalib \
