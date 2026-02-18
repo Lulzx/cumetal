@@ -24,6 +24,7 @@ Supported runtime API subset:
 
 - `cudaInit`
 - `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
+- `cudaSetDeviceFlags`, `cudaGetDeviceFlags`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
 - `cudaHostAlloc`, `cudaFreeHost`, `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaHostGetDevicePointer`, `cudaHostGetFlags`
@@ -102,6 +103,7 @@ ctest --test-dir build -R functional_runtime_device_api --output-on-failure
 ctest --test-dir build -R functional_runtime_device_properties --output-on-failure
 ctest --test-dir build -R functional_runtime_device_attribute --output-on-failure
 ctest --test-dir build -R functional_runtime_device_reset --output-on-failure
+ctest --test-dir build -R functional_runtime_device_flags --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
 ctest --test-dir build -R functional_driver_device_query --output-on-failure

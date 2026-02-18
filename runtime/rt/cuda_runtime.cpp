@@ -32,6 +32,7 @@ struct RuntimeState {
     cudaError_t init_status = cudaSuccess;
     std::string init_error;
     int current_device = 0;
+    unsigned int device_flags = cudaDeviceScheduleAuto;
     cumetal::rt::AllocationTable allocations;
     std::mutex stream_mutex;
     std::unordered_map<cudaStream_t, std::shared_ptr<cumetal::metal_backend::Stream>> streams;
@@ -117,6 +118,28 @@ cudaError_t validate_host_alloc_flags(unsigned int flags) {
     if ((flags & ~kSupportedHostAllocFlags) != 0) {
         return cudaErrorInvalidValue;
     }
+    return cudaSuccess;
+}
+
+cudaError_t validate_device_flags(unsigned int flags) {
+    constexpr unsigned int kSupportedDeviceFlags =
+        cudaDeviceScheduleSpin | cudaDeviceScheduleYield | cudaDeviceScheduleBlockingSync |
+        cudaDeviceMapHost | cudaDeviceLmemResizeToMax;
+
+    if ((flags & ~kSupportedDeviceFlags) != 0) {
+        return cudaErrorInvalidValue;
+    }
+
+    const unsigned int schedule_bits =
+        flags & (cudaDeviceScheduleSpin | cudaDeviceScheduleYield | cudaDeviceScheduleBlockingSync);
+    if (schedule_bits == (cudaDeviceScheduleSpin | cudaDeviceScheduleYield) ||
+        schedule_bits == (cudaDeviceScheduleSpin | cudaDeviceScheduleBlockingSync) ||
+        schedule_bits == (cudaDeviceScheduleYield | cudaDeviceScheduleBlockingSync) ||
+        schedule_bits == (cudaDeviceScheduleSpin | cudaDeviceScheduleYield |
+                          cudaDeviceScheduleBlockingSync)) {
+        return cudaErrorInvalidValue;
+    }
+
     return cudaSuccess;
 }
 
@@ -317,6 +340,37 @@ cudaError_t cudaSetDevice(int device) {
 
     RuntimeState& state = runtime_state();
     state.current_device = device;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaSetDeviceFlags(unsigned int flags) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    const cudaError_t flags_status = validate_device_flags(flags);
+    if (flags_status != cudaSuccess) {
+        return fail(flags_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    state.device_flags = flags;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGetDeviceFlags(unsigned int* flags) {
+    if (flags == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    *flags = state.device_flags;
     return fail(cudaSuccess);
 }
 
@@ -738,6 +792,7 @@ cudaError_t cudaDeviceReset(void) {
 
     state.allocations.clear();
     state.current_device = 0;
+    state.device_flags = cudaDeviceScheduleAuto;
     return fail(cudaSuccess);
 }
 

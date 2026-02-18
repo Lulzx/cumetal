@@ -88,6 +88,15 @@ enum {
     cudaHostAllocWriteCombined = 0x4,
 };
 
+enum {
+    cudaDeviceScheduleAuto = 0x00,
+    cudaDeviceScheduleSpin = 0x01,
+    cudaDeviceScheduleYield = 0x02,
+    cudaDeviceScheduleBlockingSync = 0x04,
+    cudaDeviceMapHost = 0x08,
+    cudaDeviceLmemResizeToMax = 0x10,
+};
+
 typedef enum cumetalArgKind {
     CUMETAL_ARG_BUFFER = 0,
     CUMETAL_ARG_BYTES = 1,
@@ -109,6 +118,8 @@ cudaError_t cudaInit(unsigned int flags);
 cudaError_t cudaGetDeviceCount(int* count);
 cudaError_t cudaGetDevice(int* device);
 cudaError_t cudaSetDevice(int device);
+cudaError_t cudaSetDeviceFlags(unsigned int flags);
+cudaError_t cudaGetDeviceFlags(unsigned int* flags);
 cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device);
 cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device);
 cudaError_t cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes);
