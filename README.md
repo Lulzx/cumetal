@@ -18,7 +18,8 @@ Implemented today:
 - Phase 1 scaffolding:
   - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
-  - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline
+  - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
+    including concrete vector-add body emission for vector-add signatures
   - initial PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites

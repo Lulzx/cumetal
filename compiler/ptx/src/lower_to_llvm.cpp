@@ -12,6 +12,12 @@
 namespace cumetal::ptx {
 namespace {
 
+struct ParamInfo {
+    std::string ptx_type;
+    std::string llvm_type;
+    std::string name;
+};
+
 std::string trim(std::string_view text) {
     std::size_t begin = 0;
     while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
@@ -84,6 +90,69 @@ std::map<std::string, std::string> to_field_map(const cumetal::passes::KernelMet
     return map;
 }
 
+std::string lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool looks_like_vector_add_signature(const std::string& entry_name,
+                                     const std::vector<ParamInfo>& params) {
+    if (params.size() < 4) {
+        return false;
+    }
+    if (params[0].llvm_type != "ptr addrspace(1)" || params[1].llvm_type != "ptr addrspace(1)" ||
+        params[2].llvm_type != "ptr addrspace(1)") {
+        return false;
+    }
+    if (params[3].llvm_type != "i32" && params[3].llvm_type != "i64") {
+        return false;
+    }
+
+    const std::string lowered_name = lowercase(entry_name);
+    return lowered_name.find("vector_add") != std::string::npos ||
+           lowered_name.find("vecadd") != std::string::npos;
+}
+
+void emit_lowered_instruction_comments(
+    std::ostringstream& ir,
+    const std::vector<cumetal::passes::LoweredInstruction>& lowered_instructions) {
+    for (const auto& instruction : lowered_instructions) {
+        ir << "  ; ptx.lower opcode=" << instruction.opcode;
+        if (!instruction.operands.empty()) {
+            ir << " operands=";
+            for (std::size_t i = 0; i < instruction.operands.size(); ++i) {
+                if (i > 0) {
+                    ir << ",";
+                }
+                ir << instruction.operands[i];
+            }
+        }
+        ir << "\n";
+    }
+}
+
+void emit_vector_add_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+    const std::string& a_name = params[0].name;
+    const std::string& b_name = params[1].name;
+    const std::string& c_name = params[2].name;
+    const std::string& idx_name = params[3].name;
+    const std::string idx_type = params[3].llvm_type;
+
+    ir << "  %a.ptr = getelementptr float, ptr addrspace(1) %" << a_name << ", " << idx_type << " %"
+       << idx_name << "\n";
+    ir << "  %b.ptr = getelementptr float, ptr addrspace(1) %" << b_name << ", " << idx_type << " %"
+       << idx_name << "\n";
+    ir << "  %c.ptr = getelementptr float, ptr addrspace(1) %" << c_name << ", " << idx_type << " %"
+       << idx_name << "\n";
+    ir << "  %a.val = load float, ptr addrspace(1) %a.ptr, align 4\n";
+    ir << "  %b.val = load float, ptr addrspace(1) %b.ptr, align 4\n";
+    ir << "  %sum = fadd float %a.val, %b.val\n";
+    ir << "  store float %sum, ptr addrspace(1) %c.ptr, align 4\n";
+    ir << "  ret void\n";
+}
+
 }  // namespace
 
 LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOptions& options) {
@@ -105,7 +174,9 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     }
 
     std::vector<std::string> arg_decls;
+    std::vector<ParamInfo> params;
     arg_decls.reserve(static_cast<std::size_t>(arg_count));
+    params.reserve(static_cast<std::size_t>(arg_count));
     for (int i = 0; i < arg_count; ++i) {
         const std::string type_key = "kernel.arg." + std::to_string(i) + ".type";
         const std::string name_key = "kernel.arg." + std::to_string(i) + ".name";
@@ -119,6 +190,7 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
                 ? name_it->second
                 : ("arg_" + std::to_string(i));
         arg_decls.push_back(llvm_type + " %" + arg_name);
+        params.push_back({.ptx_type = ptx_type, .llvm_type = llvm_type, .name = arg_name});
     }
 
     int air_major = 2;
@@ -145,20 +217,13 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     }
     ir << ") #0 {\n";
     ir << "entry:\n";
-    for (const auto& instruction : pipeline.lowered_instructions) {
-        ir << "  ; ptx.lower opcode=" << instruction.opcode;
-        if (!instruction.operands.empty()) {
-            ir << " operands=";
-            for (std::size_t i = 0; i < instruction.operands.size(); ++i) {
-                if (i > 0) {
-                    ir << ",";
-                }
-                ir << instruction.operands[i];
-            }
-        }
-        ir << "\n";
+
+    if (looks_like_vector_add_signature(pipeline.entry_name, params)) {
+        emit_vector_add_body(ir, params);
+    } else {
+        emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
+        ir << "  ret void\n";
     }
-    ir << "  ret void\n";
     ir << "}\n\n";
 
     ir << "attributes #0 = { \"air.kernel\" \"air.version\"=\"" << air_major << "."

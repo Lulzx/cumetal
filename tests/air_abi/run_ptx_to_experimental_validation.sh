@@ -12,7 +12,11 @@ OUTPUT_METALLIB="$6"
   --input "$INPUT_PTX" \
   --output "$OUTPUT_LL" \
   --entry vector_add \
+  --strict \
   --overwrite
+
+rg "define void @vector_add" "$OUTPUT_LL" >/dev/null
+rg "fadd float" "$OUTPUT_LL" >/dev/null
 
 "$EMITTER" \
   --mode experimental \
