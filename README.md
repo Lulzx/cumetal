@@ -45,6 +45,8 @@ Implemented today:
   - startup conflict warning if another `libcuda.dylib` is already loaded
   - Metal command-buffer failures map to CUDA timeout/illegal-address/devices-unavailable errors
   - default module cache root: `$HOME/Library/Caches/io.cumetal/kernels` (override: `CUMETAL_CACHE_DIR`)
+  - `samples/vectorAdd` source flow exercised end-to-end (compile `.cu` with `cumetalc`, link host app
+    against `libcumetal`, execute and validate output)
   - GitHub Actions correctness baseline on self-hosted M1 runner (`ci-m1`) via `.github/workflows/ci.yml`
 
 Supported runtime API subset:
@@ -173,6 +175,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_vector_add_heap_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_vector_add_cu --output-on-failure
+ctest --test-dir build -R functional_sample_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_null_stream_sync --output-on-failure
