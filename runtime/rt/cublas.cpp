@@ -288,6 +288,80 @@ cublasStatus_t cublasDdot(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasSnrm2(cublasHandle_t handle, int n, const float* x, int incx, float* result) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || result == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        *result = 0.0f;
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(result) != 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    double sum_sq = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double v = static_cast<double>(x[i * incx]);
+        sum_sq += v * v;
+    }
+    *result = static_cast<float>(std::sqrt(sum_sq));
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDnrm2(cublasHandle_t handle,
+                           int n,
+                           const double* x,
+                           int incx,
+                           double* result) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || result == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        *result = 0.0;
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(result) != 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    double sum_sq = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double v = x[i * incx];
+        sum_sq += v * v;
+    }
+    *result = std::sqrt(sum_sq);
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
                            cublasOperation_t transb,

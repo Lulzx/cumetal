@@ -753,6 +753,49 @@ int main() {
         return 1;
     }
 
+    double expected_snrm2_acc = 0.0;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_snrm2_acc += static_cast<double>(host_dot_x[i]) * static_cast<double>(host_dot_x[i]);
+    }
+    const float expected_snrm2 = static_cast<float>(std::sqrt(expected_snrm2_acc));
+    float snrm2_result = 0.0f;
+    if (cublasSnrm2(handle, kDotCount, dev_dot_x, 1, &snrm2_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSnrm2 failed\n");
+        return 1;
+    }
+    if (std::fabs(snrm2_result - expected_snrm2) > 1e-4f) {
+        std::fprintf(stderr,
+                     "FAIL: SNRM2 mismatch (got=%f expected=%f)\n",
+                     static_cast<double>(snrm2_result),
+                     static_cast<double>(expected_snrm2));
+        return 1;
+    }
+    if (cublasSnrm2(handle, kDotCount, host_dot_x.data(), 1, &snrm2_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SNRM2\n");
+        return 1;
+    }
+
+    double expected_dnrm2_acc = 0.0;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_dnrm2_acc += host_ddot_x[i] * host_ddot_x[i];
+    }
+    const double expected_dnrm2 = std::sqrt(expected_dnrm2_acc);
+    double dnrm2_result = 0.0;
+    if (cublasDnrm2(handle, kDotCount, dev_ddot_x, 1, &dnrm2_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDnrm2 failed\n");
+        return 1;
+    }
+    if (std::fabs(dnrm2_result - expected_dnrm2) > 1e-10) {
+        std::fprintf(stderr, "FAIL: DNRM2 mismatch (got=%f expected=%f)\n", dnrm2_result, expected_dnrm2);
+        return 1;
+    }
+    if (cublasDnrm2(handle, kDotCount, host_ddot_x.data(), 1, &dnrm2_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DNRM2\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
