@@ -131,6 +131,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_null_stream_sync --output-on-failure
 ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
 ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
@@ -150,6 +151,7 @@ ctest --test-dir build -R functional_runtime_error_api --output-on-failure
 ctest --test-dir build -R functional_runtime_profiler_api --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_matrix_mul --output-on-failure
+ctest --test-dir build -R functional_driver_null_stream_sync --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
 ctest --test-dir build -R functional_driver_error_api --output-on-failure
 ctest --test-dir build -R functional_driver_profiler_api --output-on-failure
