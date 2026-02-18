@@ -1,5 +1,6 @@
 #include "cuda_runtime.h"
 
+#include <cstring>
 #include <cstdio>
 
 int main() {
@@ -22,6 +23,18 @@ int main() {
     if (cudaDriverGetVersion(nullptr) != cudaErrorInvalidValue ||
         cudaRuntimeGetVersion(nullptr) != cudaErrorInvalidValue) {
         std::fprintf(stderr, "FAIL: null output pointer should fail for version APIs\n");
+        return 1;
+    }
+
+    const char* error_name = cudaGetErrorName(cudaErrorInvalidValue);
+    const char* error_string = cudaGetErrorString(cudaErrorInvalidValue);
+    if (error_name == nullptr || error_string == nullptr) {
+        std::fprintf(stderr, "FAIL: cudaGetErrorName/String returned null\n");
+        return 1;
+    }
+    if (std::strcmp(error_name, "cudaErrorInvalidValue") != 0 ||
+        std::strcmp(error_string, "cudaErrorInvalidValue") != 0) {
+        std::fprintf(stderr, "FAIL: unexpected error name/string for cudaErrorInvalidValue\n");
         return 1;
     }
 

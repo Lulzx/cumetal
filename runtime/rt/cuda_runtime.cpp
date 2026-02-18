@@ -1280,6 +1280,26 @@ cudaError_t cudaPeekAtLastError(void) {
     return tls_last_error;
 }
 
+const char* cudaGetErrorName(cudaError_t error) {
+    switch (error) {
+        case cudaSuccess:
+            return "cudaSuccess";
+        case cudaErrorInvalidValue:
+            return "cudaErrorInvalidValue";
+        case cudaErrorMemoryAllocation:
+            return "cudaErrorMemoryAllocation";
+        case cudaErrorInitializationError:
+            return "cudaErrorInitializationError";
+        case cudaErrorInvalidDevicePointer:
+            return "cudaErrorInvalidDevicePointer";
+        case cudaErrorNotReady:
+            return "cudaErrorNotReady";
+        case cudaErrorUnknown:
+            return "cudaErrorUnknown";
+    }
+    return "cudaErrorUnknown";
+}
+
 const char* cudaGetErrorString(cudaError_t error) {
     switch (error) {
         case cudaSuccess:

@@ -168,6 +168,7 @@ cudaError_t cudaLaunchKernel(const void* func,
                              cudaStream_t stream);
 cudaError_t cudaGetLastError(void);
 cudaError_t cudaPeekAtLastError(void);
+const char* cudaGetErrorName(cudaError_t error);
 const char* cudaGetErrorString(cudaError_t error);
 
 #ifdef __cplusplus

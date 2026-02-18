@@ -38,7 +38,7 @@ Supported runtime API subset:
 - `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
 - `cudaDeviceReset`
 - `cudaDeviceSynchronize`
-- `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorString`
+- `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorName`, `cudaGetErrorString`
 
 Supported driver API subset:
 
