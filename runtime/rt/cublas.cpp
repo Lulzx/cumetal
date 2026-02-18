@@ -978,4 +978,94 @@ cublasStatus_t cublasDgemv(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasSger(cublasHandle_t handle,
+                          int m,
+                          int n,
+                          const float* alpha,
+                          const float* x,
+                          int incx,
+                          const float* y,
+                          int incy,
+                          float* a,
+                          int lda) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (m < 0 || n < 0 || alpha == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m == 0 || n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr || y == nullptr || a == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0 || cumetalRuntimeIsDevicePointer(y) == 0 ||
+        cumetalRuntimeIsDevicePointer(a) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const float alpha_value = *alpha;
+    for (int col = 0; col < n; ++col) {
+        const float y_value = y[col * incy];
+        for (int row = 0; row < m; ++row) {
+            a[row + col * lda] += alpha_value * x[row * incx] * y_value;
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDger(cublasHandle_t handle,
+                          int m,
+                          int n,
+                          const double* alpha,
+                          const double* x,
+                          int incx,
+                          const double* y,
+                          int incy,
+                          double* a,
+                          int lda) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (m < 0 || n < 0 || alpha == nullptr || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (lda < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m == 0 || n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr || y == nullptr || a == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0 || cumetalRuntimeIsDevicePointer(y) == 0 ||
+        cumetalRuntimeIsDevicePointer(a) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    for (int col = 0; col < n; ++col) {
+        const double y_value = y[col * incy];
+        for (int row = 0; row < m; ++row) {
+            a[row + col * lda] += alpha_value * x[row * incx] * y_value;
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 }  // extern "C"

@@ -945,6 +945,218 @@ int main() {
         return 1;
     }
 
+    constexpr int sger_m = 3;
+    constexpr int sger_n = 2;
+    constexpr int sger_lda = sger_m;
+    std::vector<float> host_sger_a(sger_lda * sger_n);
+    std::vector<float> host_sger_x(sger_m);
+    std::vector<float> host_sger_y(sger_n);
+    std::vector<float> expected_sger_a(sger_lda * sger_n);
+    for (int row = 0; row < sger_m; ++row) {
+        host_sger_x[row] = 0.2f + static_cast<float>(row + 1) * 0.35f;
+    }
+    for (int col = 0; col < sger_n; ++col) {
+        host_sger_y[col] = -0.1f + static_cast<float>(col + 1) * 0.45f;
+        for (int row = 0; row < sger_m; ++row) {
+            host_sger_a[row + col * sger_lda] =
+                0.05f + static_cast<float>(row + 1) * static_cast<float>(col + 2) * 0.12f;
+            expected_sger_a[row + col * sger_lda] = host_sger_a[row + col * sger_lda];
+        }
+    }
+    const float sger_alpha = 0.75f;
+    for (int col = 0; col < sger_n; ++col) {
+        for (int row = 0; row < sger_m; ++row) {
+            expected_sger_a[row + col * sger_lda] += sger_alpha * host_sger_x[row] * host_sger_y[col];
+        }
+    }
+
+    float* dev_sger_a = nullptr;
+    float* dev_sger_x = nullptr;
+    float* dev_sger_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_sger_a), host_sger_a.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_sger_x), host_sger_x.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_sger_y), host_sger_y.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SGER failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_sger_a,
+                   host_sger_a.data(),
+                   host_sger_a.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_sger_x,
+                   host_sger_x.data(),
+                   host_sger_x.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_sger_y,
+                   host_sger_y.data(),
+                   host_sger_y.size() * sizeof(float),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SGER failed\n");
+        return 1;
+    }
+    if (cublasSger(handle,
+                   sger_m,
+                   sger_n,
+                   &sger_alpha,
+                   dev_sger_x,
+                   1,
+                   dev_sger_y,
+                   1,
+                   dev_sger_a,
+                   sger_lda) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSger failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_sger_a.data(),
+                   dev_sger_a,
+                   host_sger_a.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SGER failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_sger_a.size(); ++i) {
+        if (!nearly_equal(host_sger_a[i], expected_sger_a[i])) {
+            std::fprintf(stderr,
+                         "FAIL: SGER mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_sger_a[i]),
+                         static_cast<double>(expected_sger_a[i]));
+            return 1;
+        }
+    }
+    if (cublasSger(handle,
+                   sger_m,
+                   sger_n,
+                   &sger_alpha,
+                   host_sger_x.data(),
+                   1,
+                   dev_sger_y,
+                   1,
+                   dev_sger_a,
+                   sger_lda) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SGER\n");
+        return 1;
+    }
+    if (cublasSger(handle,
+                   sger_m,
+                   sger_n,
+                   &sger_alpha,
+                   dev_sger_x,
+                   1,
+                   dev_sger_y,
+                   1,
+                   dev_sger_a,
+                   sger_m - 1) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid lda in SGER\n");
+        return 1;
+    }
+    if (cudaFree(dev_sger_a) != cudaSuccess || cudaFree(dev_sger_x) != cudaSuccess ||
+        cudaFree(dev_sger_y) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for SGER buffers failed\n");
+        return 1;
+    }
+
+    constexpr int dger_m = 2;
+    constexpr int dger_n = 3;
+    constexpr int dger_lda = dger_m;
+    std::vector<double> host_dger_a(dger_lda * dger_n);
+    std::vector<double> host_dger_x(dger_m);
+    std::vector<double> host_dger_y(dger_n);
+    std::vector<double> expected_dger_a(dger_lda * dger_n);
+    for (int row = 0; row < dger_m; ++row) {
+        host_dger_x[row] = 0.1 + static_cast<double>(row + 1) * 0.4;
+    }
+    for (int col = 0; col < dger_n; ++col) {
+        host_dger_y[col] = 0.2 + static_cast<double>(col + 1) * 0.25;
+        for (int row = 0; row < dger_m; ++row) {
+            host_dger_a[row + col * dger_lda] =
+                -0.05 + static_cast<double>(row + 1) * static_cast<double>(col + 1) * 0.09;
+            expected_dger_a[row + col * dger_lda] = host_dger_a[row + col * dger_lda];
+        }
+    }
+    const double dger_alpha = -1.1;
+    for (int col = 0; col < dger_n; ++col) {
+        for (int row = 0; row < dger_m; ++row) {
+            expected_dger_a[row + col * dger_lda] += dger_alpha * host_dger_x[row] * host_dger_y[col];
+        }
+    }
+
+    double* dev_dger_a = nullptr;
+    double* dev_dger_x = nullptr;
+    double* dev_dger_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_dger_a), host_dger_a.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dger_x), host_dger_x.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dger_y), host_dger_y.size() * sizeof(double)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DGER failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_dger_a,
+                   host_dger_a.data(),
+                   host_dger_a.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dger_x,
+                   host_dger_x.data(),
+                   host_dger_x.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_dger_y,
+                   host_dger_y.data(),
+                   host_dger_y.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DGER failed\n");
+        return 1;
+    }
+    if (cublasDger(handle,
+                   dger_m,
+                   dger_n,
+                   &dger_alpha,
+                   dev_dger_x,
+                   1,
+                   dev_dger_y,
+                   1,
+                   dev_dger_a,
+                   dger_lda) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDger failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_dger_a.data(),
+                   dev_dger_a,
+                   host_dger_a.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DGER failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_dger_a.size(); ++i) {
+        if (std::fabs(host_dger_a[i] - expected_dger_a[i]) > 1e-12) {
+            std::fprintf(stderr,
+                         "FAIL: DGER mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         host_dger_a[i],
+                         expected_dger_a[i]);
+            return 1;
+        }
+    }
+    if (cublasDger(handle,
+                   dger_m,
+                   dger_n,
+                   &dger_alpha,
+                   dev_dger_x,
+                   1,
+                   host_dger_y.data(),
+                   1,
+                   dev_dger_a,
+                   dger_lda) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host Y in DGER\n");
+        return 1;
+    }
+    if (cudaFree(dev_dger_a) != cudaSuccess || cudaFree(dev_dger_x) != cudaSuccess ||
+        cudaFree(dev_dger_y) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for DGER buffers failed\n");
+        return 1;
+    }
+
     constexpr int kDoubleCount = 1536;
     std::vector<double> host_dx(kDoubleCount);
     std::vector<double> host_dy(kDoubleCount);

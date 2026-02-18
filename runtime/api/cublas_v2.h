@@ -142,6 +142,28 @@ cublasStatus_t cublasDgemv(cublasHandle_t handle,
                            double* y,
                            int incy);
 
+cublasStatus_t cublasSger(cublasHandle_t handle,
+                          int m,
+                          int n,
+                          const float* alpha,
+                          const float* x,
+                          int incx,
+                          const float* y,
+                          int incy,
+                          float* a,
+                          int lda);
+
+cublasStatus_t cublasDger(cublasHandle_t handle,
+                          int m,
+                          int n,
+                          const double* alpha,
+                          const double* x,
+                          int incx,
+                          const double* y,
+                          int incy,
+                          double* a,
+                          int lda);
+
 #ifdef __cplusplus
 }
 #endif
