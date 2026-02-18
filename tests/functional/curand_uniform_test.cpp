@@ -221,6 +221,93 @@ int main() {
         return 1;
     }
 
+    float* device_output_lognormal = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_lognormal), kCount * sizeof(float)) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for lognormal output failed\n");
+        return 1;
+    }
+    if (curandGenerateLogNormal(generator, device_output_lognormal, kCount, 0.1f, 0.6f) !=
+        CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerateLogNormal failed\n");
+        return 1;
+    }
+    std::vector<float> host_lognormal(kCount, 0.0f);
+    if (cudaMemcpy(host_lognormal.data(),
+                   device_output_lognormal,
+                   kCount * sizeof(float),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for lognormal output failed\n");
+        return 1;
+    }
+    bool has_lognormal_variation = false;
+    for (std::size_t i = 0; i < kCount; ++i) {
+        if (host_lognormal[i] <= 0.0f) {
+            std::fprintf(stderr, "FAIL: lognormal output must be > 0 (got=%f)\n", host_lognormal[i]);
+            return 1;
+        }
+        if (i > 0 && host_lognormal[i] != host_lognormal[i - 1]) {
+            has_lognormal_variation = true;
+        }
+    }
+    if (!has_lognormal_variation) {
+        std::fprintf(stderr, "FAIL: generated lognormal sequence has no variation\n");
+        return 1;
+    }
+    if (curandGenerateLogNormal(generator, device_output_lognormal, kCount, 0.1f, 0.0f) !=
+        CURAND_STATUS_OUT_OF_RANGE) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_OUT_OF_RANGE for zero lognormal stddev\n");
+        return 1;
+    }
+
+    double* device_output_lognormal_double = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_lognormal_double), kCount * sizeof(double)) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for lognormal double output failed\n");
+        return 1;
+    }
+    if (curandGenerateLogNormalDouble(generator,
+                                      device_output_lognormal_double,
+                                      kCount,
+                                      -0.2,
+                                      0.9) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerateLogNormalDouble failed\n");
+        return 1;
+    }
+    std::vector<double> host_lognormal_double(kCount, 0.0);
+    if (cudaMemcpy(host_lognormal_double.data(),
+                   device_output_lognormal_double,
+                   kCount * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for lognormal double output failed\n");
+        return 1;
+    }
+    bool has_lognormal_double_variation = false;
+    for (std::size_t i = 0; i < kCount; ++i) {
+        if (host_lognormal_double[i] <= 0.0) {
+            std::fprintf(stderr,
+                         "FAIL: lognormal double output must be > 0 (got=%f)\n",
+                         host_lognormal_double[i]);
+            return 1;
+        }
+        if (i > 0 && host_lognormal_double[i] != host_lognormal_double[i - 1]) {
+            has_lognormal_double_variation = true;
+        }
+    }
+    if (!has_lognormal_double_variation) {
+        std::fprintf(stderr, "FAIL: generated lognormal double sequence has no variation\n");
+        return 1;
+    }
+    if (curandGenerateLogNormalDouble(generator,
+                                      device_output_lognormal_double,
+                                      kCount,
+                                      -0.2,
+                                      0.0) != CURAND_STATUS_OUT_OF_RANGE) {
+        std::fprintf(stderr,
+                     "FAIL: expected CURAND_STATUS_OUT_OF_RANGE for zero lognormal stddev (double)\n");
+        return 1;
+    }
+
     std::vector<float> host_output(kCount, 0.0f);
     if (curandGenerateUniform(generator, host_output.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host output pointer\n");
@@ -254,6 +341,14 @@ int main() {
     }
     if (cudaFree(device_output_normal_double) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree for normal double output failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_lognormal) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for lognormal output failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_lognormal_double) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for lognormal double output failed\n");
         return 1;
     }
     if (curandDestroyGenerator(generator) != CURAND_STATUS_SUCCESS) {

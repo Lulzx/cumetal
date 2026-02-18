@@ -91,6 +91,7 @@ Supported library shim subset:
   - `curandSetPseudoRandomGeneratorSeed`
   - `curandGenerateUniform`, `curandGenerateUniformDouble`
   - `curandGenerateNormal`, `curandGenerateNormalDouble`
+  - `curandGenerateLogNormal`, `curandGenerateLogNormalDouble`
 - cuBLAS v2 (`cublas_v2.h`)
   - `cublasCreate`, `cublasDestroy`, `cublasSetStream`, `cublasGetStream`
   - `cublasSaxpy`, `cublasSscal`, `cublasSgemm`

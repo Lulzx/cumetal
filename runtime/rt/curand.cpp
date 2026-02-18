@@ -189,4 +189,68 @@ curandStatus_t curandGenerateNormalDouble(curandGenerator_t generator,
     return CURAND_STATUS_SUCCESS;
 }
 
+curandStatus_t curandGenerateLogNormal(curandGenerator_t generator,
+                                       float* output_ptr,
+                                       size_t num,
+                                       float mean,
+                                       float stddev) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (output_ptr == nullptr && num > 0) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (stddev <= 0.0f) {
+        return CURAND_STATUS_OUT_OF_RANGE;
+    }
+    if (num == 0) {
+        return CURAND_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
+        return CURAND_STATUS_TYPE_ERROR;
+    }
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
+        return CURAND_STATUS_PREEXISTING_FAILURE;
+    }
+
+    std::lognormal_distribution<float> distribution(mean, stddev);
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    for (size_t i = 0; i < num; ++i) {
+        output_ptr[i] = distribution(generator->engine);
+    }
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandGenerateLogNormalDouble(curandGenerator_t generator,
+                                             double* output_ptr,
+                                             size_t num,
+                                             double mean,
+                                             double stddev) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (output_ptr == nullptr && num > 0) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (stddev <= 0.0) {
+        return CURAND_STATUS_OUT_OF_RANGE;
+    }
+    if (num == 0) {
+        return CURAND_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
+        return CURAND_STATUS_TYPE_ERROR;
+    }
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
+        return CURAND_STATUS_PREEXISTING_FAILURE;
+    }
+
+    std::lognormal_distribution<double> distribution(mean, stddev);
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    for (size_t i = 0; i < num; ++i) {
+        output_ptr[i] = distribution(generator->engine);
+    }
+    return CURAND_STATUS_SUCCESS;
+}
+
 }  // extern "C"
