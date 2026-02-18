@@ -84,6 +84,15 @@ int main(int argc, char** argv) {
     std::memcpy(fatbin_blob.data(), &header, sizeof(header));
     std::memcpy(fatbin_blob.data() + sizeof(header), ptx_file_bytes.data(), ptx_file_bytes.size());
 
+    FatbinBlobHeader padded_header{};
+    padded_header.header_size = 64;
+    padded_header.fat_size = static_cast<std::uint64_t>(ptx_file_bytes.size());
+    std::vector<std::uint8_t> fatbin_blob_padded(padded_header.header_size + ptx_file_bytes.size(), 0);
+    std::memcpy(fatbin_blob_padded.data(), &padded_header, sizeof(padded_header));
+    std::memcpy(fatbin_blob_padded.data() + padded_header.header_size,
+                ptx_file_bytes.data(),
+                ptx_file_bytes.size());
+
     FatbinWrapper wrapper{};
     wrapper.data = fatbin_blob.data();
 
@@ -230,6 +239,57 @@ int main(int argc, char** argv) {
         if (!nearly_equal(host_c[i], expected)) {
             std::fprintf(stderr,
                          "FAIL: direct fatbin blob mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_c[i]),
+                         static_cast<double>(expected));
+            return 1;
+        }
+    }
+
+    __cudaUnregisterFatBinary(fatbin_handle);
+
+    fatbin_handle = __cudaRegisterFatBinary(fatbin_blob_padded.data());
+    if (fatbin_handle == nullptr) {
+        std::fprintf(stderr, "FAIL: __cudaRegisterFatBinary (padded fatbin blob) returned null\n");
+        return 1;
+    }
+
+    __cudaRegisterFunction(fatbin_handle,
+                           reinterpret_cast<const void*>(&vector_add_host_stub),
+                           device_function,
+                           nullptr,
+                           0,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr);
+
+    if (cudaLaunchKernel(reinterpret_cast<const void*>(&vector_add_host_stub),
+                         grid_dim,
+                         block_dim,
+                         args,
+                         0,
+                         nullptr) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaLaunchKernel through padded fatbin blob registration failed\n");
+        return 1;
+    }
+
+    if (cudaDeviceSynchronize() != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaDeviceSynchronize after padded fatbin blob launch failed\n");
+        return 1;
+    }
+
+    if (cudaMemcpy(host_c.data(), dev_c, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host after padded fatbin blob launch failed\n");
+        return 1;
+    }
+
+    for (std::size_t i = 0; i < kElementCount; ++i) {
+        const float expected = host_a[i] + host_b[i];
+        if (!nearly_equal(host_c[i], expected)) {
+            std::fprintf(stderr,
+                         "FAIL: padded fatbin blob mismatch at %zu (got=%f expected=%f)\n",
                          i,
                          static_cast<double>(host_c[i]),
                          static_cast<double>(expected));

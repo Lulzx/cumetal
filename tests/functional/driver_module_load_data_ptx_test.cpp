@@ -184,6 +184,15 @@ int main(int argc, char** argv) {
     std::memcpy(fatbin_blob.data(), &header, sizeof(header));
     std::memcpy(fatbin_blob.data() + sizeof(header), ptx_file_bytes.data(), ptx_file_bytes.size());
 
+    FatbinBlobHeader padded_header{};
+    padded_header.header_size = 64;
+    padded_header.fat_size = ptx_file_bytes.size();
+    std::vector<std::uint8_t> fatbin_blob_padded(padded_header.header_size + ptx_file_bytes.size(), 0);
+    std::memcpy(fatbin_blob_padded.data(), &padded_header, sizeof(padded_header));
+    std::memcpy(fatbin_blob_padded.data() + padded_header.header_size,
+                ptx_file_bytes.data(),
+                ptx_file_bytes.size());
+
     FatbinWrapper wrapper{};
     wrapper.data = fatbin_blob.data();
 
@@ -212,6 +221,23 @@ int main(int argc, char** argv) {
 
     if (cuModuleUnload(module) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuModuleUnload after fatbin blob load failed\n");
+        return 1;
+    }
+
+    FatbinWrapper wrapper_padded{};
+    wrapper_padded.data = fatbin_blob_padded.data();
+
+    if (cuModuleLoadData(&module, &wrapper_padded) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(fatbin wrapper padded header) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after padded-header fatbin wrapper load failed\n");
         return 1;
     }
 
