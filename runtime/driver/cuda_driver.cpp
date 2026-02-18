@@ -347,7 +347,7 @@ CUresult cuLaunchKernel(CUfunction f,
         blockDimY == 0 || blockDimZ == 0) {
         return CUDA_ERROR_INVALID_VALUE;
     }
-    if (extra != nullptr) {
+    if (kernelParams != nullptr && extra != nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
     }
 
@@ -365,20 +365,80 @@ CUresult cuLaunchKernel(CUfunction f,
         }
     }
 
-    std::vector<cumetalKernelArgInfo_t> arg_info;
-    if (kernelParams != nullptr) {
-        for (std::size_t i = 0; i < 31; ++i) {
-            if (kernelParams[i] == nullptr) {
+    std::vector<void*> launch_params;
+    std::vector<CUdeviceptr> packed_arg_values;
+
+    if (extra != nullptr) {
+        void* packed_buffer = nullptr;
+        std::size_t packed_size = 0;
+        bool have_buffer = false;
+        bool have_size = false;
+
+        for (std::size_t i = 0;;) {
+            void* key = extra[i++];
+            if (key == CU_LAUNCH_PARAM_END) {
                 break;
             }
-            arg_info.push_back(cumetalKernelArgInfo_t{
-                .kind = CUMETAL_ARG_BUFFER,
-                .size_bytes = 0,
-            });
-        }
-        if (arg_info.size() == 31 && kernelParams[31] != nullptr) {
+            if (key == CU_LAUNCH_PARAM_BUFFER_POINTER) {
+                if (extra[i] == nullptr) {
+                    return CUDA_ERROR_INVALID_VALUE;
+                }
+                packed_buffer = extra[i++];
+                have_buffer = true;
+                continue;
+            }
+            if (key == CU_LAUNCH_PARAM_BUFFER_SIZE) {
+                if (extra[i] == nullptr) {
+                    return CUDA_ERROR_INVALID_VALUE;
+                }
+                packed_size = *reinterpret_cast<const std::size_t*>(extra[i]);
+                have_size = true;
+                ++i;
+                continue;
+            }
             return CUDA_ERROR_INVALID_VALUE;
         }
+
+        if (!have_buffer || !have_size || (packed_size % sizeof(CUdeviceptr) != 0)) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+
+        const std::size_t arg_count = packed_size / sizeof(CUdeviceptr);
+        if (arg_count > 31) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+
+        const auto* packed_args = static_cast<const CUdeviceptr*>(packed_buffer);
+        packed_arg_values.assign(packed_args, packed_args + arg_count);
+        launch_params.reserve(arg_count);
+        for (std::size_t i = 0; i < packed_arg_values.size(); ++i) {
+            launch_params.push_back(&packed_arg_values[i]);
+        }
+    } else if (kernelParams != nullptr) {
+        std::size_t arg_count = 0;
+        for (; arg_count < 31; ++arg_count) {
+            if (kernelParams[arg_count] == nullptr) {
+                break;
+            }
+        }
+        if (arg_count == 31 && kernelParams[31] != nullptr) {
+            return CUDA_ERROR_INVALID_VALUE;
+        }
+
+        launch_params.reserve(arg_count);
+        for (std::size_t i = 0; i < arg_count; ++i) {
+            launch_params.push_back(kernelParams[i]);
+        }
+    }
+
+    std::vector<cumetalKernelArgInfo_t> arg_info;
+    arg_info.reserve(launch_params.size());
+    for (std::size_t i = 0; i < launch_params.size(); ++i) {
+        (void)i;
+        arg_info.push_back(cumetalKernelArgInfo_t{
+            .kind = CUMETAL_ARG_BUFFER,
+            .size_bytes = 0,
+        });
     }
 
     const cumetalKernel_t kernel{
@@ -391,7 +451,7 @@ CUresult cuLaunchKernel(CUfunction f,
     const cudaError_t status = cudaLaunchKernel(&kernel,
                                                 dim3(gridDimX, gridDimY, gridDimZ),
                                                 dim3(blockDimX, blockDimY, blockDimZ),
-                                                kernelParams,
+                                                launch_params.empty() ? nullptr : launch_params.data(),
                                                 sharedMemBytes,
                                                 reinterpret_cast<cudaStream_t>(hStream));
     return map_cuda_error(status);

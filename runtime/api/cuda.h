@@ -21,6 +21,16 @@ enum {
     CU_STREAM_NON_BLOCKING = 0x1,
 };
 
+#ifndef CU_LAUNCH_PARAM_END
+#define CU_LAUNCH_PARAM_END ((void*)0x00)
+#endif
+#ifndef CU_LAUNCH_PARAM_BUFFER_POINTER
+#define CU_LAUNCH_PARAM_BUFFER_POINTER ((void*)0x01)
+#endif
+#ifndef CU_LAUNCH_PARAM_BUFFER_SIZE
+#define CU_LAUNCH_PARAM_BUFFER_SIZE ((void*)0x02)
+#endif
+
 typedef enum CUresult {
     CUDA_SUCCESS = 0,
     CUDA_ERROR_INVALID_VALUE = 1,

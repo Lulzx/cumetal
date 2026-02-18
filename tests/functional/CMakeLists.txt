@@ -43,6 +43,10 @@ add_executable(cumetal_driver_stream_flags_test
     driver_stream_flags_test.cpp
 )
 
+add_executable(cumetal_driver_launch_extra_test
+    driver_launch_extra_test.cpp
+)
+
 add_executable(cumetal_driver_stream_wait_event_test
     driver_stream_wait_event_test.cpp
 )
@@ -97,6 +101,11 @@ target_link_libraries(cumetal_driver_vector_add_test
 )
 
 target_link_libraries(cumetal_driver_stream_flags_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_launch_extra_test
     PRIVATE
         cumetal_runtime
 )
@@ -175,6 +184,13 @@ target_compile_options(cumetal_driver_vector_add_test
 )
 
 target_compile_options(cumetal_driver_stream_flags_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_launch_extra_test
     PRIVATE
         -Wall
         -Wextra
@@ -279,6 +295,16 @@ add_test(
     NAME functional_driver_stream_flags
     COMMAND cumetal_driver_stream_flags_test
 )
+
+add_test(
+    NAME functional_driver_launch_extra
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_driver_launch_extra_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(functional_driver_launch_extra PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_driver_stream_wait_event
