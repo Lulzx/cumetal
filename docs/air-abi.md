@@ -1,7 +1,9 @@
 # AIR / metallib ABI Notes (Phase 0.5)
 
-Status: draft with concrete reference bytes from `tests/air_abi/reference/reference.metallib`
-generated on February 18, 2026.
+Status: draft with concrete reference bytes from:
+
+- `tests/air_abi/reference/reference.metallib` (single kernel)
+- `tests/air_abi/reference/multi_kernel.metal` compiled via `xcrun metal` + `xcrun metallib`
 
 ## Scope
 
@@ -77,6 +79,28 @@ Observed bytes around the first record (`0x60`):
 4e 41 4d 45 ... 54 59 50 45 ... 48 41 53 48 ... 4d 44 53 5a ...
 4f 46 46 54 ... 56 45 52 53 ... 45 4e 44 54
 ```
+
+## Multi-kernel layout snapshot
+
+Compiling `tests/air_abi/reference/multi_kernel.metal` with `xcrun` produces a two-function
+metallib with the same tag schema:
+
+- Size: `7307` bytes (`0x1c8b`)
+- Function count: `2` (`vector_add`, `scale`)
+- Bitcode sections:
+  - `vector_add`: offset `0x17b`, size `0xdc0`
+  - `scale`: offset `0xf3b`, size `0xd50`
+- Metadata highlights:
+  - both functions report `TYPE=2` (`kernel`)
+  - both carry `VERS` AIR `2.8` and language `4.0`
+  - second-function `OFFT` values are non-zero (`public=8`, `private=8`, `bitcode=3520`)
+
+Practical parser notes from this sample:
+
+1. Function-list entry order matches source declaration order.
+2. `OFFT.bitcode` for later entries can point to byte ranges after prior kernels.
+3. The core tag set (`NAME`, `TYPE`, `HASH`, `MDSZ`, `OFFT`, `VERS`, `ENDT`) is stable across
+   one- and two-kernel outputs on current Xcode.
 
 ## Validation pipeline
 
