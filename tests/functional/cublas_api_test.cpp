@@ -1051,6 +1051,60 @@ int main() {
         return 1;
     }
 
+    int expected_isamin = 1;
+    float best_isamin = std::fabs(host_dot_x[0]);
+    for (int i = 1; i < kDotCount; ++i) {
+        const float value = std::fabs(host_dot_x[i]);
+        if (value < best_isamin) {
+            best_isamin = value;
+            expected_isamin = i + 1;
+        }
+    }
+    int isamin_result = 0;
+    if (cublasIsamin(handle, kDotCount, dev_dot_x, 1, &isamin_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasIsamin failed\n");
+        return 1;
+    }
+    if (isamin_result != expected_isamin) {
+        std::fprintf(stderr,
+                     "FAIL: ISAMIN mismatch (got=%d expected=%d)\n",
+                     isamin_result,
+                     expected_isamin);
+        return 1;
+    }
+    if (cublasIsamin(handle, kDotCount, host_dot_x.data(), 1, &isamin_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in ISAMIN\n");
+        return 1;
+    }
+
+    int expected_idamin = 1;
+    double best_idamin = std::fabs(host_ddot_x[0]);
+    for (int i = 1; i < kDotCount; ++i) {
+        const double value = std::fabs(host_ddot_x[i]);
+        if (value < best_idamin) {
+            best_idamin = value;
+            expected_idamin = i + 1;
+        }
+    }
+    int idamin_result = 0;
+    if (cublasIdamin(handle, kDotCount, dev_ddot_x, 1, &idamin_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasIdamin failed\n");
+        return 1;
+    }
+    if (idamin_result != expected_idamin) {
+        std::fprintf(stderr,
+                     "FAIL: IDAMIN mismatch (got=%d expected=%d)\n",
+                     idamin_result,
+                     expected_idamin);
+        return 1;
+    }
+    if (cublasIdamin(handle, kDotCount, host_ddot_x.data(), 1, &idamin_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in IDAMIN\n");
+        return 1;
+    }
+
     int* dev_index = nullptr;
     if (cudaMalloc(reinterpret_cast<void**>(&dev_index), sizeof(int)) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaMalloc for index result failed\n");
@@ -1064,6 +1118,14 @@ int main() {
         std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for device result in IDAMAX\n");
         return 1;
     }
+    if (cublasIsamin(handle, kDotCount, dev_dot_x, 1, dev_index) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for device result in ISAMIN\n");
+        return 1;
+    }
+    if (cublasIdamin(handle, kDotCount, dev_ddot_x, 1, dev_index) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for device result in IDAMIN\n");
+        return 1;
+    }
 
     int zero_isamax = -1;
     if (cublasIsamax(handle, 0, dev_dot_x, 1, &zero_isamax) != CUBLAS_STATUS_SUCCESS || zero_isamax != 0) {
@@ -1074,6 +1136,17 @@ int main() {
     if (cublasIdamax(handle, 0, dev_ddot_x, 1, &zero_idamax) != CUBLAS_STATUS_SUCCESS ||
         zero_idamax != 0) {
         std::fprintf(stderr, "FAIL: cublasIdamax n==0 behavior mismatch\n");
+        return 1;
+    }
+    int zero_isamin = -1;
+    if (cublasIsamin(handle, 0, dev_dot_x, 1, &zero_isamin) != CUBLAS_STATUS_SUCCESS || zero_isamin != 0) {
+        std::fprintf(stderr, "FAIL: cublasIsamin n==0 behavior mismatch\n");
+        return 1;
+    }
+    int zero_idamin = -1;
+    if (cublasIdamin(handle, 0, dev_ddot_x, 1, &zero_idamin) != CUBLAS_STATUS_SUCCESS ||
+        zero_idamin != 0) {
+        std::fprintf(stderr, "FAIL: cublasIdamin n==0 behavior mismatch\n");
         return 1;
     }
 

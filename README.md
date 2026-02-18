@@ -103,6 +103,7 @@ Supported library shim subset:
   - `cublasSasum`, `cublasDasum`
   - `cublasSnrm2`, `cublasDnrm2`
   - `cublasIsamax`, `cublasIdamax`
+  - `cublasIsamin`, `cublasIdamin`
   - `cublasDaxpy`, `cublasDscal`, `cublasDcopy`, `cublasDgemm`
 
 Library alias compatibility:
