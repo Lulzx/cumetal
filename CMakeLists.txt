@@ -98,11 +98,17 @@ target_compile_options(cumetal_ptx_codegen
         -Wpedantic
 )
 
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    set(CUMETAL_REGISTRATION_SOURCE runtime/registration/registration.cpp)
+else()
+    set(CUMETAL_REGISTRATION_SOURCE runtime/registration/registration_stub.cpp)
+endif()
+
 add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
     runtime/error/library_conflict.cpp
-    runtime/registration/registration.cpp
+    ${CUMETAL_REGISTRATION_SOURCE}
     runtime/rt/allocation_table.cpp
     runtime/rt/cublas.cpp
     runtime/rt/curand.cpp

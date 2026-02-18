@@ -207,29 +207,31 @@ add_executable(cumetal_runtime_atomic_test
     runtime_atomic_test.cpp
 )
 
-add_executable(cumetal_runtime_registration_path_test
-    runtime_registration_path_test.cpp
-)
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    add_executable(cumetal_runtime_registration_path_test
+        runtime_registration_path_test.cpp
+    )
 
-add_executable(cumetal_runtime_call_config_registration_test
-    runtime_call_config_registration_test.cpp
-)
+    add_executable(cumetal_runtime_call_config_registration_test
+        runtime_call_config_registration_test.cpp
+    )
 
-add_executable(cumetal_runtime_registration_fatbin_ptx_test
-    runtime_registration_fatbin_ptx_test.cpp
-)
+    add_executable(cumetal_runtime_registration_fatbin_ptx_test
+        runtime_registration_fatbin_ptx_test.cpp
+    )
 
-add_executable(cumetal_runtime_legacy_launch_registration_test
-    runtime_legacy_launch_registration_test.cpp
-)
+    add_executable(cumetal_runtime_legacy_launch_registration_test
+        runtime_legacy_launch_registration_test.cpp
+    )
 
-add_executable(cumetal_runtime_registration_fatbinary2_symbols_test
-    runtime_registration_fatbinary2_symbols_test.cpp
-)
+    add_executable(cumetal_runtime_registration_fatbinary2_symbols_test
+        runtime_registration_fatbinary2_symbols_test.cpp
+    )
 
-add_executable(cumetal_runtime_registration_var_symbol_test
-    runtime_registration_var_symbol_test.cpp
-)
+    add_executable(cumetal_runtime_registration_var_symbol_test
+        runtime_registration_var_symbol_test.cpp
+    )
+endif()
 
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
@@ -486,35 +488,37 @@ target_link_libraries(cumetal_runtime_atomic_test
         cumetal_runtime
 )
 
-target_link_libraries(cumetal_runtime_registration_path_test
-    PRIVATE
-        cumetal_runtime
-)
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    target_link_libraries(cumetal_runtime_registration_path_test
+        PRIVATE
+            cumetal_runtime
+    )
 
-target_link_libraries(cumetal_runtime_call_config_registration_test
-    PRIVATE
-        cumetal_runtime
-)
+    target_link_libraries(cumetal_runtime_call_config_registration_test
+        PRIVATE
+            cumetal_runtime
+    )
 
-target_link_libraries(cumetal_runtime_registration_fatbin_ptx_test
-    PRIVATE
-        cumetal_runtime
-)
+    target_link_libraries(cumetal_runtime_registration_fatbin_ptx_test
+        PRIVATE
+            cumetal_runtime
+    )
 
-target_link_libraries(cumetal_runtime_legacy_launch_registration_test
-    PRIVATE
-        cumetal_runtime
-)
+    target_link_libraries(cumetal_runtime_legacy_launch_registration_test
+        PRIVATE
+            cumetal_runtime
+    )
 
-target_link_libraries(cumetal_runtime_registration_fatbinary2_symbols_test
-    PRIVATE
-        cumetal_runtime
-)
+    target_link_libraries(cumetal_runtime_registration_fatbinary2_symbols_test
+        PRIVATE
+            cumetal_runtime
+    )
 
-target_link_libraries(cumetal_runtime_registration_var_symbol_test
-    PRIVATE
-        cumetal_runtime
-)
+    target_link_libraries(cumetal_runtime_registration_var_symbol_test
+        PRIVATE
+            cumetal_runtime
+    )
+endif()
 
 target_compile_options(cumetal_runtime_vector_add_test
     PRIVATE
@@ -873,47 +877,49 @@ target_compile_options(cumetal_runtime_atomic_test
         -Wpedantic
 )
 
-target_compile_options(cumetal_runtime_registration_path_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    target_compile_options(cumetal_runtime_registration_path_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
 
-target_compile_options(cumetal_runtime_call_config_registration_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+    target_compile_options(cumetal_runtime_call_config_registration_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
 
-target_compile_options(cumetal_runtime_registration_fatbin_ptx_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+    target_compile_options(cumetal_runtime_registration_fatbin_ptx_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
 
-target_compile_options(cumetal_runtime_legacy_launch_registration_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+    target_compile_options(cumetal_runtime_legacy_launch_registration_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
 
-target_compile_options(cumetal_runtime_registration_fatbinary2_symbols_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+    target_compile_options(cumetal_runtime_registration_fatbinary2_symbols_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
 
-target_compile_options(cumetal_runtime_registration_var_symbol_test
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-)
+    target_compile_options(cumetal_runtime_registration_var_symbol_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
+endif()
 
 add_test(
     NAME functional_runtime_vector_add
@@ -1327,57 +1333,59 @@ add_test(
 
 set_tests_properties(functional_runtime_atomic PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_registration_path
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
-            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
-            $<TARGET_FILE:cumetal_runtime_registration_path_test>
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
-)
+if(CUMETAL_ENABLE_BINARY_SHIM)
+    add_test(
+        NAME functional_runtime_registration_path
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+                ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+                $<TARGET_FILE:cumetal_runtime_registration_path_test>
+                ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+    )
 
-set_tests_properties(functional_runtime_registration_path PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(functional_runtime_registration_path PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_call_config_registration
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
-            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
-            $<TARGET_FILE:cumetal_runtime_call_config_registration_test>
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
-)
+    add_test(
+        NAME functional_runtime_call_config_registration
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+                ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+                $<TARGET_FILE:cumetal_runtime_call_config_registration_test>
+                ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+    )
 
-set_tests_properties(functional_runtime_call_config_registration PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(functional_runtime_call_config_registration PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_registration_fatbin_ptx
-    COMMAND bash
-            ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_registration_fatbin_ptx.sh
-            $<TARGET_FILE:cumetal_runtime_registration_fatbin_ptx_test>
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/vector_add.ptx
-)
+    add_test(
+        NAME functional_runtime_registration_fatbin_ptx
+        COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_registration_fatbin_ptx.sh
+                $<TARGET_FILE:cumetal_runtime_registration_fatbin_ptx_test>
+                ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/vector_add.ptx
+    )
 
-set_tests_properties(functional_runtime_registration_fatbin_ptx PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(functional_runtime_registration_fatbin_ptx PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_legacy_launch_registration
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
-            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
-            $<TARGET_FILE:cumetal_runtime_legacy_launch_registration_test>
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
-)
+    add_test(
+        NAME functional_runtime_legacy_launch_registration
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+                ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+                $<TARGET_FILE:cumetal_runtime_legacy_launch_registration_test>
+                ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+    )
 
-set_tests_properties(functional_runtime_legacy_launch_registration PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(functional_runtime_legacy_launch_registration PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_registration_fatbinary2_symbols
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
-            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
-            $<TARGET_FILE:cumetal_runtime_registration_fatbinary2_symbols_test>
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
-)
+    add_test(
+        NAME functional_runtime_registration_fatbinary2_symbols
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+                ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+                $<TARGET_FILE:cumetal_runtime_registration_fatbinary2_symbols_test>
+                ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+    )
 
-set_tests_properties(functional_runtime_registration_fatbinary2_symbols PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(functional_runtime_registration_fatbinary2_symbols PROPERTIES SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME functional_runtime_registration_var_symbol
-    COMMAND cumetal_runtime_registration_var_symbol_test
-)
+    add_test(
+        NAME functional_runtime_registration_var_symbol
+        COMMAND cumetal_runtime_registration_var_symbol_test
+    )
+endif()

@@ -295,15 +295,15 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
                 ${CMAKE_CURRENT_BINARY_DIR}
     )
     set_tests_properties(unit_binary_shim_link_alias PROPERTIES SKIP_RETURN_CODE 77)
-endif()
 
-add_test(
-    NAME unit_binary_shim_symbol_exports
-    COMMAND bash
-            ${CMAKE_CURRENT_SOURCE_DIR}/run_binary_shim_symbol_exports_test.sh
-            $<TARGET_FILE:cumetal_runtime>
-)
-set_tests_properties(unit_binary_shim_symbol_exports PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(
+        NAME unit_binary_shim_symbol_exports
+        COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/run_binary_shim_symbol_exports_test.sh
+                $<TARGET_FILE:cumetal_runtime>
+    )
+    set_tests_properties(unit_binary_shim_symbol_exports PROPERTIES SKIP_RETURN_CODE 77)
+endif()
 
 add_test(
     NAME unit_library_link_aliases

@@ -143,7 +143,7 @@ Build
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 cmake --install build --prefix /tmp/cumetal-install
-# optional: install libcuda.dylib alias for binary-shim workflows
+# optional: enable binary-shim registration exports + install libcuda.dylib alias
 cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCUMETAL_ENABLE_BINARY_SHIM=ON
 ```
 
@@ -248,6 +248,7 @@ ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-fail
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R functional_runtime_atomic --output-on-failure
+# binary-shim-only tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
 ctest --test-dir build -R functional_runtime_registration_path --output-on-failure
 ctest --test-dir build -R functional_runtime_call_config_registration --output-on-failure
 ctest --test-dir build -R functional_runtime_registration_fatbin_ptx --output-on-failure
@@ -268,6 +269,7 @@ ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_ratio_gate --output-on-failure
 ctest --test-dir build -R unit_runtime_library_aliases --output-on-failure
+# binary-shim-only unit tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
 ctest --test-dir build -R unit_binary_shim_symbol_exports --output-on-failure
 ctest --test-dir build -R unit_binary_shim_library_alias --output-on-failure
 ctest --test-dir build -R unit_binary_shim_link_alias --output-on-failure
