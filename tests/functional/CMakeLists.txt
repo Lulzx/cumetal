@@ -227,6 +227,10 @@ add_executable(cumetal_runtime_registration_fatbinary2_symbols_test
     runtime_registration_fatbinary2_symbols_test.cpp
 )
 
+add_executable(cumetal_runtime_registration_var_symbol_test
+    runtime_registration_var_symbol_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -503,6 +507,11 @@ target_link_libraries(cumetal_runtime_legacy_launch_registration_test
 )
 
 target_link_libraries(cumetal_runtime_registration_fatbinary2_symbols_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_registration_var_symbol_test
     PRIVATE
         cumetal_runtime
 )
@@ -893,6 +902,13 @@ target_compile_options(cumetal_runtime_legacy_launch_registration_test
 )
 
 target_compile_options(cumetal_runtime_registration_fatbinary2_symbols_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_registration_var_symbol_test
     PRIVATE
         -Wall
         -Wextra
@@ -1360,3 +1376,8 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_registration_fatbinary2_symbols PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_registration_var_symbol
+    COMMAND cumetal_runtime_registration_var_symbol_test
+)

@@ -49,7 +49,8 @@ Implemented today:
     against `libcumetal`, execute and validate output)
   - opt-in registration path symbols for binary-shim style launches
     (`__cudaRegisterFatBinary`, `__cudaRegisterFatBinary2`, `__cudaRegisterFatBinary3`,
-    `__cudaRegisterFatBinaryEnd`, `__cudaRegisterFunction`, `__cudaRegisterManagedVar`,
+    `__cudaRegisterFatBinaryEnd`, `__cudaRegisterFunction`, `__cudaRegisterVar`,
+    `__cudaRegisterManagedVar`,
     `__cudaPushCallConfiguration`)
   - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
 
@@ -252,6 +253,7 @@ ctest --test-dir build -R functional_runtime_call_config_registration --output-o
 ctest --test-dir build -R functional_runtime_registration_fatbin_ptx --output-on-failure
 ctest --test-dir build -R functional_runtime_legacy_launch_registration --output-on-failure
 ctest --test-dir build -R functional_runtime_registration_fatbinary2_symbols --output-on-failure
+ctest --test-dir build -R functional_runtime_registration_var_symbol --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure

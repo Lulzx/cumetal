@@ -63,10 +63,17 @@ struct RegistrationRecord {
     std::string kernel_name;
 };
 
+struct RegistrationSymbolRecord {
+    void* module_handle = nullptr;
+    const void* device_address = nullptr;
+    std::size_t size = 0;
+};
+
 struct RegistrationState {
     std::mutex mutex;
     std::unordered_map<void*, std::unique_ptr<RegistrationModule>> modules;
     std::unordered_map<const void*, RegistrationRecord> kernels;
+    std::unordered_map<const void*, RegistrationSymbolRecord> symbols;
 };
 
 RegistrationState& state() {
@@ -351,6 +358,27 @@ bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out) 
     return true;
 }
 
+bool lookup_registered_symbol(const void* host_symbol,
+                              const void** out_device_symbol,
+                              std::size_t* out_size) {
+    if (host_symbol == nullptr || out_device_symbol == nullptr) {
+        return false;
+    }
+
+    RegistrationState& s = state();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    const auto found = s.symbols.find(host_symbol);
+    if (found == s.symbols.end() || found->second.device_address == nullptr) {
+        return false;
+    }
+
+    *out_device_symbol = found->second.device_address;
+    if (out_size != nullptr) {
+        *out_size = found->second.size;
+    }
+    return true;
+}
+
 void clear() {
     std::vector<std::string> owned;
     RegistrationState& s = state();
@@ -367,6 +395,7 @@ void clear() {
             }
         }
         s.kernels.clear();
+        s.symbols.clear();
         s.modules.clear();
         tls_launch_stack.clear();
     }
@@ -422,6 +451,13 @@ void __cudaUnregisterFatBinary(void** fat_cubin_handle) {
         for (auto it = s.kernels.begin(); it != s.kernels.end();) {
             if (it->second.module_handle == handle) {
                 it = s.kernels.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (auto it = s.symbols.begin(); it != s.symbols.end();) {
+            if (it->second.module_handle == handle) {
+                it = s.symbols.erase(it);
             } else {
                 ++it;
             }
@@ -496,9 +532,24 @@ void __cudaRegisterVar(void** fat_cubin_handle,
     (void)device_address;
     (void)device_name;
     (void)ext;
-    (void)size;
     (void)constant;
     (void)global;
+
+    if (host_var == nullptr) {
+        return;
+    }
+
+    const void* mapped = device_address == nullptr ? static_cast<const void*>(host_var)
+                                                   : static_cast<const void*>(device_address);
+    void* handle = fat_cubin_handle == nullptr ? nullptr : reinterpret_cast<void*>(fat_cubin_handle);
+
+    cumetal::registration::RegistrationState& s = cumetal::registration::state();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.symbols[host_var] = cumetal::registration::RegistrationSymbolRecord{
+        .module_handle = handle,
+        .device_address = mapped,
+        .size = size,
+    };
 }
 
 void __cudaRegisterManagedVar(void** fat_cubin_handle,

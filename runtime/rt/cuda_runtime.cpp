@@ -366,11 +366,19 @@ cudaError_t checked_symbol_ptr(const void* symbol,
         return cudaErrorInvalidValue;
     }
 
+    const void* resolved_symbol = symbol;
+    std::size_t resolved_size = 0;
+    if (cumetal::registration::lookup_registered_symbol(symbol, &resolved_symbol, &resolved_size)) {
+        if (resolved_size > 0 && (offset > resolved_size || count > (resolved_size - offset))) {
+            return cudaErrorInvalidValue;
+        }
+    }
+
     if (offset > (std::numeric_limits<size_t>::max() - count)) {
         return cudaErrorInvalidValue;
     }
 
-    *out_ptr = static_cast<const unsigned char*>(symbol) + offset;
+    *out_ptr = static_cast<const unsigned char*>(resolved_symbol) + offset;
     return cudaSuccess;
 }
 
