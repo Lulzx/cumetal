@@ -88,10 +88,12 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/air_inspect tests/air_abi/reference/reference.metallib
 ./build/air_validate tests/air_abi/reference/reference.metallib --xcrun
 ./build/cumetalc --mode xcrun --input tests/air_abi/reference/vector_add.metal --output /tmp/vector_add.cumetalc.metallib --overwrite
+./build/cumetalc --mode xcrun tests/air_abi/reference/vector_add.metal -o /tmp/vector_add.cumetalc.positional.metallib --overwrite
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
 ctest --test-dir build -R air_abi_validate_negative --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_emit_load_xcrun --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_positional_emit_load_xcrun --output-on-failure
 ```
 
 Runtime execution tests

@@ -7,7 +7,7 @@ namespace {
 
 void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0
-              << " --input <file.{metal,ll,air,bc}> --output <file.metallib>"
+              << " [--input] <file.{metal,ll,air,bc}> [--output|-o <file.metallib>]"
                  " [--mode xcrun|experimental] [--fallback-experimental]"
                  " [--overwrite] [--skip-validate] [--xcrun-validate]"
                  " [--kernel-name name]\n";
@@ -18,6 +18,7 @@ void print_usage(const char* argv0) {
 int main(int argc, char** argv) {
     cumetal::air_emitter::EmitOptions options;
     bool mode_set = false;
+    bool positional_input_set = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -66,15 +67,25 @@ int main(int argc, char** argv) {
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
-        } else {
+        } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "unknown option: " << arg << "\n";
+            return 2;
+        } else if (!positional_input_set && options.input.empty()) {
+            options.input = arg;
+            positional_input_set = true;
+        } else {
+            std::cerr << "unexpected positional argument: " << arg << "\n";
             return 2;
         }
     }
 
-    if (options.input.empty() || options.output.empty()) {
+    if (options.input.empty()) {
         print_usage(argv[0]);
         return 2;
+    }
+    if (options.output.empty()) {
+        options.output = options.input;
+        options.output.replace_extension(".metallib");
     }
 
     if (!mode_set) {
