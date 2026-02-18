@@ -173,10 +173,30 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    int dummy_option = 0;
-    if (cuModuleLoadDataEx(&module, data.data(), 1, &dummy_option, &dummy_option) !=
-        CUDA_ERROR_INVALID_VALUE) {
-        std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_VALUE for nonzero loadDataEx options\n");
+    int option_keys[1] = {0};
+    void* option_values[1] = {nullptr};
+    if (cuModuleLoadDataEx(&module, data.data(), 1, option_keys, option_values) != CUDA_SUCCESS ||
+        module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadDataEx with nonzero options failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after loadDataEx(nonzero options) failed\n");
+        return 1;
+    }
+
+    if (cuModuleLoadDataEx(&module, data.data(), 1, nullptr, option_values) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_VALUE for null options pointer\n");
+        return 1;
+    }
+
+    if (cuModuleLoadDataEx(&module, data.data(), 1, option_keys, nullptr) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_VALUE for null optionValues pointer\n");
         return 1;
     }
 
@@ -220,6 +240,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("PASS: cuModuleLoadData and cuModuleLoadDataEx support metallib bytes and paths\n");
+    std::printf("PASS: cuModuleLoadData and cuModuleLoadDataEx support metallib bytes/paths and option arrays\n");
     return 0;
 }

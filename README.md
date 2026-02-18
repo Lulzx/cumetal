@@ -85,6 +85,7 @@ Supported driver API subset:
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
 - `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
 - `cuModuleLoadData` accepts metallib bytes/paths and PTX text images (including basic CUDA fatbin wrapper PTX variants)
+- `cuModuleLoadDataEx` accepts option arrays in compatibility mode (options are currently ignored)
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
 - `cuMemAlloc`, `cuMemAllocManaged`, `cuMemFree`
 - `cuMemGetInfo`

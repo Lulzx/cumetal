@@ -971,7 +971,7 @@ CUresult cuModuleLoadDataEx(CUmodule* module,
                             unsigned int numOptions,
                             void* options,
                             void* optionValues) {
-    if (numOptions != 0 || options != nullptr || optionValues != nullptr) {
+    if ((numOptions > 0) && (options == nullptr || optionValues == nullptr)) {
         return CUDA_ERROR_INVALID_VALUE;
     }
     return cuModuleLoadData(module, image);
