@@ -10,6 +10,7 @@ Implemented today:
 
 - Phase 0.5 tooling:
   - `air_inspect`: `.metallib` container inspection
+    - parses Apple function-list tags (`NAME`/`TYPE`/`HASH`/`MDSZ`/`OFFT`/`VERS`) on current Xcode layout
   - `cumetal-air-emitter`: `.metallib` emission (xcrun-backed + experimental mode)
   - `cumetalc`: thin compiler-driver CLI over the AIR emitter
   - `air_validate`: structural checks + optional `xcrun metal -validate`
@@ -146,6 +147,7 @@ ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure
+ctest --test-dir build -R unit_metallib_parser --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 

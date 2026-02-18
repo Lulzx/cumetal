@@ -297,130 +297,158 @@ bool parse_real_metallib(MetallibSummary* summary, const std::vector<std::uint8_
         return false;
     }
 
-    if (*function_list_offset + *function_list_size > bytes.size()) {
-        return false;
-    }
     if (*bitcode_section_offset + *bitcode_section_size > bytes.size()) {
         return false;
     }
 
-    std::size_t cursor = static_cast<std::size_t>(*function_list_offset);
-    const std::size_t function_list_end =
-        static_cast<std::size_t>(*function_list_offset + *function_list_size);
-
-    const auto entry_count = read_u32_le(bytes, cursor);
-    if (!entry_count) {
-        return false;
+    std::vector<std::size_t> function_list_end_candidates;
+    const std::uint64_t function_list_end_base = *function_list_offset + *function_list_size;
+    if (function_list_end_base <= bytes.size()) {
+        function_list_end_candidates.push_back(static_cast<std::size_t>(function_list_end_base));
     }
-    cursor += 4;
 
-    std::vector<KernelRecord> kernels;
-    kernels.reserve(*entry_count);
+    // Some metallib variants report function-list size excluding the leading entry-count word.
+    const std::uint64_t function_list_end_with_count = function_list_end_base + 4;
+    if (function_list_end_with_count <= bytes.size() &&
+        function_list_end_with_count != function_list_end_base) {
+        function_list_end_candidates.push_back(static_cast<std::size_t>(function_list_end_with_count));
+    }
 
-    for (std::uint32_t entry = 0; entry < *entry_count; ++entry) {
-        if (cursor + 4 > function_list_end) {
-            return false;
+    for (const std::size_t function_list_end : function_list_end_candidates) {
+        std::size_t cursor = static_cast<std::size_t>(*function_list_offset);
+
+        const auto entry_count = read_u32_le(bytes, cursor);
+        if (!entry_count) {
+            continue;
         }
+        cursor += 4;
 
-        const auto group_size = read_u32_le(bytes, cursor);
-        if (!group_size || *group_size < 4 || cursor + *group_size > function_list_end) {
-            return false;
-        }
+        std::vector<KernelRecord> kernels;
+        kernels.reserve(*entry_count);
+        bool parse_failed = false;
 
-        const std::size_t group_begin = cursor + 4;
-        const std::size_t group_end = cursor + *group_size;
-        std::size_t tag_cursor = group_begin;
-
-        KernelRecord kernel;
-        kernel.name = "function_" + std::to_string(entry);
-
-        std::uint64_t bitcode_rel = 0;
-        std::uint64_t bitcode_size = 0;
-        bool have_offt = false;
-        bool have_mdsz = false;
-
-        while (tag_cursor + 6 <= group_end) {
-            const std::string tag(reinterpret_cast<const char*>(bytes.data() + tag_cursor), 4);
-            const auto tag_size = read_u16_le(bytes, tag_cursor + 4);
-            if (!tag_size) {
-                return false;
-            }
-
-            const std::size_t data_offset = tag_cursor + 6;
-            const std::size_t data_end = data_offset + *tag_size;
-            if (data_end > group_end) {
-                return false;
-            }
-
-            if (tag == "NAME") {
-                std::string name;
-                if (parse_cstring_from_blob(bytes, data_offset, *tag_size, &name)) {
-                    kernel.name = std::move(name);
-                }
-            } else if (tag == "MDSZ") {
-                const auto mdsz = read_u64_le(bytes, data_offset);
-                if (mdsz) {
-                    bitcode_size = *mdsz;
-                    have_mdsz = true;
-                }
-            } else if (tag == "OFFT") {
-                const auto public_off = read_u64_le(bytes, data_offset);
-                const auto private_off = read_u64_le(bytes, data_offset + 8);
-                const auto bcode_off = read_u64_le(bytes, data_offset + 16);
-                if (public_off && private_off && bcode_off) {
-                    bitcode_rel = *bcode_off;
-                    have_offt = true;
-                    kernel.metadata.push_back(
-                        {.key = "offt.public", .value = std::to_string(*public_off)});
-                    kernel.metadata.push_back(
-                        {.key = "offt.private", .value = std::to_string(*private_off)});
-                    kernel.metadata.push_back(
-                        {.key = "offt.bitcode", .value = std::to_string(*bcode_off)});
-                }
-            } else if (tag == "TYPE" && *tag_size >= 1) {
-                const std::uint8_t type = bytes[data_offset];
-                kernel.metadata.push_back({.key = "function.type", .value = std::to_string(type)});
-            } else if (tag == "VERS" && *tag_size >= 8) {
-                const auto air_major = read_u16_le(bytes, data_offset + 0);
-                const auto air_minor = read_u16_le(bytes, data_offset + 2);
-                const auto lang_major = read_u16_le(bytes, data_offset + 4);
-                const auto lang_minor = read_u16_le(bytes, data_offset + 6);
-                if (air_major && air_minor && lang_major && lang_minor) {
-                    kernel.metadata.push_back(
-                        {.key = "air.version", .value = std::to_string(*air_major) + "." +
-                                                        std::to_string(*air_minor)});
-                    kernel.metadata.push_back(
-                        {.key = "language.version", .value = std::to_string(*lang_major) + "." +
-                                                             std::to_string(*lang_minor)});
-                }
-            } else if (tag == "HASH" && *tag_size > 0) {
-                kernel.metadata.push_back(
-                    {.key = "function.hash.prefix", .value = to_hex_prefix(bytes, data_offset, *tag_size, 8)});
-            } else if (tag == "ENDT") {
-                tag_cursor = group_end;
+        for (std::uint32_t entry = 0; entry < *entry_count; ++entry) {
+            if (cursor + 4 > function_list_end) {
+                parse_failed = true;
                 break;
             }
 
-            tag_cursor = data_end;
-        }
-
-        if (have_offt && have_mdsz) {
-            kernel.bitcode_offset = *bitcode_section_offset + bitcode_rel;
-            kernel.bitcode_size = bitcode_size;
-            if (kernel.bitcode_offset + kernel.bitcode_size <= bytes.size()) {
-                kernel.bitcode_signature_ok =
-                    looks_like_bitcode_signature(bytes, static_cast<std::size_t>(kernel.bitcode_offset));
+            const auto group_size = read_u32_le(bytes, cursor);
+            if (!group_size || *group_size < 4 || cursor + *group_size > function_list_end) {
+                parse_failed = true;
+                break;
             }
+
+            const std::size_t group_begin = cursor + 4;
+            const std::size_t group_end = cursor + *group_size;
+            std::size_t tag_cursor = group_begin;
+
+            KernelRecord kernel;
+            kernel.name = "function_" + std::to_string(entry);
+
+            std::uint64_t bitcode_rel = 0;
+            std::uint64_t bitcode_size = 0;
+            bool have_offt = false;
+            bool have_mdsz = false;
+
+            while (tag_cursor + 6 <= group_end) {
+                const std::string tag(reinterpret_cast<const char*>(bytes.data() + tag_cursor), 4);
+                const auto tag_size = read_u16_le(bytes, tag_cursor + 4);
+                if (!tag_size) {
+                    parse_failed = true;
+                    break;
+                }
+
+                const std::size_t data_offset = tag_cursor + 6;
+                const std::size_t data_end = data_offset + *tag_size;
+                if (data_end > group_end) {
+                    parse_failed = true;
+                    break;
+                }
+
+                if (tag == "NAME") {
+                    std::string name;
+                    if (parse_cstring_from_blob(bytes, data_offset, *tag_size, &name)) {
+                        kernel.name = std::move(name);
+                    }
+                } else if (tag == "MDSZ") {
+                    const auto mdsz = read_u64_le(bytes, data_offset);
+                    if (mdsz) {
+                        bitcode_size = *mdsz;
+                        have_mdsz = true;
+                    }
+                } else if (tag == "OFFT") {
+                    const auto public_off = read_u64_le(bytes, data_offset);
+                    const auto private_off = read_u64_le(bytes, data_offset + 8);
+                    const auto bcode_off = read_u64_le(bytes, data_offset + 16);
+                    if (public_off && private_off && bcode_off) {
+                        bitcode_rel = *bcode_off;
+                        have_offt = true;
+                        kernel.metadata.push_back(
+                            {.key = "offt.public", .value = std::to_string(*public_off)});
+                        kernel.metadata.push_back(
+                            {.key = "offt.private", .value = std::to_string(*private_off)});
+                        kernel.metadata.push_back(
+                            {.key = "offt.bitcode", .value = std::to_string(*bcode_off)});
+                    }
+                } else if (tag == "TYPE" && *tag_size >= 1) {
+                    const std::uint8_t type = bytes[data_offset];
+                    kernel.metadata.push_back({.key = "function.type", .value = std::to_string(type)});
+                    if (type == 2) {
+                        kernel.metadata.push_back({.key = "air.kernel", .value = "true"});
+                    }
+                } else if (tag == "VERS" && *tag_size >= 8) {
+                    const auto air_major = read_u16_le(bytes, data_offset + 0);
+                    const auto air_minor = read_u16_le(bytes, data_offset + 2);
+                    const auto lang_major = read_u16_le(bytes, data_offset + 4);
+                    const auto lang_minor = read_u16_le(bytes, data_offset + 6);
+                    if (air_major && air_minor && lang_major && lang_minor) {
+                        kernel.metadata.push_back(
+                            {.key = "air.version", .value = std::to_string(*air_major) + "." +
+                                                            std::to_string(*air_minor)});
+                        kernel.metadata.push_back(
+                            {.key = "language.version", .value = std::to_string(*lang_major) + "." +
+                                                                 std::to_string(*lang_minor)});
+                    }
+                } else if (tag == "HASH" && *tag_size > 0) {
+                    kernel.metadata.push_back({.key = "function.hash.prefix",
+                                               .value = to_hex_prefix(bytes, data_offset, *tag_size, 8)});
+                } else if (tag == "ENDT") {
+                    tag_cursor = group_end;
+                    break;
+                }
+
+                tag_cursor = data_end;
+            }
+
+            if (parse_failed) {
+                break;
+            }
+
+            if (have_offt && have_mdsz) {
+                kernel.bitcode_offset = *bitcode_section_offset + bitcode_rel;
+                kernel.bitcode_size = bitcode_size;
+                if (kernel.bitcode_offset + kernel.bitcode_size <= bytes.size()) {
+                    kernel.bitcode_signature_ok =
+                        looks_like_bitcode_signature(bytes, static_cast<std::size_t>(kernel.bitcode_offset));
+                }
+            }
+
+            kernels.push_back(std::move(kernel));
+            cursor += *group_size;
         }
 
-        kernels.push_back(std::move(kernel));
-        cursor += *group_size;
+        if (parse_failed) {
+            continue;
+        }
+
+        summary->function_list_parsed = true;
+        summary->function_list_parser = "metallib-function-list";
+        summary->kernels = std::move(kernels);
+        return true;
     }
 
-    summary->function_list_parsed = true;
-    summary->function_list_parser = "metallib-function-list";
-    summary->kernels = std::move(kernels);
-    return true;
+    return false;
 }
 
 void scan_bitcode_sections(MetallibSummary* summary, const std::vector<std::uint8_t>& bytes) {
