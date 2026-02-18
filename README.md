@@ -144,6 +144,7 @@ ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
+ctest --test-dir build -R functional_runtime_symbol_memcpy --output-on-failure
 ctest --test-dir build -R functional_runtime_mem_get_info --output-on-failure
 ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_host_pointer_api --output-on-failure

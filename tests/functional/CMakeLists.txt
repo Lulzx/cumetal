@@ -43,6 +43,10 @@ add_executable(cumetal_runtime_memcpy_kind_test
     runtime_memcpy_kind_test.cpp
 )
 
+add_executable(cumetal_runtime_symbol_memcpy_test
+    runtime_symbol_memcpy_test.cpp
+)
+
 add_executable(cumetal_runtime_mem_get_info_test
     runtime_mem_get_info_test.cpp
 )
@@ -233,6 +237,11 @@ target_link_libraries(cumetal_runtime_stream_query_test
 )
 
 target_link_libraries(cumetal_runtime_memcpy_kind_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_symbol_memcpy_test
     PRIVATE
         cumetal_runtime
 )
@@ -481,6 +490,13 @@ target_compile_options(cumetal_runtime_stream_query_test
 )
 
 target_compile_options(cumetal_runtime_memcpy_kind_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_symbol_memcpy_test
     PRIVATE
         -Wall
         -Wextra
@@ -832,6 +848,11 @@ set_tests_properties(functional_runtime_stream_query PROPERTIES SKIP_RETURN_CODE
 add_test(
     NAME functional_runtime_memcpy_kind
     COMMAND cumetal_runtime_memcpy_kind_test
+)
+
+add_test(
+    NAME functional_runtime_symbol_memcpy
+    COMMAND cumetal_runtime_symbol_memcpy_test
 )
 
 add_test(

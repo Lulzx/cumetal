@@ -8,8 +8,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <new>
+#include <limits>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -269,6 +270,78 @@ cudaError_t resolve_memcpy_kind(void* dst, const void* src, cudaMemcpyKind kind,
     }
 
     *resolved_kind = kind;
+    return cudaSuccess;
+}
+
+cudaError_t resolve_memcpy_to_symbol_kind(const void* src,
+                                          cudaMemcpyKind kind,
+                                          cudaMemcpyKind* resolved_kind) {
+    if (resolved_kind == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    const bool src_is_device = is_device_pointer(src);
+    if (kind == cudaMemcpyDefault) {
+        *resolved_kind = src_is_device ? cudaMemcpyDeviceToDevice : cudaMemcpyHostToDevice;
+        return cudaSuccess;
+    }
+
+    switch (kind) {
+        case cudaMemcpyHostToDevice:
+            *resolved_kind = cudaMemcpyHostToDevice;
+            return cudaSuccess;
+        case cudaMemcpyDeviceToDevice:
+            if (!src_is_device) {
+                return cudaErrorInvalidDevicePointer;
+            }
+            *resolved_kind = cudaMemcpyDeviceToDevice;
+            return cudaSuccess;
+        default:
+            return cudaErrorInvalidValue;
+    }
+}
+
+cudaError_t resolve_memcpy_from_symbol_kind(void* dst,
+                                            cudaMemcpyKind kind,
+                                            cudaMemcpyKind* resolved_kind) {
+    if (resolved_kind == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    const bool dst_is_device = is_device_pointer(dst);
+    if (kind == cudaMemcpyDefault) {
+        *resolved_kind = dst_is_device ? cudaMemcpyDeviceToDevice : cudaMemcpyDeviceToHost;
+        return cudaSuccess;
+    }
+
+    switch (kind) {
+        case cudaMemcpyDeviceToHost:
+            *resolved_kind = cudaMemcpyDeviceToHost;
+            return cudaSuccess;
+        case cudaMemcpyDeviceToDevice:
+            if (!dst_is_device) {
+                return cudaErrorInvalidDevicePointer;
+            }
+            *resolved_kind = cudaMemcpyDeviceToDevice;
+            return cudaSuccess;
+        default:
+            return cudaErrorInvalidValue;
+    }
+}
+
+cudaError_t checked_symbol_ptr(const void* symbol,
+                               size_t count,
+                               size_t offset,
+                               const unsigned char** out_ptr) {
+    if (symbol == nullptr || out_ptr == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    if (offset > (std::numeric_limits<size_t>::max() - count)) {
+        return cudaErrorInvalidValue;
+    }
+
+    *out_ptr = static_cast<const unsigned char*>(symbol) + offset;
     return cudaSuccess;
 }
 
@@ -812,6 +885,166 @@ cudaError_t cudaMemcpyAsync(void* dst,
 
     if (count > 0) {
         std::memcpy(dst, src, count);
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpyToSymbol(const void* symbol,
+                               const void* src,
+                               size_t count,
+                               size_t offset,
+                               cudaMemcpyKind kind) {
+    if (symbol == nullptr || (src == nullptr && count > 0)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_to_symbol_kind(src, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
+
+    const unsigned char* symbol_ptr = nullptr;
+    const cudaError_t symbol_status = checked_symbol_ptr(symbol, count, offset, &symbol_ptr);
+    if (symbol_status != cudaSuccess) {
+        return fail(symbol_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    if (count > 0) {
+        std::memcpy(const_cast<unsigned char*>(symbol_ptr), src, count);
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpyFromSymbol(void* dst,
+                                 const void* symbol,
+                                 size_t count,
+                                 size_t offset,
+                                 cudaMemcpyKind kind) {
+    if ((dst == nullptr && count > 0) || symbol == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_from_symbol_kind(dst, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
+
+    const unsigned char* symbol_ptr = nullptr;
+    const cudaError_t symbol_status = checked_symbol_ptr(symbol, count, offset, &symbol_ptr);
+    if (symbol_status != cudaSuccess) {
+        return fail(symbol_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    if (count > 0) {
+        std::memcpy(dst, symbol_ptr, count);
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpyToSymbolAsync(const void* symbol,
+                                    const void* src,
+                                    size_t count,
+                                    size_t offset,
+                                    cudaMemcpyKind kind,
+                                    cudaStream_t stream) {
+    if (symbol == nullptr || (src == nullptr && count > 0)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_to_symbol_kind(src, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
+
+    const unsigned char* symbol_ptr = nullptr;
+    const cudaError_t symbol_status = checked_symbol_ptr(symbol, count, offset, &symbol_ptr);
+    if (symbol_status != cudaSuccess) {
+        return fail(symbol_status);
+    }
+
+    const cudaError_t sync_status = synchronize_stream_for_host_op(stream, nullptr);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    if (count > 0) {
+        std::memcpy(const_cast<unsigned char*>(symbol_ptr), src, count);
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpyFromSymbolAsync(void* dst,
+                                      const void* symbol,
+                                      size_t count,
+                                      size_t offset,
+                                      cudaMemcpyKind kind,
+                                      cudaStream_t stream) {
+    if ((dst == nullptr && count > 0) || symbol == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    cudaMemcpyKind resolved_kind = cudaMemcpyDefault;
+    const cudaError_t kind_status = resolve_memcpy_from_symbol_kind(dst, kind, &resolved_kind);
+    if (kind_status != cudaSuccess) {
+        return fail(kind_status);
+    }
+    (void)resolved_kind;
+
+    const unsigned char* symbol_ptr = nullptr;
+    const cudaError_t symbol_status = checked_symbol_ptr(symbol, count, offset, &symbol_ptr);
+    if (symbol_status != cudaSuccess) {
+        return fail(symbol_status);
+    }
+
+    const cudaError_t sync_status = synchronize_stream_for_host_op(stream, nullptr);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    if (count > 0) {
+        std::memcpy(dst, symbol_ptr, count);
     }
 
     return fail(cudaSuccess);

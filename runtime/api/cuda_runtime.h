@@ -145,6 +145,28 @@ cudaError_t cudaMemcpyAsync(void* dst,
                             size_t count,
                             cudaMemcpyKind kind,
                             cudaStream_t stream);
+cudaError_t cudaMemcpyToSymbol(const void* symbol,
+                               const void* src,
+                               size_t count,
+                               size_t offset,
+                               cudaMemcpyKind kind);
+cudaError_t cudaMemcpyFromSymbol(void* dst,
+                                 const void* symbol,
+                                 size_t count,
+                                 size_t offset,
+                                 cudaMemcpyKind kind);
+cudaError_t cudaMemcpyToSymbolAsync(const void* symbol,
+                                    const void* src,
+                                    size_t count,
+                                    size_t offset,
+                                    cudaMemcpyKind kind,
+                                    cudaStream_t stream);
+cudaError_t cudaMemcpyFromSymbolAsync(void* dst,
+                                      const void* symbol,
+                                      size_t count,
+                                      size_t offset,
+                                      cudaMemcpyKind kind,
+                                      cudaStream_t stream);
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
 cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
 cudaError_t cudaDeviceReset(void);
