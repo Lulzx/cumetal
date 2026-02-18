@@ -1,6 +1,7 @@
 # AIR / metallib ABI Notes (Phase 0.5)
 
-Status: draft, continuously updated as reverse-engineering data is collected.
+Status: draft with concrete reference bytes from `tests/air_abi/reference/reference.metallib`
+generated on February 18, 2026.
 
 ## Scope
 
@@ -22,17 +23,68 @@ Phase 0.5 harness. The focus is structural acceptance, not kernel execution.
   - MetalLibraryArchive bridge command (`tools/metal_library_archive_bridge`)
 - `cumetal_metal_load_test`: checks `MTLDevice.newLibraryWithData:` acceptance.
 
-## Current findings
+## Reference layout snapshot
 
-- A production metallib should have a magic prefix that begins with `MTL`.
-- Embedded LLVM bitcode signatures are discoverable and can be used for sanity checks during
-  development.
-- Apple function-list records include stable tags such as `NAME`, `MDSZ`, `OFFT`, and `VERS`; these are
-  now surfaced by `air_inspect` when parsing succeeds.
-- Validation should be treated as a pipeline, not a single check:
-  1. local parser (`air_validate`)
-  2. Apple CLI validation (`xcrun metal -validate`) when available
-  3. runtime load validation (`newLibraryWithData:`)
+Reference artifact (`tests/air_abi/reference/reference.metallib`) from:
+
+```bash
+xcrun metal -c tests/air_abi/reference/vector_add.metal -o reference.air
+xcrun metallib reference.air -o reference.metallib
+```
+
+`air_inspect` summary:
+
+- Size: `3760` bytes (`0xeb0`)
+- Magic: `MTLB`
+- Function list parser: `metallib-function-list`
+- Function count: `1` (`vector_add`)
+- Kernel bitcode: offset `0xf0` size `0xdc0`
+
+Header fields currently used by `parse_real_metallib` (`compiler/common/src/metallib.cpp`):
+
+| File offset | Type | Meaning | Value (reference) |
+|---|---|---|---|
+| `0x18` | `u64` | function-list offset | `0x58` |
+| `0x20` | `u64` | function-list size | `0x80` |
+| `0x48` | `u64` | bitcode-section offset | `0xf0` |
+| `0x50` | `u64` | bitcode-section size | `0xdc0` |
+
+The parser accepts two size interpretations for function-list end:
+
+1. `function_list_offset + function_list_size`
+2. `function_list_offset + function_list_size + 4`
+
+The `+4` variant is required for metallib layouts where the stored size excludes the leading
+`entry_count` word.
+
+## Function record tags
+
+Within the function-list group, the following 4-byte tags are parsed today:
+
+| Tag | Meaning | Reference value |
+|---|---|---|
+| `NAME` | function symbol | `vector_add` |
+| `TYPE` | function kind | `2` (kernel) |
+| `HASH` | digest blob (prefix reported) | `e64ad8cd3651085e...` |
+| `MDSZ` | bitcode payload size | `0xdc0` |
+| `OFFT` | public/private/bitcode offsets (relative to bitcode section) | `0/0/0` |
+| `VERS` | AIR + language version (`u16` pairs) | AIR `2.8`, language `4.0` |
+| `ENDT` | terminator | present (multiple) |
+
+Observed bytes around the first record (`0x60`):
+
+```text
+4e 41 4d 45 ... 54 59 50 45 ... 48 41 53 48 ... 4d 44 53 5a ...
+4f 46 46 54 ... 56 45 52 53 ... 45 4e 44 54
+```
+
+## Validation pipeline
+
+Validation should be treated as a pipeline, not a single check:
+
+1. Local parser (`air_validate`)
+2. Apple CLI validation (`xcrun metallib --app-store-validate` or `xcrun metal -validate`)
+3. Runtime load validation (`MTLDevice.newLibraryWithData:`)
 
 ## Repro workflow
 
@@ -65,7 +117,6 @@ driver-compatible metallib.
 
 ## Next updates expected
 
-- Replace provisional header assumptions with byte-level field mapping from confirmed reference
-  metallibs across Xcode versions.
-- Integrate MetalLibraryArchive bridge executable in CI for function/metadata cross-checks.
-- Gate CI with known-good reference metallibs in `tests/air_abi/`.
+- Compare this byte layout against additional Xcode builds and document field drift.
+- Expand tag parsing beyond the currently consumed core set when new kernels require it.
+- Keep MetalLibraryArchive validation wired in CI for parser cross-checks.
