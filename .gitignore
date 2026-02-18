@@ -1,0 +1,5 @@
+/build/
+*.air
+*.metallib
+*.o
+.DS_Store
