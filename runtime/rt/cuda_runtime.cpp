@@ -622,6 +622,42 @@ cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t
     return fail(cudaSuccess);
 }
 
+cudaError_t cudaDeviceReset(void) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    std::vector<std::pair<cudaStream_t, std::shared_ptr<cumetal::metal_backend::Stream>>> streams;
+    {
+        std::lock_guard<std::mutex> lock(state.stream_mutex);
+        streams.reserve(state.streams.size());
+        for (auto& [handle, backend_stream] : state.streams) {
+            streams.emplace_back(handle, std::move(backend_stream));
+        }
+        state.streams.clear();
+    }
+
+    for (auto& [handle, backend_stream] : streams) {
+        if (backend_stream != nullptr) {
+            std::string destroy_error;
+            (void)cumetal::metal_backend::destroy_stream(backend_stream, &destroy_error);
+        }
+        delete handle;
+    }
+
+    state.allocations.clear();
+    state.current_device = 0;
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaDeviceSynchronize(void) {
     const cudaError_t init_status = ensure_initialized();
     if (init_status != cudaSuccess) {

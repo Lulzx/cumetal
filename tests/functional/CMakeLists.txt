@@ -59,6 +59,10 @@ add_executable(cumetal_runtime_device_attribute_test
     runtime_device_attribute_test.cpp
 )
 
+add_executable(cumetal_runtime_device_reset_test
+    runtime_device_reset_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
@@ -185,6 +189,11 @@ target_link_libraries(cumetal_runtime_device_properties_test
 )
 
 target_link_libraries(cumetal_runtime_device_attribute_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_device_reset_test
     PRIVATE
         cumetal_runtime
 )
@@ -356,6 +365,13 @@ target_compile_options(cumetal_runtime_device_properties_test
 )
 
 target_compile_options(cumetal_runtime_device_attribute_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_device_reset_test
     PRIVATE
         -Wall
         -Wextra
@@ -570,6 +586,11 @@ add_test(
 add_test(
     NAME functional_runtime_device_attribute
     COMMAND cumetal_runtime_device_attribute_test
+)
+
+add_test(
+    NAME functional_runtime_device_reset
+    COMMAND cumetal_runtime_device_reset_test
 )
 
 add_test(

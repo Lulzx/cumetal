@@ -92,4 +92,9 @@ std::size_t AllocationTable::total_allocated_size() const {
     return total;
 }
 
+void AllocationTable::clear() {
+    std::unique_lock lock(mutex_);
+    entries_.clear();
+}
+
 }  // namespace cumetal::rt

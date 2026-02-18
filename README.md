@@ -35,6 +35,7 @@ Supported runtime API subset:
 - `cudaStreamWaitEvent`
 - `cudaEventCreate`, `cudaEventCreateWithFlags`, `cudaEventRecord`
 - `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
+- `cudaDeviceReset`
 - `cudaDeviceSynchronize`
 - `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorString`
 
@@ -98,6 +99,7 @@ ctest --test-dir build -R functional_runtime_stream_callback --output-on-failure
 ctest --test-dir build -R functional_runtime_device_api --output-on-failure
 ctest --test-dir build -R functional_runtime_device_properties --output-on-failure
 ctest --test-dir build -R functional_runtime_device_attribute --output-on-failure
+ctest --test-dir build -R functional_runtime_device_reset --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
 ctest --test-dir build -R functional_driver_device_query --output-on-failure

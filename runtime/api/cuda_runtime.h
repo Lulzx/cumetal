@@ -123,6 +123,7 @@ cudaError_t cudaMemcpyAsync(void* dst,
                             cudaStream_t stream);
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
 cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
+cudaError_t cudaDeviceReset(void);
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
