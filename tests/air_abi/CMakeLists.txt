@@ -35,3 +35,28 @@ add_test(
             ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add_air.ll
             ${CMAKE_CURRENT_BINARY_DIR}/vector_add.experimental.metallib
 )
+
+add_test(
+    NAME air_abi_validate_reference
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_reference_validation.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:air_validate>
+            $<TARGET_FILE:air_inspect>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/reference.metallib
+)
+
+add_test(
+    NAME air_abi_emit_validate_xcrun
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_xcrun_emitter_validation.sh
+            $<TARGET_FILE:cumetal-air-emitter>
+            $<TARGET_FILE:air_validate>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/vector_add.xcrun.metallib
+)
+
+set_tests_properties(
+    air_abi_validate_reference
+    air_abi_emit_validate_xcrun
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+)
