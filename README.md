@@ -212,7 +212,8 @@ Benchmark runner
   --kernel vector_add \
   --elements 262144 \
   --warmup 5 \
-  --iterations 50
+  --iterations 50 \
+  --max-ratio 2.0
 ```
 
 If `xcrun metal`/`xcrun metallib` are unavailable

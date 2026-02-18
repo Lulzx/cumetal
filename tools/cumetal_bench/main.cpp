@@ -22,12 +22,13 @@ struct Options {
     std::size_t element_count = 1u << 18;
     int warmup_iterations = 5;
     int measure_iterations = 50;
+    double max_ratio = 0.0;
 };
 
 void print_usage(const char* argv0) {
     std::printf(
         "usage: %s [--metallib <path>] [--kernel <name>] [--elements <n>] [--warmup <n>] "
-        "[--iterations <n>]\n",
+        "[--iterations <n>] [--max-ratio <x>]\n",
         argv0);
 }
 
@@ -60,6 +61,22 @@ bool parse_positive_size(const std::string& text, std::size_t* out_value) {
         return false;
     }
     *out_value = static_cast<std::size_t>(parsed);
+    return true;
+}
+
+bool parse_positive_double(const std::string& text, double* out_value) {
+    if (out_value == nullptr) {
+        return false;
+    }
+    if (text.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    const double parsed = std::strtod(text.c_str(), &end);
+    if (end == nullptr || *end != '\0' || parsed <= 0.0) {
+        return false;
+    }
+    *out_value = parsed;
     return true;
 }
 
@@ -164,6 +181,27 @@ bool parse_options(int argc, char** argv, Options* out_options, bool* out_show_h
             value = arg.substr(std::strlen("--iterations="));
             if (!parse_positive_int(value, &options.measure_iterations)) {
                 std::fprintf(stderr, "FAIL: invalid --iterations value: %s\n", value.c_str());
+                return false;
+            }
+            continue;
+        }
+
+        if (arg == "--max-ratio") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "FAIL: missing value for --max-ratio\n");
+                return false;
+            }
+            value = argv[++i];
+            if (!parse_positive_double(value, &options.max_ratio)) {
+                std::fprintf(stderr, "FAIL: invalid --max-ratio value: %s\n", value.c_str());
+                return false;
+            }
+            continue;
+        }
+        if (arg.rfind("--max-ratio=", 0) == 0) {
+            value = arg.substr(std::strlen("--max-ratio="));
+            if (!parse_positive_double(value, &options.max_ratio)) {
+                std::fprintf(stderr, "FAIL: invalid --max-ratio value: %s\n", value.c_str());
                 return false;
             }
             continue;
@@ -432,5 +470,15 @@ int main(int argc, char** argv) {
     std::printf("native_metal_avg_ms: %.4f\n", native_ms);
     std::printf("cumetal_runtime_avg_ms: %.4f\n", runtime_ms);
     std::printf("runtime_vs_native_ratio: %.3fx\n", ratio);
+    if (options.max_ratio > 0.0) {
+        std::printf("max_ratio: %.3fx\n", options.max_ratio);
+        if (ratio > options.max_ratio) {
+            std::fprintf(stderr,
+                         "FAIL: performance ratio %.3fx exceeds threshold %.3fx\n",
+                         ratio,
+                         options.max_ratio);
+            return 2;
+        }
+    }
     return 0;
 }

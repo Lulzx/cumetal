@@ -242,6 +242,12 @@ add_test(
 )
 
 add_test(
+    NAME unit_cumetal_bench_invalid_arg
+    COMMAND $<TARGET_FILE:cumetal_bench> --definitely-invalid-flag
+)
+set_tests_properties(unit_cumetal_bench_invalid_arg PROPERTIES WILL_FAIL TRUE)
+
+add_test(
     NAME unit_install_uninstall_scripts
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_install_uninstall_test.sh

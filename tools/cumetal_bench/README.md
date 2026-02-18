@@ -8,6 +8,7 @@ Current scope:
 - Single-kernel benchmark (`vector_add` by default)
 - Validates output correctness in both paths
 - Prints average milliseconds and runtime/native ratio
+- Optional perf gate via `--max-ratio` (non-zero exit on regression)
 
 Usage:
 
@@ -17,7 +18,8 @@ Usage:
   --kernel vector_add \
   --elements 262144 \
   --warmup 5 \
-  --iterations 50
+  --iterations 50 \
+  --max-ratio 2.0
 ```
 
 The metallib must already exist; generate it with:
