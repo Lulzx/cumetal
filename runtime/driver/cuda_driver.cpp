@@ -1,6 +1,7 @@
 #include "cuda.h"
 
 #include "cuda_runtime.h"
+#include "module_cache.h"
 
 #include <chrono>
 #include <cstring>
@@ -678,6 +679,11 @@ CUresult cuModuleLoadData(CUmodule* module, const void* image) {
 
     std::size_t size = 0;
     if (parse_metallib_size(image, &size)) {
+        std::filesystem::path cache_path;
+        if (cumetal::cache::stage_metallib_bytes(image, size, &cache_path, nullptr)) {
+            return create_module_from_path(cache_path.string(), /*owns_path=*/false, module);
+        }
+
         std::string staged_path;
         if (!stage_module_image_to_tempfile(image, size, &staged_path)) {
             return CUDA_ERROR_UNKNOWN;

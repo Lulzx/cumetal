@@ -27,6 +27,7 @@ target_compile_options(cumetal_common
 )
 
 add_library(cumetal_runtime STATIC
+    runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
     runtime/rt/allocation_table.cpp
     runtime/rt/cuda_runtime.cpp
@@ -42,6 +43,7 @@ set_source_files_properties(
 target_include_directories(cumetal_runtime
     PUBLIC
         runtime/api
+        runtime/cache
         runtime/rt
         runtime/metal_backend
 )

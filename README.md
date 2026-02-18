@@ -20,6 +20,7 @@ Implemented today:
   - default-stream and user-stream execution (`cudaStreamCreate/Destroy/Synchronize`)
   - runtime functional tests for vector add and saxpy
   - driver module loading from both in-memory metallib bytes and filesystem paths
+  - on-disk cache for `cuModuleLoadData` metallib byte payloads
 
 Supported runtime API subset:
 
@@ -125,6 +126,7 @@ ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
+ctest --test-dir build -R unit_module_cache --output-on-failure
 ```
 
 If `xcrun metal`/`xcrun metallib` are unavailable
