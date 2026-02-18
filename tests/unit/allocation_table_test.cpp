@@ -45,6 +45,7 @@ int main() {
     if (!expect(table.insert(base,
                              sizeof(memory),
                              cumetal::rt::AllocationKind::kDevice,
+                             0,
                              buffer,
                              &error),
                 "insert base allocation")) {
@@ -81,6 +82,7 @@ int main() {
     if (!expect(!table.insert(offset_ptr,
                               32,
                               cumetal::rt::AllocationKind::kDevice,
+                              0,
                               overlap_buffer,
                               &error),
                 "reject overlapping insert")) {

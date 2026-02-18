@@ -5,6 +5,7 @@ namespace cumetal::rt {
 bool AllocationTable::insert(void* base,
                              std::size_t size,
                              AllocationKind kind,
+                             unsigned int host_alloc_flags,
                              std::shared_ptr<metal_backend::Buffer> buffer,
                              std::string* error_message) {
     if (base == nullptr || size == 0 || buffer == nullptr) {
@@ -45,6 +46,7 @@ bool AllocationTable::insert(void* base,
     entries_[address] = Entry{
         .size = size,
         .kind = kind,
+        .host_alloc_flags = host_alloc_flags,
         .buffer = std::move(buffer),
     };
     return true;
@@ -85,6 +87,7 @@ bool AllocationTable::resolve(const void* ptr, ResolvedAllocation* resolved) con
     resolved->offset = static_cast<std::size_t>(address - base);
     resolved->remaining_size = entry.size - resolved->offset;
     resolved->kind = entry.kind;
+    resolved->host_alloc_flags = entry.host_alloc_flags;
     return true;
 }
 

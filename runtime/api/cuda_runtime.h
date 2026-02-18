@@ -83,6 +83,9 @@ enum {
 
 enum {
     cudaHostAllocDefault = 0x0,
+    cudaHostAllocPortable = 0x1,
+    cudaHostAllocMapped = 0x2,
+    cudaHostAllocWriteCombined = 0x4,
 };
 
 typedef enum cumetalArgKind {

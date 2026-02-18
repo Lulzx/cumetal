@@ -25,7 +25,7 @@ Supported runtime API subset:
 - `cudaInit`
 - `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
-- `cudaHostAlloc`, `cudaFreeHost`
+- `cudaHostAlloc`, `cudaFreeHost`, `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaMemGetInfo`
 - `cudaMemcpy`, `cudaMemcpyAsync`

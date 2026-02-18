@@ -30,6 +30,18 @@ int main() {
         return 1;
     }
 
+    void* mapped_host_ptr = nullptr;
+    const unsigned int mapped_flags = CU_MEMHOSTALLOC_DEVICEMAP | CU_MEMHOSTALLOC_WRITECOMBINED;
+    if (cuMemHostAlloc(&mapped_host_ptr, kBytes, mapped_flags) != CUDA_SUCCESS ||
+        mapped_host_ptr == nullptr) {
+        std::fprintf(stderr, "FAIL: cuMemHostAlloc(mapped) failed\n");
+        return 1;
+    }
+    if (cuMemHostGetFlags(&host_flags, mapped_host_ptr) != CUDA_SUCCESS || host_flags != mapped_flags) {
+        std::fprintf(stderr, "FAIL: cuMemHostGetFlags should report mapped allocation flags\n");
+        return 1;
+    }
+
     void* host_offset = static_cast<void*>(static_cast<std::uint8_t*>(host_ptr) + 8);
     if (cuMemHostGetDevicePointer(&device_alias, host_offset, 0) != CUDA_ERROR_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: host-offset pointer should be rejected\n");
@@ -74,7 +86,7 @@ int main() {
         return 1;
     }
 
-    if (cuMemHostAlloc(&host_ptr, kBytes, 1) != CUDA_ERROR_INVALID_VALUE) {
+    if (cuMemHostAlloc(&host_ptr, kBytes, 0x80u) != CUDA_ERROR_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: unsupported cuMemHostAlloc flags should fail\n");
         return 1;
     }
@@ -86,6 +98,10 @@ int main() {
 
     if (cuMemFreeHost(host_ptr) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuMemFreeHost failed\n");
+        return 1;
+    }
+    if (cuMemFreeHost(mapped_host_ptr) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuMemFreeHost(mapped) failed\n");
         return 1;
     }
 

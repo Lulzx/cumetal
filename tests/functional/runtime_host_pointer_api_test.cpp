@@ -30,6 +30,17 @@ int main() {
         return 1;
     }
 
+    void* mapped_host_ptr = nullptr;
+    const unsigned int mapped_flags = cudaHostAllocMapped | cudaHostAllocWriteCombined;
+    if (cudaHostAlloc(&mapped_host_ptr, kBytes, mapped_flags) != cudaSuccess || mapped_host_ptr == nullptr) {
+        std::fprintf(stderr, "FAIL: cudaHostAlloc(mapped) failed\n");
+        return 1;
+    }
+    if (cudaHostGetFlags(&host_flags, mapped_host_ptr) != cudaSuccess || host_flags != mapped_flags) {
+        std::fprintf(stderr, "FAIL: cudaHostGetFlags should report mapped allocation flags\n");
+        return 1;
+    }
+
     void* host_offset = static_cast<void*>(static_cast<std::uint8_t*>(host_ptr) + 8);
     if (cudaHostGetDevicePointer(&device_alias, host_offset, 0) != cudaErrorInvalidValue) {
         std::fprintf(stderr, "FAIL: host-offset pointer should be rejected\n");
@@ -70,6 +81,11 @@ int main() {
         return 1;
     }
 
+    if (cudaHostAlloc(&mapped_host_ptr, kBytes, 0x80u) != cudaErrorInvalidValue) {
+        std::fprintf(stderr, "FAIL: unsupported cudaHostAlloc flags should fail\n");
+        return 1;
+    }
+
     if (cudaFree(device_ptr) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
@@ -77,6 +93,10 @@ int main() {
 
     if (cudaFreeHost(host_ptr) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFreeHost failed\n");
+        return 1;
+    }
+    if (cudaFreeHost(mapped_host_ptr) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFreeHost(mapped) failed\n");
         return 1;
     }
 

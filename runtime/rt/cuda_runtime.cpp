@@ -111,6 +111,15 @@ cudaError_t validate_memcpy_kind(cudaMemcpyKind kind) {
     }
 }
 
+cudaError_t validate_host_alloc_flags(unsigned int flags) {
+    constexpr unsigned int kSupportedHostAllocFlags =
+        cudaHostAllocPortable | cudaHostAllocMapped | cudaHostAllocWriteCombined;
+    if ((flags & ~kSupportedHostAllocFlags) != 0) {
+        return cudaErrorInvalidValue;
+    }
+    return cudaSuccess;
+}
+
 bool is_device_pointer(const void* ptr) {
     if (ptr == nullptr) {
         return false;
@@ -461,6 +470,7 @@ cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
 
     RuntimeState& state = runtime_state();
     if (!state.allocations.insert(base, size, cumetal::rt::AllocationKind::kDevice,
+                                  /*host_alloc_flags=*/0,
                                   std::move(buffer), &error)) {
         return fail(cudaErrorMemoryAllocation);
     }
@@ -477,11 +487,13 @@ cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags) {
 }
 
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
-    if (flags != cudaHostAllocDefault) {
-        return fail(cudaErrorInvalidValue);
-    }
     if (ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t flags_status = validate_host_alloc_flags(flags);
+    if (flags_status != cudaSuccess) {
+        return fail(flags_status);
     }
 
     const cudaError_t init_status = ensure_initialized();
@@ -502,7 +514,7 @@ cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
     }
 
     RuntimeState& state = runtime_state();
-    if (!state.allocations.insert(base, size, cumetal::rt::AllocationKind::kHost,
+    if (!state.allocations.insert(base, size, cumetal::rt::AllocationKind::kHost, flags,
                                   std::move(buffer), &error)) {
         return fail(cudaErrorMemoryAllocation);
     }
@@ -553,7 +565,7 @@ cudaError_t cudaHostGetFlags(unsigned int* flags, void* host_ptr) {
         return fail(cudaErrorInvalidValue);
     }
 
-    *flags = cudaHostAllocDefault;
+    *flags = resolved.host_alloc_flags;
     return fail(cudaSuccess);
 }
 

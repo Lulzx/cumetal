@@ -24,11 +24,13 @@ public:
         std::size_t offset = 0;
         std::size_t remaining_size = 0;
         AllocationKind kind = AllocationKind::kDevice;
+        unsigned int host_alloc_flags = 0;
     };
 
     bool insert(void* base,
                 std::size_t size,
                 AllocationKind kind,
+                unsigned int host_alloc_flags,
                 std::shared_ptr<metal_backend::Buffer> buffer,
                 std::string* error_message);
     bool erase(void* base);
@@ -40,6 +42,7 @@ private:
     struct Entry {
         std::size_t size = 0;
         AllocationKind kind = AllocationKind::kDevice;
+        unsigned int host_alloc_flags = 0;
         std::shared_ptr<metal_backend::Buffer> buffer;
     };
 
