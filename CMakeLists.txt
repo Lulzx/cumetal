@@ -240,6 +240,22 @@ target_compile_options(air_inspect
         -Wpedantic
 )
 
+add_executable(cumetal_bench
+    tools/cumetal_bench/main.cpp
+)
+
+target_link_libraries(cumetal_bench
+    PRIVATE
+        cumetal_runtime
+)
+
+target_compile_options(cumetal_bench
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 if(CUMETAL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests/air_abi)
@@ -255,6 +271,7 @@ install(TARGETS
     cumetal-air-emitter
     cumetalc
     cumetal-ptx2llvm
+    cumetal_bench
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

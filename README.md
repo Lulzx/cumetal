@@ -192,9 +192,23 @@ ctest --test-dir build -R unit_addrspace_pass --output-on-failure
 ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure
 ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
+ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
 ctest --test-dir build -R ptx_sweep_supported_ops --output-on-failure
 ctest --test-dir build -R ptx_sweep_unsupported_ops --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
+```
+
+Benchmark runner
+----------------
+
+```bash
+./scripts/generate_reference_metallib.sh
+./build/cumetal_bench \
+  --metallib tests/air_abi/reference/reference.metallib \
+  --kernel vector_add \
+  --elements 262144 \
+  --warmup 5 \
+  --iterations 50
 ```
 
 If `xcrun metal`/`xcrun metallib` are unavailable

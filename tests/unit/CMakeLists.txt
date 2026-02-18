@@ -237,6 +237,11 @@ add_test(
 )
 
 add_test(
+    NAME unit_cumetal_bench_help
+    COMMAND $<TARGET_FILE:cumetal_bench> --help
+)
+
+add_test(
     NAME unit_install_uninstall_scripts
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_install_uninstall_test.sh

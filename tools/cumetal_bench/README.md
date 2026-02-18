@@ -1,3 +1,27 @@
 # cumetal_bench
 
-Phase 3+: benchmark harness.
+`cumetal_bench` compares direct Metal-backend kernel launch timing against launch timing
+through the CuMetal CUDA runtime shim.
+
+Current scope:
+
+- Single-kernel benchmark (`vector_add` by default)
+- Validates output correctness in both paths
+- Prints average milliseconds and runtime/native ratio
+
+Usage:
+
+```bash
+./build/cumetal_bench \
+  --metallib tests/air_abi/reference/reference.metallib \
+  --kernel vector_add \
+  --elements 262144 \
+  --warmup 5 \
+  --iterations 50
+```
+
+The metallib must already exist; generate it with:
+
+```bash
+./scripts/generate_reference_metallib.sh
+```
