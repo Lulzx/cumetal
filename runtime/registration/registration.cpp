@@ -116,6 +116,19 @@ bool extract_ptx_cstr(const char* chars, std::size_t max_bytes, std::string* out
     return true;
 }
 
+bool parse_direct_ptx_image(const void* fat_cubin, std::string* out_ptx) {
+    if (fat_cubin == nullptr || out_ptx == nullptr) {
+        return false;
+    }
+
+    const auto* chars = static_cast<const char*>(fat_cubin);
+    if (chars[0] != '.') {
+        return false;
+    }
+
+    return extract_ptx_cstr(chars, 1ull << 20, out_ptx);
+}
+
 bool extract_ptx_from_blob(const std::uint8_t* bytes,
                            std::size_t size,
                            std::string* out_ptx) {
@@ -148,6 +161,10 @@ bool parse_fatbin_wrapper_ptx(const void* fat_cubin, std::string* out_ptx) {
     std::memcpy(&wrapper, fat_cubin, sizeof(wrapper));
     if (wrapper.magic != kFatbinWrapperMagic || wrapper.data == nullptr) {
         return false;
+    }
+
+    if (parse_direct_ptx_image(wrapper.data, out_ptx)) {
+        return true;
     }
 
     const auto* blob = static_cast<const std::uint8_t*>(wrapper.data);
@@ -183,6 +200,10 @@ ParsedFatbinImage parse_fatbin_image(const void* fat_cubin) {
     }
 
     if (parse_fatbin_wrapper_ptx(fat_cubin, &parsed.ptx_source)) {
+        return parsed;
+    }
+
+    if (parse_direct_ptx_image(fat_cubin, &parsed.ptx_source)) {
         return parsed;
     }
 
@@ -375,6 +396,18 @@ void** __cudaRegisterFatBinary(const void* fat_cubin) {
     return reinterpret_cast<void**>(handle);
 }
 
+void** __cudaRegisterFatBinary2(const void* fat_cubin, ...) {
+    return __cudaRegisterFatBinary(fat_cubin);
+}
+
+void** __cudaRegisterFatBinary3(const void* fat_cubin, ...) {
+    return __cudaRegisterFatBinary(fat_cubin);
+}
+
+void __cudaRegisterFatBinaryEnd(void** fat_cubin_handle) {
+    (void)fat_cubin_handle;
+}
+
 void __cudaUnregisterFatBinary(void** fat_cubin_handle) {
     if (fat_cubin_handle == nullptr) {
         return;
@@ -466,6 +499,29 @@ void __cudaRegisterVar(void** fat_cubin_handle,
     (void)size;
     (void)constant;
     (void)global;
+}
+
+void __cudaRegisterManagedVar(void** fat_cubin_handle,
+                              void** host_var_ptr_address,
+                              char* device_address,
+                              const char* device_name,
+                              int ext,
+                              std::size_t size,
+                              int constant,
+                              int global) {
+    char* host_var = nullptr;
+    if (host_var_ptr_address != nullptr) {
+        host_var = static_cast<char*>(*host_var_ptr_address);
+    }
+
+    __cudaRegisterVar(fat_cubin_handle,
+                      host_var,
+                      device_address,
+                      device_name,
+                      ext,
+                      size,
+                      constant,
+                      global);
 }
 
 cudaError_t __cudaPushCallConfiguration(dim3 grid_dim,

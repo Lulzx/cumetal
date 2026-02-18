@@ -277,6 +277,14 @@ add_test(
 )
 
 add_test(
+    NAME unit_binary_shim_symbol_exports
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_binary_shim_symbol_exports_test.sh
+            $<TARGET_FILE:cumetal_runtime>
+)
+set_tests_properties(unit_binary_shim_symbol_exports PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
     NAME unit_library_link_aliases
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_library_link_aliases_test.sh

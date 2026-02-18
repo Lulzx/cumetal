@@ -48,7 +48,9 @@ Implemented today:
   - `samples/vectorAdd` source flow exercised end-to-end (compile `.cu` with `cumetalc`, link host app
     against `libcumetal`, execute and validate output)
   - opt-in registration path symbols for binary-shim style launches
-    (`__cudaRegisterFatBinary`, `__cudaRegisterFunction`, `__cudaPushCallConfiguration`)
+    (`__cudaRegisterFatBinary`, `__cudaRegisterFatBinary2`, `__cudaRegisterFatBinary3`,
+    `__cudaRegisterFatBinaryEnd`, `__cudaRegisterFunction`, `__cudaRegisterManagedVar`,
+    `__cudaPushCallConfiguration`)
   - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
 
 Supported runtime API subset:
@@ -244,6 +246,7 @@ ctest --test-dir build -R functional_runtime_registration_path --output-on-failu
 ctest --test-dir build -R functional_runtime_call_config_registration --output-on-failure
 ctest --test-dir build -R functional_runtime_registration_fatbin_ptx --output-on-failure
 ctest --test-dir build -R functional_runtime_legacy_launch_registration --output-on-failure
+ctest --test-dir build -R functional_runtime_registration_fatbinary2_symbols --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure
@@ -258,6 +261,7 @@ ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_ratio_gate --output-on-failure
 ctest --test-dir build -R unit_runtime_library_aliases --output-on-failure
+ctest --test-dir build -R unit_binary_shim_symbol_exports --output-on-failure
 ctest --test-dir build -R unit_library_link_aliases --output-on-failure
 ctest --test-dir build -R ptx_sweep_supported_ops --output-on-failure
 ctest --test-dir build -R ptx_sweep_unsupported_ops --output-on-failure

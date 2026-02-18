@@ -27,6 +27,9 @@ void clear();
 extern "C" {
 
 void** __cudaRegisterFatBinary(const void* fat_cubin);
+void** __cudaRegisterFatBinary2(const void* fat_cubin, ...);
+void** __cudaRegisterFatBinary3(const void* fat_cubin, ...);
+void __cudaRegisterFatBinaryEnd(void** fat_cubin_handle);
 void __cudaUnregisterFatBinary(void** fat_cubin_handle);
 void __cudaRegisterFunction(void** fat_cubin_handle,
                             const void* host_function,
@@ -46,6 +49,14 @@ void __cudaRegisterVar(void** fat_cubin_handle,
                        std::size_t size,
                        int constant,
                        int global);
+void __cudaRegisterManagedVar(void** fat_cubin_handle,
+                              void** host_var_ptr_address,
+                              char* device_address,
+                              const char* device_name,
+                              int ext,
+                              std::size_t size,
+                              int constant,
+                              int global);
 cudaError_t __cudaPushCallConfiguration(dim3 grid_dim,
                                         dim3 block_dim,
                                         std::size_t shared_mem,
