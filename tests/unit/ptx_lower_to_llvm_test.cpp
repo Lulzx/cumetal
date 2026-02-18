@@ -81,6 +81,55 @@ int main() {
         return 1;
     }
 
+    const std::string matrix_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry matrix_mul(
+    .param .u64 matrix_mul_param_0,
+    .param .u64 matrix_mul_param_1,
+    .param .u64 matrix_mul_param_2,
+    .param .u32 matrix_mul_param_3,
+    .param .u32 matrix_mul_param_4
+)
+{
+    mov.u32 %r0, %tid.x;
+    ret;
+}
+)PTX";
+
+    cumetal::ptx::LowerToLlvmOptions matrix_options;
+    matrix_options.entry_name = "matrix_mul";
+    matrix_options.module_id = "unit.ptx.matrix_mul";
+    const auto matrix_lowered = cumetal::ptx::lower_ptx_to_llvm_ir(matrix_ptx, matrix_options);
+    if (!expect(matrix_lowered.ok, "matrix multiply lowering succeeds")) {
+        return 1;
+    }
+    if (!expect(contains(matrix_lowered.llvm_ir,
+                         "define void @matrix_mul(ptr addrspace(1) %matrix_mul_param_0"),
+                "matrix multiply kernel definition emitted")) {
+        return 1;
+    }
+    if (!expect(contains(matrix_lowered.llvm_ir,
+                         "%row = udiv i32 %matrix_mul_param_4, %matrix_mul_param_3"),
+                "matrix row index derivation emitted")) {
+        return 1;
+    }
+    if (!expect(contains(matrix_lowered.llvm_ir, "%prod = fmul float %a.val, %b.val"),
+                "matrix multiply fmul emitted")) {
+        return 1;
+    }
+    if (!expect(contains(matrix_lowered.llvm_ir, "%acc.new = fadd float %acc.old, %prod"),
+                "matrix multiply accumulation emitted")) {
+        return 1;
+    }
+    if (!expect(contains(matrix_lowered.llvm_ir, "store float %acc.final, ptr addrspace(1) %c.ptr"),
+                "matrix multiply store emitted")) {
+        return 1;
+    }
+    if (!expect(matrix_lowered.warnings.empty(), "no warnings for matrix multiply lowering path")) {
+        return 1;
+    }
+
     const std::string unsupported_ptx = R"PTX(
 .version 8.0
 .target sm_90

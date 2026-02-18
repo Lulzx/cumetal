@@ -14,7 +14,7 @@ Current status:
 - Strict mode (`ParseOptions.strict=true`) fails parsing on unsupported opcodes.
 - `cumetal::ptx::lower_ptx_to_llvm_ir` lowers PTX through the phase1 pipeline and emits
   LLVM IR text with AIR-style kernel metadata.
-  - For `vector_add`-shaped signatures, a concrete `fadd`/`load`/`store` kernel body is emitted.
+  - For `vector_add`- and `matrix_mul`-shaped signatures, concrete kernel bodies are emitted.
   - `printf`/`vprintf` call sites are analyzed by the pipeline and exported as
     `kernel.printf.*` metadata records.
 - `cumetal-ptx2llvm` CLI writes `.ll` from `.ptx`:

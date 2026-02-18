@@ -115,6 +115,33 @@ bool looks_like_vector_add_signature(const std::string& entry_name,
            lowered_name.find("vecadd") != std::string::npos;
 }
 
+bool is_integer_llvm_type(const std::string& llvm_type) {
+    return !llvm_type.empty() && llvm_type[0] == 'i';
+}
+
+int alignment_for_type(const std::string& llvm_type) {
+    return llvm_type == "i64" ? 8 : 4;
+}
+
+bool looks_like_matrix_mul_signature(const std::string& entry_name,
+                                     const std::vector<ParamInfo>& params) {
+    if (params.size() < 5) {
+        return false;
+    }
+    if (params[0].llvm_type != "ptr addrspace(1)" || params[1].llvm_type != "ptr addrspace(1)" ||
+        params[2].llvm_type != "ptr addrspace(1)") {
+        return false;
+    }
+    if (!is_integer_llvm_type(params[3].llvm_type) || params[3].llvm_type != params[4].llvm_type) {
+        return false;
+    }
+
+    const std::string lowered_name = lowercase(entry_name);
+    return lowered_name.find("matrix_mul") != std::string::npos ||
+           lowered_name.find("matmul") != std::string::npos ||
+           lowered_name.find("gemm") != std::string::npos;
+}
+
 void emit_lowered_instruction_comments(
     std::ostringstream& ir,
     const std::vector<cumetal::passes::LoweredInstruction>& lowered_instructions) {
@@ -150,6 +177,54 @@ void emit_vector_add_body(std::ostringstream& ir, const std::vector<ParamInfo>& 
     ir << "  %b.val = load float, ptr addrspace(1) %b.ptr, align 4\n";
     ir << "  %sum = fadd float %a.val, %b.val\n";
     ir << "  store float %sum, ptr addrspace(1) %c.ptr, align 4\n";
+    ir << "  ret void\n";
+}
+
+void emit_matrix_mul_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+    const std::string& a_name = params[0].name;
+    const std::string& b_name = params[1].name;
+    const std::string& c_name = params[2].name;
+    const std::string& n_name = params[3].name;
+    const std::string& idx_name = params[4].name;
+    const std::string idx_type = params[4].llvm_type;
+    const int idx_align = alignment_for_type(idx_type);
+
+    ir << "  %row = udiv " << idx_type << " %" << idx_name << ", %" << n_name << "\n";
+    ir << "  %col = urem " << idx_type << " %" << idx_name << ", %" << n_name << "\n";
+    ir << "  %acc.slot = alloca float, align 4\n";
+    ir << "  store float 0.000000e+00, ptr %acc.slot, align 4\n";
+    ir << "  %k.slot = alloca " << idx_type << ", align " << idx_align << "\n";
+    ir << "  store " << idx_type << " 0, ptr %k.slot, align " << idx_align << "\n";
+    ir << "  br label %mm.loop\n\n";
+    ir << "mm.loop:\n";
+    ir << "  %k = load " << idx_type << ", ptr %k.slot, align " << idx_align << "\n";
+    ir << "  %k.in.bounds = icmp ult " << idx_type << " %k, %" << n_name << "\n";
+    ir << "  br i1 %k.in.bounds, label %mm.body, label %mm.done\n\n";
+    ir << "mm.body:\n";
+    ir << "  %a.row.base = mul " << idx_type << " %row, %" << n_name << "\n";
+    ir << "  %a.index = add " << idx_type << " %a.row.base, %k\n";
+    ir << "  %b.row.base = mul " << idx_type << " %k, %" << n_name << "\n";
+    ir << "  %b.index = add " << idx_type << " %b.row.base, %col\n";
+    ir << "  %a.ptr = getelementptr float, ptr addrspace(1) %" << a_name << ", " << idx_type
+       << " %a.index\n";
+    ir << "  %b.ptr = getelementptr float, ptr addrspace(1) %" << b_name << ", " << idx_type
+       << " %b.index\n";
+    ir << "  %a.val = load float, ptr addrspace(1) %a.ptr, align 4\n";
+    ir << "  %b.val = load float, ptr addrspace(1) %b.ptr, align 4\n";
+    ir << "  %prod = fmul float %a.val, %b.val\n";
+    ir << "  %acc.old = load float, ptr %acc.slot, align 4\n";
+    ir << "  %acc.new = fadd float %acc.old, %prod\n";
+    ir << "  store float %acc.new, ptr %acc.slot, align 4\n";
+    ir << "  %k.next = add " << idx_type << " %k, 1\n";
+    ir << "  store " << idx_type << " %k.next, ptr %k.slot, align " << idx_align << "\n";
+    ir << "  br label %mm.loop\n\n";
+    ir << "mm.done:\n";
+    ir << "  %c.row.base = mul " << idx_type << " %row, %" << n_name << "\n";
+    ir << "  %c.index = add " << idx_type << " %c.row.base, %col\n";
+    ir << "  %c.ptr = getelementptr float, ptr addrspace(1) %" << c_name << ", " << idx_type
+       << " %c.index\n";
+    ir << "  %acc.final = load float, ptr %acc.slot, align 4\n";
+    ir << "  store float %acc.final, ptr addrspace(1) %c.ptr, align 4\n";
     ir << "  ret void\n";
 }
 
@@ -220,6 +295,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
 
     if (looks_like_vector_add_signature(pipeline.entry_name, params)) {
         emit_vector_add_body(ir, params);
+    } else if (looks_like_matrix_mul_signature(pipeline.entry_name, params)) {
+        emit_matrix_mul_body(ir, params);
     } else {
         emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
         ir << "  ret void\n";

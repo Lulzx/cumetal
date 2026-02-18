@@ -124,6 +124,18 @@ add_test(
 )
 
 add_test(
+    NAME air_abi_matrix_ptx_to_experimental_validate
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_matrix_ptx_to_experimental_validation.sh
+            $<TARGET_FILE:cumetal-ptx2llvm>
+            $<TARGET_FILE:cumetal-air-emitter>
+            $<TARGET_FILE:air_validate>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/matrix_mul.ptx
+            ${CMAKE_CURRENT_BINARY_DIR}/matrix_mul.from_ptx.ll
+            ${CMAKE_CURRENT_BINARY_DIR}/matrix_mul.from_ptx.experimental.metallib
+)
+
+add_test(
     NAME air_abi_cumetalc_ptx_experimental_validate
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_ptx_experimental_validate.sh
@@ -132,6 +144,17 @@ add_test(
             $<TARGET_FILE:air_inspect>
             ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.ptx
             ${CMAKE_CURRENT_BINARY_DIR}/vector_add.cumetalc.from_ptx.experimental.metallib
+)
+
+add_test(
+    NAME air_abi_cumetalc_matrix_ptx_experimental_validate
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_matrix_ptx_experimental_validate.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:air_validate>
+            $<TARGET_FILE:air_inspect>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/matrix_mul.ptx
+            ${CMAKE_CURRENT_BINARY_DIR}/matrix_mul.cumetalc.from_ptx.experimental.metallib
 )
 
 add_test(

@@ -19,7 +19,7 @@ Implemented today:
   - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
-    including concrete vector-add body emission for vector-add signatures
+    including concrete vector-add and matrix-multiply body emission for recognized signatures
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
   - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
@@ -113,7 +113,9 @@ ctest --test-dir build -R air_abi_cumetalc_positional_emit_load_xcrun --output-o
 ctest --test-dir build -R air_abi_cumetalc_default_output_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failure
+ctest --test-dir build -R air_abi_matrix_ptx_to_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_experimental_validate --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_matrix_ptx_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_default_output_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_ptx2llvm_positional_default_output --output-on-failure
