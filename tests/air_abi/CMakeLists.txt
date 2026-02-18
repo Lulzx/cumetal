@@ -93,6 +93,18 @@ add_test(
 )
 
 add_test(
+    NAME air_abi_multikernel_emit_validate_load_xcrun
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_multikernel_emit_validate_and_load.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:air_validate>
+            $<TARGET_FILE:air_inspect>
+            $<TARGET_FILE:cumetal_metal_load_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/multi_kernel.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/multi_kernel.cumetalc.xcrun.load.metallib
+)
+
+add_test(
     NAME air_abi_validate_negative
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_negative_validation.sh
             $<TARGET_FILE:air_validate>
@@ -106,6 +118,7 @@ set_tests_properties(
     air_abi_cumetalc_emit_load_xcrun
     air_abi_cumetalc_positional_emit_load_xcrun
     air_abi_cumetalc_default_output_emit_load_xcrun
+    air_abi_multikernel_emit_validate_load_xcrun
     PROPERTIES
         SKIP_RETURN_CODE 77
 )

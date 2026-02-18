@@ -97,6 +97,7 @@ ctest --test-dir build -R air_abi_validate_negative --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_positional_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_default_output_emit_load_xcrun --output-on-failure
+ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-on-failure
 ```
 
 Runtime execution tests
