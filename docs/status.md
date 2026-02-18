@@ -1,0 +1,136 @@
+# Status
+
+Current status
+--------------
+
+Implemented today:
+
+- Phase 0.5 tooling:
+  - `air_inspect`: `.metallib` container inspection
+    - parses Apple function-list tags (`NAME`/`TYPE`/`HASH`/`MDSZ`/`OFFT`/`VERS`) on current Xcode layout
+  - `cumetal-air-emitter`: `.metallib` emission (xcrun-backed + experimental mode)
+  - `cumetalc`: thin compiler-driver CLI over the AIR emitter
+  - `air_validate`: structural checks + optional `xcrun metal -validate`
+  - `cumetal_metal_load_test`: `MTLDevice.newLibraryWithData:` acceptance test
+- Phase 1 scaffolding:
+  - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param` + instruction stream)
+    with tolerant/strict unsupported-op modes in `compiler/ptx/`
+  - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
+    including concrete vector-add and matrix-multiply body emission for recognized signatures
+  - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
+  - `cumetalc` accepts initial `.cu` input via xcrun clang++ frontend lowering to LLVM IR
+  - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
+  - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
+  - initial `printf_lower` pass for PTX `printf`/`vprintf` call extraction and format-table metadata
+  - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
+  - initial `metadata` pass for AIR-style kernel metadata fields
+  - initial phase1 pipeline API chaining parser + passes for a selected PTX entry
+- Early Phase 0 runtime path:
+  - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
+  - optional `MTLHeap`-backed sub-allocation path for `cudaMalloc` / `cuMemAlloc`
+    (`CUMETAL_MTLHEAP_ALLOC=1`, chunk size override: `CUMETAL_MTLHEAP_CHUNK_BYTES`)
+  - synchronous `cudaMemcpy` on UMA via `memcpy`
+  - kernel launch through Metal compute pipelines (`setBuffer` + `setBytes`)
+  - default-stream, per-thread default stream, and user-stream execution
+    (`cudaStreamCreate/Destroy/Synchronize`, `cudaStreamPerThread`, `cudaStreamLegacy`)
+  - runtime functional tests for vector add, matrix multiply, and saxpy
+  - initial library shims for cuRAND and cuBLAS v2
+  - driver module loading from both in-memory metallib bytes and filesystem paths
+  - on-disk cache for `cuModuleLoadData` metallib byte payloads
+  - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
+  - shared runtime artifact: `libcumetal.dylib` (plus `cuda.h` / `cuda_runtime.h` install headers)
+  - startup conflict warning if another `libcuda.dylib` is already loaded
+  - Metal command-buffer failures map to CUDA timeout/illegal-address/devices-unavailable errors
+  - default module cache root: `$HOME/Library/Caches/io.cumetal/kernels` (override: `CUMETAL_CACHE_DIR`)
+  - `samples/vectorAdd` source flow exercised end-to-end (compile `.cu` with `cumetalc`, link host app
+    against `libcumetal`, execute and validate output)
+  - opt-in registration path symbols for binary-shim style launches
+    (`__cudaRegisterFatBinary`, `__cudaRegisterFatBinary2`, `__cudaRegisterFatBinary3`,
+    `__cudaRegisterFatBinaryEnd`, `__cudaRegisterFunction`, `__cudaRegisterVar`,
+    `__cudaRegisterManagedVar`,
+    `__cudaPushCallConfiguration`)
+  - legacy runtime launch path (`cudaConfigureCall` / `cudaSetupArgument` / `cudaLaunch`)
+
+Supported runtime API subset:
+
+- `cudaInit`, `cudaDriverGetVersion`, `cudaRuntimeGetVersion`
+- `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
+- `cudaSetDeviceFlags`, `cudaGetDeviceFlags`
+- `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
+- `cudaHostAlloc`, `cudaFreeHost`, `cudaHostGetDevicePointer`, `cudaHostGetFlags`
+- `cudaMemGetInfo`
+- `cudaMemcpy`, `cudaMemcpyAsync`
+- `cudaMemcpyToSymbol`, `cudaMemcpyFromSymbol`, `cudaMemcpyToSymbolAsync`, `cudaMemcpyFromSymbolAsync`
+- `cudaMemset`, `cudaMemsetAsync`
+- `cudaLaunchKernel`
+- `cudaConfigureCall`, `cudaSetupArgument`, `cudaLaunch`
+- `cudaStreamCreate`, `cudaStreamCreateWithFlags`, `cudaStreamDestroy`
+- `cudaStreamSynchronize`, `cudaStreamQuery`, `cudaStreamAddCallback`
+- `cudaStreamWaitEvent`
+- `cudaEventCreate`, `cudaEventCreateWithFlags`, `cudaEventRecord`
+- `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
+- `cudaDeviceReset`
+- `cudaDeviceSynchronize`
+- `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorName`, `cudaGetErrorString`
+- `cudaProfilerStart`, `cudaProfilerStop`
+
+Supported driver API subset:
+
+- `cuInit`, `cuDriverGetVersion`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`, `cuDeviceGetAttribute`
+- `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxGetDevice`, `cuCtxGetFlags`, `cuCtxSetFlags`, `cuCtxSynchronize`
+- `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamAddCallback`, `cuStreamWaitEvent`
+- `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
+- `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
+- `cuModuleLoadData` accepts metallib bytes/paths and PTX text images (including basic CUDA fatbin wrapper PTX variants)
+- `cuModuleLoadDataEx` accepts option arrays in compatibility mode (options are currently ignored)
+- `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
+- `cuMemAlloc`, `cuMemAllocManaged`, `cuMemFree`
+- `cuMemGetInfo`
+- `cuMemAllocHost`, `cuMemHostAlloc`, `cuMemHostGetDevicePointer`, `cuMemHostGetFlags`, `cuMemFreeHost`
+- `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
+- `cuMemcpyHtoDAsync`, `cuMemcpyDtoHAsync`, `cuMemcpyDtoDAsync`
+- `cuMemsetD8`, `cuMemsetD8Async`
+- `cuGetErrorName`, `cuGetErrorString`
+- `cuProfilerStart`, `cuProfilerStop`
+
+Supported library shim subset:
+
+- cuRAND (`curand.h`)
+  - `curandCreateGenerator`, `curandDestroyGenerator`
+  - `curandGetVersion`
+  - `curandSetStream`, `curandGetStream`
+  - `curandSetPseudoRandomGeneratorSeed`, `curandSetGeneratorOffset`
+  - `curandGenerate` (uint32 output), `curandGenerateLongLong` (uint64 output)
+  - `curandGenerateUniform`, `curandGenerateUniformDouble`
+  - `curandGenerateNormal`, `curandGenerateNormalDouble`
+  - `curandGenerateLogNormal`, `curandGenerateLogNormalDouble`
+- cuBLAS v2 (`cublas_v2.h`)
+  - `cublasCreate`, `cublasDestroy`, `cublasGetVersion`
+  - `cublasSetStream`, `cublasGetStream`
+  - `cublasSaxpy`, `cublasSscal`, `cublasScopy`, `cublasSgemm`
+  - `cublasSswap`, `cublasDswap`
+  - `cublasSdot`, `cublasDdot`
+  - `cublasSasum`, `cublasDasum`
+  - `cublasSnrm2`, `cublasDnrm2`
+  - `cublasIsamax`, `cublasIdamax`
+  - `cublasIsamin`, `cublasIdamin`
+  - `cublasSgemv`, `cublasDgemv`
+  - `cublasSger`, `cublasDger`
+  - `cublasSsymv`, `cublasDsymv`
+  - `cublasDaxpy`, `cublasDscal`, `cublasDcopy`, `cublasDgemm`
+
+Library alias compatibility:
+
+- Build/install also provides `libcublas.dylib` and `libcurand.dylib` aliases to
+  `libcumetal.dylib`, so software linked against CUDA library names can resolve shim symbols.
+- Optional binary-shim alias: when `CUMETAL_ENABLE_BINARY_SHIM=ON`, build/install also provides
+  `libcuda.dylib -> libcumetal.dylib`.
+
+Current limitations:
+
+- This is not yet a full CUDA Runtime/Driver implementation.
+- Default kernel launch uses a CuMetal descriptor (`cumetalKernel_t`).
+- Binary-shim registration is partial: CuMetal `CMTL` envelopes, direct PTX images, and basic CUDA
+  fatbin-wrapper PTX images are supported (including `FatBinary2/FatBinary3` entry points), but full NVCC
+  fatbinary variants are not yet implemented.
+
