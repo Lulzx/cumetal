@@ -12,6 +12,8 @@
 namespace cumetal::metal_backend {
 namespace {
 
+cudaError_t check_command_buffer_status(id<MTLCommandBuffer> command_buffer, std::string* error_message);
+
 class BufferImpl final : public Buffer {
 public:
     explicit BufferImpl(id<MTLBuffer> buffer) : buffer_(buffer) {}
@@ -40,22 +42,126 @@ public:
         return queue_;
     }
 
-    void add_pending(id<MTLCommandBuffer> command_buffer) {
+    std::uint64_t add_pending(id<MTLCommandBuffer> command_buffer) {
         std::lock_guard<std::mutex> lock(mutex_);
-        pending_buffers_.push_back(command_buffer);
+        const std::uint64_t ticket = next_ticket_++;
+        pending_buffers_.push_back(PendingBuffer{.ticket = ticket, .command_buffer = command_buffer});
+        return ticket;
     }
 
-    std::vector<id<MTLCommandBuffer>> take_pending() {
+    std::uint64_t tail_ticket() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<id<MTLCommandBuffer>> pending;
-        pending.swap(pending_buffers_);
-        return pending;
+        return next_ticket_ - 1;
+    }
+
+    cudaError_t poll_completed(std::string* error_message) {
+        for (;;) {
+            id<MTLCommandBuffer> completed_buffer = nil;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (pending_buffers_.empty()) {
+                    return cudaSuccess;
+                }
+
+                const PendingBuffer& front = pending_buffers_.front();
+                const MTLCommandBufferStatus status = [front.command_buffer status];
+                if (status != MTLCommandBufferStatusCompleted && status != MTLCommandBufferStatusError) {
+                    return cudaSuccess;
+                }
+
+                completed_ticket_ = front.ticket;
+                completed_buffer = front.command_buffer;
+                pending_buffers_.erase(pending_buffers_.begin());
+            }
+
+            const cudaError_t status = check_command_buffer_status(completed_buffer, error_message);
+            if (status != cudaSuccess) {
+                return status;
+            }
+        }
+    }
+
+    cudaError_t query_ticket(std::uint64_t ticket, bool* out_complete, std::string* error_message) {
+        if (out_complete == nullptr) {
+            if (error_message != nullptr) {
+                *error_message = "query_ticket missing out_complete";
+            }
+            return cudaErrorInvalidValue;
+        }
+
+        if (ticket == 0) {
+            *out_complete = true;
+            return cudaSuccess;
+        }
+
+        const cudaError_t poll_status = poll_completed(error_message);
+        if (poll_status != cudaSuccess) {
+            return poll_status;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (ticket >= next_ticket_) {
+            if (error_message != nullptr) {
+                *error_message = "query_ticket received unknown ticket";
+            }
+            return cudaErrorInvalidValue;
+        }
+
+        *out_complete = (ticket <= completed_ticket_);
+        return cudaSuccess;
+    }
+
+    cudaError_t wait_ticket(std::uint64_t ticket, std::string* error_message) {
+        if (ticket == 0) {
+            return cudaSuccess;
+        }
+
+        for (;;) {
+            const cudaError_t poll_status = poll_completed(error_message);
+            if (poll_status != cudaSuccess) {
+                return poll_status;
+            }
+
+            id<MTLCommandBuffer> next_wait = nil;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (ticket >= next_ticket_) {
+                    if (error_message != nullptr) {
+                        *error_message = "wait_ticket received unknown ticket";
+                    }
+                    return cudaErrorInvalidValue;
+                }
+                if (ticket <= completed_ticket_) {
+                    return cudaSuccess;
+                }
+                if (pending_buffers_.empty()) {
+                    if (error_message != nullptr) {
+                        *error_message = "wait_ticket has no pending command buffers";
+                    }
+                    return cudaErrorUnknown;
+                }
+                next_wait = pending_buffers_.front().command_buffer;
+            }
+
+            [next_wait waitUntilCompleted];
+            const cudaError_t status = check_command_buffer_status(next_wait, error_message);
+            if (status != cudaSuccess) {
+                return status;
+            }
+        }
     }
 
 private:
+    struct PendingBuffer {
+        std::uint64_t ticket = 0;
+        id<MTLCommandBuffer> command_buffer = nil;
+    };
+
     id<MTLCommandQueue> queue_;
-    std::mutex mutex_;
-    std::vector<id<MTLCommandBuffer>> pending_buffers_;
+    mutable std::mutex mutex_;
+    std::uint64_t next_ticket_ = 1;
+    std::uint64_t completed_ticket_ = 0;
+    std::vector<PendingBuffer> pending_buffers_;
 };
 
 struct BackendState {
@@ -312,14 +418,58 @@ cudaError_t stream_synchronize(const std::shared_ptr<Stream>& stream, std::strin
         return cudaErrorInvalidValue;
     }
 
-    for (id<MTLCommandBuffer> command_buffer : stream_impl->take_pending()) {
-        [command_buffer waitUntilCompleted];
-        const cudaError_t status = check_command_buffer_status(command_buffer, error_message);
-        if (status != cudaSuccess) {
-            return status;
+    return stream_impl->wait_ticket(stream_impl->tail_ticket(), error_message);
+}
+
+cudaError_t stream_tail_ticket(const std::shared_ptr<Stream>& stream,
+                               std::uint64_t* out_ticket,
+                               std::string* error_message) {
+    if (out_ticket == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "stream_tail_ticket missing output";
         }
+        return cudaErrorInvalidValue;
     }
+
+    auto stream_impl = std::dynamic_pointer_cast<StreamImpl>(stream);
+    if (stream_impl == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "stream_tail_ticket received unknown stream type";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    *out_ticket = stream_impl->tail_ticket();
     return cudaSuccess;
+}
+
+cudaError_t stream_query_ticket(const std::shared_ptr<Stream>& stream,
+                                std::uint64_t ticket,
+                                bool* out_complete,
+                                std::string* error_message) {
+    auto stream_impl = std::dynamic_pointer_cast<StreamImpl>(stream);
+    if (stream_impl == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "stream_query_ticket received unknown stream type";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    return stream_impl->query_ticket(ticket, out_complete, error_message);
+}
+
+cudaError_t stream_wait_ticket(const std::shared_ptr<Stream>& stream,
+                               std::uint64_t ticket,
+                               std::string* error_message) {
+    auto stream_impl = std::dynamic_pointer_cast<StreamImpl>(stream);
+    if (stream_impl == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "stream_wait_ticket received unknown stream type";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    return stream_impl->wait_ticket(ticket, error_message);
 }
 
 cudaError_t launch_kernel(const std::string& metallib_path,

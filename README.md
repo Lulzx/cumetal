@@ -28,6 +28,9 @@ Supported runtime API subset:
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
 - `cudaStreamCreate`, `cudaStreamDestroy`, `cudaStreamSynchronize`
+- `cudaStreamWaitEvent`
+- `cudaEventCreate`, `cudaEventCreateWithFlags`, `cudaEventRecord`
+- `cudaEventQuery`, `cudaEventSynchronize`, `cudaEventElapsedTime`, `cudaEventDestroy`
 - `cudaDeviceSynchronize`
 - `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorString`
 
@@ -64,6 +67,8 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_async_memops --output-on-failure
+ctest --test-dir build -R functional_runtime_event --output-on-failure
+ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ```

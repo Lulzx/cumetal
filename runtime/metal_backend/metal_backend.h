@@ -47,6 +47,16 @@ cudaError_t allocate_buffer(std::size_t size,
 cudaError_t create_stream(std::shared_ptr<Stream>* out_stream, std::string* error_message);
 cudaError_t destroy_stream(const std::shared_ptr<Stream>& stream, std::string* error_message);
 cudaError_t stream_synchronize(const std::shared_ptr<Stream>& stream, std::string* error_message);
+cudaError_t stream_tail_ticket(const std::shared_ptr<Stream>& stream,
+                               std::uint64_t* out_ticket,
+                               std::string* error_message);
+cudaError_t stream_query_ticket(const std::shared_ptr<Stream>& stream,
+                                std::uint64_t ticket,
+                                bool* out_complete,
+                                std::string* error_message);
+cudaError_t stream_wait_ticket(const std::shared_ptr<Stream>& stream,
+                               std::uint64_t ticket,
+                               std::string* error_message);
 cudaError_t launch_kernel(const std::string& metallib_path,
                           const std::string& kernel_name,
                           const LaunchConfig& config,

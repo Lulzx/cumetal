@@ -3,6 +3,8 @@
 #include "allocation_table.h"
 #include "metal_backend.h"
 
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <new>
 #include <mutex>
@@ -11,6 +13,16 @@
 #include <vector>
 
 struct cudaStream_st {};
+struct cudaEvent_st {
+    bool disable_timing = false;
+    bool recorded_once = false;
+    bool complete = true;
+    bool timing_valid = false;
+    std::shared_ptr<cumetal::metal_backend::Stream> stream;
+    std::uint64_t ticket = 0;
+    std::chrono::steady_clock::time_point timestamp{};
+    std::mutex mutex;
+};
 
 namespace {
 
@@ -119,6 +131,60 @@ cudaError_t synchronize_stream_for_host_op(cudaStream_t stream,
 
     if (out_stream != nullptr) {
         *out_stream = std::move(backend_stream);
+    }
+    return cudaSuccess;
+}
+
+cudaError_t update_event_completion(cudaEvent_t event, bool wait_for_completion) {
+    if (event == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> stream;
+    std::uint64_t ticket = 0;
+    {
+        std::lock_guard<std::mutex> lock(event->mutex);
+        if (event->complete) {
+            return cudaSuccess;
+        }
+        stream = event->stream;
+        ticket = event->ticket;
+    }
+
+    if (stream == nullptr || ticket == 0) {
+        std::lock_guard<std::mutex> lock(event->mutex);
+        event->complete = true;
+        if (!event->disable_timing) {
+            event->timestamp = std::chrono::steady_clock::now();
+            event->timing_valid = true;
+        }
+        return cudaSuccess;
+    }
+
+    std::string error;
+    bool is_complete = false;
+    if (wait_for_completion) {
+        const cudaError_t status = cumetal::metal_backend::stream_wait_ticket(stream, ticket, &error);
+        if (status != cudaSuccess) {
+            return status;
+        }
+        is_complete = true;
+    } else {
+        const cudaError_t status = cumetal::metal_backend::stream_query_ticket(stream, ticket,
+                                                                                &is_complete, &error);
+        if (status != cudaSuccess) {
+            return status;
+        }
+        if (!is_complete) {
+            return cudaErrorNotReady;
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(event->mutex);
+    event->complete = true;
+    if (!event->disable_timing) {
+        event->timestamp = std::chrono::steady_clock::now();
+        event->timing_valid = true;
     }
     return cudaSuccess;
 }
@@ -368,6 +434,157 @@ cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
     return fail(status);
 }
 
+cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags) {
+    if (event == nullptr || flags != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    if (stream != nullptr) {
+        std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+        if (!resolve_stream_handle(stream, &backend_stream)) {
+            return fail(cudaErrorInvalidValue);
+        }
+    }
+
+    const cudaError_t status = update_event_completion(event, /*wait_for_completion=*/true);
+    return fail(status);
+}
+
+cudaError_t cudaEventCreate(cudaEvent_t* event) {
+    return cudaEventCreateWithFlags(event, cudaEventDefault);
+}
+
+cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event, unsigned int flags) {
+    if (event == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const unsigned int unsupported_flags = flags & ~(cudaEventDefault | cudaEventBlockingSync |
+                                                      cudaEventDisableTiming);
+    if (unsupported_flags != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    auto* created = new (std::nothrow) cudaEvent_st{};
+    if (created == nullptr) {
+        return fail(cudaErrorMemoryAllocation);
+    }
+
+    created->disable_timing = (flags & cudaEventDisableTiming) != 0;
+    created->complete = true;
+    created->recorded_once = false;
+    created->timing_valid = false;
+    created->ticket = 0;
+    *event = created;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaEventDestroy(cudaEvent_t event) {
+    if (event == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    delete event;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream) {
+    if (event == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    std::uint64_t tail_ticket = 0;
+    bool complete = true;
+
+    if (stream != nullptr) {
+        if (!resolve_stream_handle(stream, &backend_stream)) {
+            return fail(cudaErrorInvalidValue);
+        }
+
+        std::string error;
+        const cudaError_t tail_status =
+            cumetal::metal_backend::stream_tail_ticket(backend_stream, &tail_ticket, &error);
+        if (tail_status != cudaSuccess) {
+            return fail(tail_status);
+        }
+
+        if (tail_ticket > 0) {
+            const cudaError_t query_status =
+                cumetal::metal_backend::stream_query_ticket(backend_stream, tail_ticket,
+                                                            &complete, &error);
+            if (query_status != cudaSuccess) {
+                return fail(query_status);
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(event->mutex);
+        event->stream = std::move(backend_stream);
+        event->ticket = tail_ticket;
+        event->recorded_once = true;
+        event->complete = complete;
+        event->timing_valid = false;
+        if (event->complete && !event->disable_timing) {
+            event->timestamp = std::chrono::steady_clock::now();
+            event->timing_valid = true;
+        }
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaEventSynchronize(cudaEvent_t event) {
+    const cudaError_t status = update_event_completion(event, /*wait_for_completion=*/true);
+    return fail(status);
+}
+
+cudaError_t cudaEventQuery(cudaEvent_t event) {
+    const cudaError_t status = update_event_completion(event, /*wait_for_completion=*/false);
+    return fail(status);
+}
+
+cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t end) {
+    if (ms == nullptr || start == nullptr || end == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t start_status = update_event_completion(start, /*wait_for_completion=*/false);
+    if (start_status != cudaSuccess) {
+        return fail(start_status);
+    }
+    const cudaError_t end_status = update_event_completion(end, /*wait_for_completion=*/false);
+    if (end_status != cudaSuccess) {
+        return fail(end_status);
+    }
+
+    std::chrono::steady_clock::time_point start_timestamp;
+    std::chrono::steady_clock::time_point end_timestamp;
+    {
+        std::lock_guard<std::mutex> lock(start->mutex);
+        if (start->disable_timing || !start->recorded_once || !start->timing_valid) {
+            return fail(cudaErrorInvalidValue);
+        }
+        start_timestamp = start->timestamp;
+    }
+    {
+        std::lock_guard<std::mutex> lock(end->mutex);
+        if (end->disable_timing || !end->recorded_once || !end->timing_valid) {
+            return fail(cudaErrorInvalidValue);
+        }
+        end_timestamp = end->timestamp;
+    }
+
+    *ms = std::chrono::duration<float, std::milli>(end_timestamp - start_timestamp).count();
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaLaunchKernel(const void* func,
                              dim3 grid_dim,
                              dim3 block_dim,
@@ -475,6 +692,8 @@ const char* cudaGetErrorString(cudaError_t error) {
             return "cudaErrorInitializationError";
         case cudaErrorInvalidDevicePointer:
             return "cudaErrorInvalidDevicePointer";
+        case cudaErrorNotReady:
+            return "cudaErrorNotReady";
         case cudaErrorUnknown:
             return "cudaErrorUnknown";
     }

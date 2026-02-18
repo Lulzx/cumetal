@@ -13,6 +13,7 @@ typedef enum cudaError {
     cudaErrorMemoryAllocation = 2,
     cudaErrorInitializationError = 3,
     cudaErrorInvalidDevicePointer = 17,
+    cudaErrorNotReady = 34,
     cudaErrorUnknown = 999,
 } cudaError_t;
 
@@ -35,6 +36,14 @@ typedef struct dim3 {
 } dim3;
 
 typedef struct cudaStream_st* cudaStream_t;
+typedef struct cudaEvent_st* cudaEvent_t;
+
+enum {
+    cudaEventDefault = 0x0,
+    cudaEventBlockingSync = 0x1,
+    cudaEventDisableTiming = 0x2,
+    cudaEventInterprocess = 0x4,
+};
 
 typedef enum cumetalArgKind {
     CUMETAL_ARG_BUFFER = 0,
@@ -69,6 +78,14 @@ cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
+cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags);
+cudaError_t cudaEventCreate(cudaEvent_t* event);
+cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event, unsigned int flags);
+cudaError_t cudaEventDestroy(cudaEvent_t event);
+cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream);
+cudaError_t cudaEventSynchronize(cudaEvent_t event);
+cudaError_t cudaEventQuery(cudaEvent_t event);
+cudaError_t cudaEventElapsedTime(float* ms, cudaEvent_t start, cudaEvent_t end);
 cudaError_t cudaDeviceSynchronize(void);
 cudaError_t cudaLaunchKernel(const void* func,
                              dim3 grid_dim,
