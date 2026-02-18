@@ -35,6 +35,7 @@ Implemented today:
   - default-stream, per-thread default stream, and user-stream execution
     (`cudaStreamCreate/Destroy/Synchronize`, `cudaStreamPerThread`, `cudaStreamLegacy`)
   - runtime functional tests for vector add, matrix multiply, and saxpy
+  - initial library shims for cuRAND and cuBLAS v2
   - driver module loading from both in-memory metallib bytes and filesystem paths
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
@@ -52,6 +53,7 @@ Supported runtime API subset:
 - `cudaHostAlloc`, `cudaFreeHost`, `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaMemGetInfo`
 - `cudaMemcpy`, `cudaMemcpyAsync`
+- `cudaMemcpyToSymbol`, `cudaMemcpyFromSymbol`, `cudaMemcpyToSymbolAsync`, `cudaMemcpyFromSymbolAsync`
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
 - `cudaStreamCreate`, `cudaStreamCreateWithFlags`, `cudaStreamDestroy`
@@ -80,6 +82,16 @@ Supported driver API subset:
 - `cuMemsetD8`, `cuMemsetD8Async`
 - `cuGetErrorName`, `cuGetErrorString`
 - `cuProfilerStart`, `cuProfilerStop`
+
+Supported library shim subset:
+
+- cuRAND (`curand.h`)
+  - `curandCreateGenerator`, `curandDestroyGenerator`
+  - `curandSetPseudoRandomGeneratorSeed`
+  - `curandGenerateUniform`, `curandGenerateUniformDouble`, `curandGenerateNormal`
+- cuBLAS v2 (`cublas_v2.h`)
+  - `cublasCreate`, `cublasDestroy`, `cublasSetStream`, `cublasGetStream`
+  - `cublasSaxpy`, `cublasSgemm`
 
 Current limitations:
 
