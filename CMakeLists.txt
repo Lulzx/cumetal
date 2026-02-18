@@ -26,6 +26,22 @@ target_compile_options(cumetal_common
         -Wpedantic
 )
 
+add_library(cumetal_ptx STATIC
+    compiler/ptx/src/parser.cpp
+)
+
+target_include_directories(cumetal_ptx
+    PUBLIC
+        compiler/ptx/include
+)
+
+target_compile_options(cumetal_ptx
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp

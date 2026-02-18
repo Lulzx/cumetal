@@ -17,6 +17,10 @@ add_executable(cumetal_metallib_parser_test
     metallib_parser_test.cpp
 )
 
+add_executable(cumetal_ptx_parser_test
+    ptx_parser_test.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -37,6 +41,11 @@ target_include_directories(cumetal_library_conflict_test
 target_link_libraries(cumetal_metallib_parser_test
     PRIVATE
         cumetal_common
+)
+
+target_link_libraries(cumetal_ptx_parser_test
+    PRIVATE
+        cumetal_ptx
 )
 
 target_compile_options(cumetal_allocation_table_test
@@ -67,6 +76,13 @@ target_compile_options(cumetal_metallib_parser_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_ptx_parser_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -87,6 +103,11 @@ add_test(
     COMMAND cumetal_metallib_parser_test
             ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
             ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.experimental.metallib
+)
+
+add_test(
+    NAME unit_ptx_parser
+    COMMAND cumetal_ptx_parser_test
 )
 
 add_test(

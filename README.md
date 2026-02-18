@@ -15,6 +15,8 @@ Implemented today:
   - `cumetalc`: thin compiler-driver CLI over the AIR emitter
   - `air_validate`: structural checks + optional `xcrun metal -validate`
   - `cumetal_metal_load_test`: `MTLDevice.newLibraryWithData:` acceptance test
+- Phase 1 scaffolding:
+  - minimal PTX text parser (`.version` / `.target` / `.entry` / `.param`) in `compiler/ptx/`
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
   - synchronous `cudaMemcpy` on UMA via `memcpy`
@@ -149,6 +151,7 @@ ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
 ctest --test-dir build -R unit_library_conflict --output-on-failure
 ctest --test-dir build -R unit_metallib_parser --output-on-failure
+ctest --test-dir build -R unit_ptx_parser --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 
