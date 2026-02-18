@@ -43,3 +43,12 @@ add_test(
     NAME unit_module_cache
     COMMAND cumetal_module_cache_test
 )
+
+add_test(
+    NAME unit_install_uninstall_scripts
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_install_uninstall_test.sh
+            ${CMAKE_SOURCE_DIR}/install/install.sh
+            ${CMAKE_SOURCE_DIR}/install/uninstall.sh
+            ${CMAKE_BINARY_DIR}
+)
