@@ -24,6 +24,7 @@ Implemented today:
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
   - shared runtime artifact: `libcumetal.dylib` (plus `cuda.h` / `cuda_runtime.h` install headers)
+  - startup conflict warning if another `libcuda.dylib` is already loaded
 
 Supported runtime API subset:
 
@@ -138,6 +139,7 @@ ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failur
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure
 ctest --test-dir build -R unit_module_cache --output-on-failure
+ctest --test-dir build -R unit_library_conflict --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 

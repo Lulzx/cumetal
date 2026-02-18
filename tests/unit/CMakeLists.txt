@@ -8,6 +8,11 @@ add_executable(cumetal_module_cache_test
     ${CMAKE_SOURCE_DIR}/runtime/cache/module_cache.cpp
 )
 
+add_executable(cumetal_library_conflict_test
+    library_conflict_test.cpp
+    ${CMAKE_SOURCE_DIR}/runtime/error/library_conflict.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -18,6 +23,11 @@ target_include_directories(cumetal_allocation_table_test
 target_include_directories(cumetal_module_cache_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/cache
+)
+
+target_include_directories(cumetal_library_conflict_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/runtime/error
 )
 
 target_compile_options(cumetal_allocation_table_test
@@ -34,6 +44,13 @@ target_compile_options(cumetal_module_cache_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_library_conflict_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -42,6 +59,11 @@ add_test(
 add_test(
     NAME unit_module_cache
     COMMAND cumetal_module_cache_test
+)
+
+add_test(
+    NAME unit_library_conflict
+    COMMAND cumetal_library_conflict_test
 )
 
 add_test(

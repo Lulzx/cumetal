@@ -1,10 +1,12 @@
 #include "cuda_runtime.h"
 
 #include "allocation_table.h"
+#include "library_conflict.h"
 #include "metal_backend.h"
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <new>
 #include <mutex>
@@ -54,6 +56,12 @@ void set_last_error(cudaError_t error) {
 cudaError_t ensure_initialized() {
     RuntimeState& state = runtime_state();
     std::call_once(state.init_once, [&state]() {
+        const std::string conflict_warning =
+            cumetal::error::detect_loaded_libcuda_conflict(reinterpret_cast<const void*>(&cudaInit));
+        if (!conflict_warning.empty()) {
+            std::fprintf(stderr, "%s\n", conflict_warning.c_str());
+        }
+
         std::string error;
         state.init_status = cumetal::metal_backend::initialize(&error);
         state.init_error = error;

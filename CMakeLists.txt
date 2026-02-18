@@ -29,6 +29,7 @@ target_compile_options(cumetal_common
 add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
+    runtime/error/library_conflict.cpp
     runtime/rt/allocation_table.cpp
     runtime/rt/cuda_runtime.cpp
     runtime/metal_backend/metal_backend.mm
@@ -49,6 +50,7 @@ target_include_directories(cumetal_runtime
     PUBLIC
         runtime/api
         runtime/cache
+        runtime/error
         runtime/rt
         runtime/metal_backend
 )
