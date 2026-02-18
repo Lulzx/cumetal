@@ -26,12 +26,17 @@ target_compile_options(cumetal_common
         -Wpedantic
 )
 
-add_library(cumetal_runtime STATIC
+add_library(cumetal_runtime SHARED
     runtime/cache/module_cache.cpp
     runtime/driver/cuda_driver.cpp
     runtime/rt/allocation_table.cpp
     runtime/rt/cuda_runtime.cpp
     runtime/metal_backend/metal_backend.mm
+)
+
+set_target_properties(cumetal_runtime
+    PROPERTIES
+        OUTPUT_NAME cumetal
 )
 
 set_source_files_properties(
@@ -145,8 +150,17 @@ if(CUMETAL_BUILD_TESTS)
 endif()
 
 install(TARGETS
+    cumetal_runtime
     air_inspect
     air_validate
     cumetal-air-emitter
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
+)
+
+install(FILES
+    runtime/api/cuda.h
+    runtime/api/cuda_runtime.h
+    DESTINATION include
 )

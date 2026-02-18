@@ -22,6 +22,7 @@ Implemented today:
   - driver module loading from both in-memory metallib bytes and filesystem paths
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
+  - shared runtime artifact: `libcumetal.dylib` (plus `cuda.h` / `cuda_runtime.h` install headers)
 
 Supported runtime API subset:
 
@@ -70,6 +71,7 @@ Build
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
+cmake --install build --prefix /tmp/cumetal-install
 ```
 
 Generate and validate a reference metallib (requires full Xcode)
