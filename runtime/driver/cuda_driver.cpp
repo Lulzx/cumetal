@@ -168,6 +168,21 @@ CUresult cuInit(unsigned int flags) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuDeviceGetCount(int* count) {
+    if (count == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+
+    *count = 1;
+    return CUDA_SUCCESS;
+}
+
 CUresult cuDeviceGet(CUdevice* device, int ordinal) {
     if (device == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;

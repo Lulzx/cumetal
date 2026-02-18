@@ -45,6 +45,7 @@ typedef enum CUresult {
 } CUresult;
 
 CUresult cuInit(unsigned int flags);
+CUresult cuDeviceGetCount(int* count);
 CUresult cuDeviceGet(CUdevice* device, int ordinal);
 CUresult cuCtxCreate(CUcontext* pctx, unsigned int flags, CUdevice dev);
 CUresult cuCtxDestroy(CUcontext ctx);

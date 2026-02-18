@@ -30,6 +30,7 @@ struct RuntimeState {
     std::once_flag init_once;
     cudaError_t init_status = cudaSuccess;
     std::string init_error;
+    int current_device = 0;
     cumetal::rt::AllocationTable allocations;
     std::mutex stream_mutex;
     std::unordered_map<cudaStream_t, std::shared_ptr<cumetal::metal_backend::Stream>> streams;
@@ -263,6 +264,50 @@ cudaError_t cudaInit(unsigned int flags) {
 
     const cudaError_t status = ensure_initialized();
     return fail(status);
+}
+
+cudaError_t cudaGetDeviceCount(int* count) {
+    if (count == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    *count = 1;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGetDevice(int* device) {
+    if (device == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    *device = state.current_device;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaSetDevice(int device) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    if (device != 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    RuntimeState& state = runtime_state();
+    state.current_device = device;
+    return fail(cudaSuccess);
 }
 
 cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
