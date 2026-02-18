@@ -78,6 +78,7 @@ typedef enum CUdevice_attribute {
 } CUdevice_attribute;
 
 CUresult cuInit(unsigned int flags);
+CUresult cuDriverGetVersion(int* driverVersion);
 CUresult cuDeviceGetCount(int* count);
 CUresult cuDeviceGet(CUdevice* device, int ordinal);
 CUresult cuDeviceGetName(char* name, int len, CUdevice dev);

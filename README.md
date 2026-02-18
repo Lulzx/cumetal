@@ -22,12 +22,11 @@ Implemented today:
 
 Supported runtime API subset:
 
-- `cudaInit`
+- `cudaInit`, `cudaDriverGetVersion`, `cudaRuntimeGetVersion`
 - `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
 - `cudaSetDeviceFlags`, `cudaGetDeviceFlags`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
 - `cudaHostAlloc`, `cudaFreeHost`, `cudaHostGetDevicePointer`, `cudaHostGetFlags`
-- `cudaHostGetDevicePointer`, `cudaHostGetFlags`
 - `cudaMemGetInfo`
 - `cudaMemcpy`, `cudaMemcpyAsync`
 - `cudaMemset`, `cudaMemsetAsync`
@@ -43,7 +42,7 @@ Supported runtime API subset:
 
 Supported driver API subset:
 
-- `cuInit`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`, `cuDeviceGetAttribute`
+- `cuInit`, `cuDriverGetVersion`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`, `cuDeviceGetAttribute`
 - `cuCtxCreate`, `cuCtxDestroy`, `cuCtxSetCurrent`, `cuCtxGetCurrent`, `cuCtxGetDevice`, `cuCtxGetFlags`, `cuCtxSetFlags`, `cuCtxSynchronize`
 - `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamAddCallback`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`

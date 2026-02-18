@@ -3,6 +3,16 @@
 #include <cstdio>
 
 int main() {
+    int driver_version = 0;
+    if (cuDriverGetVersion(&driver_version) != CUDA_SUCCESS || driver_version <= 0) {
+        std::fprintf(stderr, "FAIL: cuDriverGetVersion failed before init\n");
+        return 1;
+    }
+    if (cuDriverGetVersion(nullptr) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: cuDriverGetVersion should reject null output pointer\n");
+        return 1;
+    }
+
     if (cuInit(0) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuInit failed\n");
         return 1;

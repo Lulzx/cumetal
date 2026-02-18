@@ -27,6 +27,8 @@ struct cudaEvent_st {
 
 namespace {
 
+constexpr int kCudaCompatVersion = 12000;
+
 struct RuntimeState {
     std::once_flag init_once;
     cudaError_t init_status = cudaSuccess;
@@ -297,6 +299,34 @@ cudaError_t cudaInit(unsigned int flags) {
 
     const cudaError_t status = ensure_initialized();
     return fail(status);
+}
+
+cudaError_t cudaDriverGetVersion(int* driver_version) {
+    if (driver_version == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    *driver_version = kCudaCompatVersion;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaRuntimeGetVersion(int* runtime_version) {
+    if (runtime_version == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    *runtime_version = kCudaCompatVersion;
+    return fail(cudaSuccess);
 }
 
 cudaError_t cudaGetDeviceCount(int* count) {

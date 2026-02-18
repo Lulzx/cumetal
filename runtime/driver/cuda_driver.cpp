@@ -33,6 +33,8 @@ struct CUfunc_st {
 
 namespace {
 
+constexpr int kCudaCompatVersion = 12000;
+
 struct DriverState {
     std::mutex mutex;
     bool initialized = false;
@@ -204,6 +206,15 @@ CUresult cuInit(unsigned int flags) {
     DriverState& state = driver_state();
     std::lock_guard<std::mutex> lock(state.mutex);
     state.initialized = true;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuDriverGetVersion(int* driverVersion) {
+    if (driverVersion == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    *driverVersion = kCudaCompatVersion;
     return CUDA_SUCCESS;
 }
 

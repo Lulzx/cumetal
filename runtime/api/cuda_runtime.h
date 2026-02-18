@@ -115,6 +115,8 @@ typedef struct cumetalKernel {
 } cumetalKernel_t;
 
 cudaError_t cudaInit(unsigned int flags);
+cudaError_t cudaDriverGetVersion(int* driver_version);
+cudaError_t cudaRuntimeGetVersion(int* runtime_version);
 cudaError_t cudaGetDeviceCount(int* count);
 cudaError_t cudaGetDevice(int* device);
 cudaError_t cudaSetDevice(int device);
