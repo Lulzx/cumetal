@@ -45,6 +45,7 @@ Implemented today:
   - startup conflict warning if another `libcuda.dylib` is already loaded
   - Metal command-buffer failures map to CUDA timeout/illegal-address/devices-unavailable errors
   - default module cache root: `$HOME/Library/Caches/io.cumetal/kernels` (override: `CUMETAL_CACHE_DIR`)
+  - GitHub Actions correctness baseline on self-hosted M1 runner (`ci-m1`) via `.github/workflows/ci.yml`
 
 Supported runtime API subset:
 
