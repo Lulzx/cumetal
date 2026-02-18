@@ -195,4 +195,65 @@ cublasStatus_t cublasSgemm(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasDgemm(cublasHandle_t handle,
+                           cublasOperation_t transa,
+                           cublasOperation_t transb,
+                           int m,
+                           int n,
+                           int k,
+                           const double* alpha,
+                           const double* a,
+                           int lda,
+                           const double* b,
+                           int ldb,
+                           const double* beta,
+                           double* c,
+                           int ldc) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_operation(transa) || !is_valid_operation(transb)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m < 0 || n < 0 || k < 0 || alpha == nullptr || beta == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m == 0 || n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || b == nullptr || c == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(a) == 0 || cumetalRuntimeIsDevicePointer(b) == 0 ||
+        cumetalRuntimeIsDevicePointer(c) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const int a_rows = (transa == CUBLAS_OP_N) ? m : k;
+    const int b_rows = (transb == CUBLAS_OP_N) ? k : n;
+    if (lda < (a_rows > 1 ? a_rows : 1) || ldb < (b_rows > 1 ? b_rows : 1) || ldc < (m > 1 ? m : 1)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    const double beta_value = *beta;
+    for (int col = 0; col < n; ++col) {
+        for (int row = 0; row < m; ++row) {
+            double sum = 0.0;
+            for (int p = 0; p < k; ++p) {
+                const double a_value = (transa == CUBLAS_OP_N) ? a[row + p * lda] : a[p + row * lda];
+                const double b_value = (transb == CUBLAS_OP_N) ? b[p + col * ldb] : b[col + p * ldb];
+                sum += a_value * b_value;
+            }
+            c[row + col * ldc] = alpha_value * sum + beta_value * c[row + col * ldc];
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 }  // extern "C"

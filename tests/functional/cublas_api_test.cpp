@@ -460,12 +460,124 @@ int main() {
         return 1;
     }
 
+    constexpr int md = 2;
+    constexpr int nd = 2;
+    constexpr int kd = 3;
+    constexpr int lda_d = md;
+    constexpr int ldb_d = kd;
+    constexpr int ldc_d = md;
+    std::vector<double> host_ad(lda_d * kd);
+    std::vector<double> host_bd(ldb_d * nd);
+    std::vector<double> host_cd(ldc_d * nd);
+    std::vector<double> expected_cd(ldc_d * nd);
+
+    for (int col = 0; col < kd; ++col) {
+        for (int row = 0; row < md; ++row) {
+            host_ad[row + col * lda_d] =
+                0.25 + static_cast<double>(row + 1) * static_cast<double>(col + 1) * 0.05;
+        }
+    }
+    for (int col = 0; col < nd; ++col) {
+        for (int row = 0; row < kd; ++row) {
+            host_bd[row + col * ldb_d] =
+                0.5 + static_cast<double>(row + 1) * static_cast<double>(col + 2) * 0.03;
+        }
+    }
+    for (int col = 0; col < nd; ++col) {
+        for (int row = 0; row < md; ++row) {
+            host_cd[row + col * ldc_d] = static_cast<double>((row + 1) * (col + 1)) * 0.2;
+            expected_cd[row + col * ldc_d] = host_cd[row + col * ldc_d];
+        }
+    }
+
+    const double alpha_d = 1.2;
+    const double beta_d = 0.4;
+    for (int col = 0; col < nd; ++col) {
+        for (int row = 0; row < md; ++row) {
+            double sum = 0.0;
+            for (int p = 0; p < kd; ++p) {
+                sum += host_ad[row + p * lda_d] * host_bd[p + col * ldb_d];
+            }
+            expected_cd[row + col * ldc_d] = alpha_d * sum + beta_d * expected_cd[row + col * ldc_d];
+        }
+    }
+
+    double* dev_ad = nullptr;
+    double* dev_bd = nullptr;
+    double* dev_cd = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_ad), host_ad.size() * sizeof(double)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_bd), host_bd.size() * sizeof(double)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_cd), host_cd.size() * sizeof(double)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DGEMM failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_ad, host_ad.data(), host_ad.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_bd, host_bd.data(), host_bd.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_cd, host_cd.data(), host_cd.size() * sizeof(double), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DGEMM failed\n");
+        return 1;
+    }
+
+    if (cublasDgemm(handle,
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_N,
+                    md,
+                    nd,
+                    kd,
+                    &alpha_d,
+                    dev_ad,
+                    lda_d,
+                    dev_bd,
+                    ldb_d,
+                    &beta_d,
+                    dev_cd,
+                    ldc_d) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDgemm failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_cd.data(), dev_cd, host_cd.size() * sizeof(double), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DGEMM failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_cd.size(); ++i) {
+        if (std::fabs(host_cd[i] - expected_cd[i]) > 1e-9) {
+            std::fprintf(stderr,
+                         "FAIL: DGEMM mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         host_cd[i],
+                         expected_cd[i]);
+            return 1;
+        }
+    }
+    if (cublasDgemm(handle,
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_N,
+                    md,
+                    nd,
+                    kd,
+                    &alpha_d,
+                    host_ad.data(),
+                    lda_d,
+                    dev_bd,
+                    ldb_d,
+                    &beta_d,
+                    dev_cd,
+                    ldc_d) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host A in DGEMM\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
         cudaFree(dev_bt) != cudaSuccess || cudaFree(dev_ct) != cudaSuccess ||
         cudaFree(dev_an) != cudaSuccess || cudaFree(dev_bn) != cudaSuccess ||
-        cudaFree(dev_cn) != cudaSuccess) {
+        cudaFree(dev_cn) != cudaSuccess || cudaFree(dev_ad) != cudaSuccess ||
+        cudaFree(dev_bd) != cudaSuccess || cudaFree(dev_cd) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }

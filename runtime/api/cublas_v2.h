@@ -56,6 +56,21 @@ cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            float* c,
                            int ldc);
 
+cublasStatus_t cublasDgemm(cublasHandle_t handle,
+                           cublasOperation_t transa,
+                           cublasOperation_t transb,
+                           int m,
+                           int n,
+                           int k,
+                           const double* alpha,
+                           const double* a,
+                           int lda,
+                           const double* b,
+                           int ldb,
+                           const double* beta,
+                           double* c,
+                           int ldc);
+
 #ifdef __cplusplus
 }
 #endif
