@@ -26,6 +26,38 @@ target_compile_options(cumetal_common
         -Wpedantic
 )
 
+add_library(cumetal_runtime STATIC
+    runtime/rt/allocation_table.cpp
+    runtime/rt/cuda_runtime.cpp
+    runtime/metal_backend/metal_backend.mm
+)
+
+set_source_files_properties(
+    runtime/metal_backend/metal_backend.mm
+    PROPERTIES
+        COMPILE_FLAGS "-fobjc-arc"
+)
+
+target_include_directories(cumetal_runtime
+    PUBLIC
+        runtime/api
+        runtime/rt
+        runtime/metal_backend
+)
+
+target_link_libraries(cumetal_runtime
+    PRIVATE
+        "-framework Foundation"
+        "-framework Metal"
+)
+
+target_compile_options(cumetal_runtime
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_library(cumetal_air_validate STATIC
     compiler/air_validate/src/validator.cpp
 )
@@ -105,6 +137,7 @@ target_compile_options(air_inspect
 if(CUMETAL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests/air_abi)
+    add_subdirectory(tests/functional)
 endif()
 
 install(TARGETS

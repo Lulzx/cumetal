@@ -1,0 +1,30 @@
+if(NOT APPLE)
+    message(STATUS "Skipping functional tests: Apple platform required")
+    return()
+endif()
+
+add_executable(cumetal_runtime_vector_add_test
+    runtime_vector_add_test.cpp
+)
+
+target_link_libraries(cumetal_runtime_vector_add_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_compile_options(cumetal_runtime_vector_add_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME functional_runtime_vector_add
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_runtime_vector_add_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(functional_runtime_vector_add PROPERTIES SKIP_RETURN_CODE 77)

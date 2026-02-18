@@ -1,0 +1,40 @@
+#pragma once
+
+#include "metal_backend.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <string>
+
+namespace cumetal::rt {
+
+class AllocationTable {
+public:
+    struct ResolvedAllocation {
+        std::shared_ptr<metal_backend::Buffer> buffer;
+        std::size_t offset = 0;
+        std::size_t remaining_size = 0;
+    };
+
+    bool insert(void* base,
+                std::size_t size,
+                std::shared_ptr<metal_backend::Buffer> buffer,
+                std::string* error_message);
+    bool erase(void* base);
+    bool resolve(const void* ptr, ResolvedAllocation* resolved) const;
+
+private:
+    struct Entry {
+        std::size_t size = 0;
+        std::shared_ptr<metal_backend::Buffer> buffer;
+    };
+
+    std::map<std::uintptr_t, Entry> entries_;
+    mutable std::shared_mutex mutex_;
+};
+
+}  // namespace cumetal::rt
