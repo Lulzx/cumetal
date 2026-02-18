@@ -30,6 +30,11 @@ int main() {
         std::fprintf(stderr, "FAIL: expected ctx1 as initial current context\n");
         return 1;
     }
+    CUdevice current_device = -1;
+    if (cuCtxGetDevice(&current_device) != CUDA_SUCCESS || current_device != device) {
+        std::fprintf(stderr, "FAIL: expected cuCtxGetDevice to report active device\n");
+        return 1;
+    }
 
     if (cuCtxSetCurrent(ctx2) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxSetCurrent(ctx2) failed\n");
@@ -48,6 +53,10 @@ int main() {
         std::fprintf(stderr, "FAIL: expected null current context\n");
         return 1;
     }
+    if (cuCtxGetDevice(&current_device) != CUDA_ERROR_INVALID_CONTEXT) {
+        std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_CONTEXT from cuCtxGetDevice without context\n");
+        return 1;
+    }
     if (cuCtxSynchronize() != CUDA_ERROR_INVALID_CONTEXT) {
         std::fprintf(stderr, "FAIL: expected CUDA_ERROR_INVALID_CONTEXT without current context\n");
         return 1;
@@ -59,6 +68,10 @@ int main() {
     }
     if (cuCtxSynchronize() != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxSynchronize with ctx1 failed\n");
+        return 1;
+    }
+    if (cuCtxGetDevice(&current_device) != CUDA_SUCCESS || current_device != device) {
+        std::fprintf(stderr, "FAIL: cuCtxGetDevice should succeed after restoring current context\n");
         return 1;
     }
 

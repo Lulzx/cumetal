@@ -428,6 +428,24 @@ CUresult cuCtxGetCurrent(CUcontext* pctx) {
     return CUDA_SUCCESS;
 }
 
+CUresult cuCtxGetDevice(CUdevice* device) {
+    if (device == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+    if (!has_current_context_locked(state)) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+
+    *device = state.current_context->device;
+    return CUDA_SUCCESS;
+}
+
 CUresult cuCtxSynchronize(void) {
     DriverState& state = driver_state();
     {
