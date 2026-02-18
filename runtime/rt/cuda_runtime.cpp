@@ -300,6 +300,15 @@ cudaError_t update_event_completion(cudaEvent_t event, bool wait_for_completion)
 
 extern "C" {
 
+int cumetalRuntimeIsDevicePointer(const void* ptr) {
+    if (ptr == nullptr) {
+        return 0;
+    }
+    RuntimeState& state = runtime_state();
+    cumetal::rt::AllocationTable::ResolvedAllocation resolved;
+    return state.allocations.resolve(ptr, &resolved) ? 1 : 0;
+}
+
 cudaError_t cudaInit(unsigned int flags) {
     if (flags != 0) {
         return fail(cudaErrorInvalidValue);

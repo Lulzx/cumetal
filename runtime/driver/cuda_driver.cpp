@@ -34,6 +34,8 @@ struct CUfunc_st {
 
 namespace {
 
+extern "C" int cumetalRuntimeIsDevicePointer(const void* ptr);
+
 constexpr int kCudaCompatVersion = 12000;
 
 struct DriverState {
@@ -236,6 +238,14 @@ void driver_stream_callback_bridge(cudaStream_t stream, cudaError_t status, void
 
     payload->callback(payload->stream, map_cuda_error(status), payload->user_data);
     delete payload;
+}
+
+bool is_runtime_device_pointer_word(CUdeviceptr value) {
+    const std::uintptr_t raw = static_cast<std::uintptr_t>(value);
+    if (raw == 0) {
+        return false;
+    }
+    return cumetalRuntimeIsDevicePointer(reinterpret_cast<const void*>(raw)) != 0;
 }
 
 }  // namespace
@@ -891,6 +901,7 @@ CUresult cuLaunchKernel(CUfunction f,
 
     std::vector<void*> launch_params;
     std::vector<CUdeviceptr> packed_arg_values;
+    std::vector<cumetalKernelArgInfo_t> arg_info;
 
     if (extra != nullptr) {
         void* packed_buffer = nullptr;
@@ -935,8 +946,22 @@ CUresult cuLaunchKernel(CUfunction f,
         const auto* packed_args = static_cast<const CUdeviceptr*>(packed_buffer);
         packed_arg_values.assign(packed_args, packed_args + arg_count);
         launch_params.reserve(arg_count);
+        arg_info.reserve(arg_count);
         for (std::size_t i = 0; i < packed_arg_values.size(); ++i) {
             launch_params.push_back(&packed_arg_values[i]);
+            if (is_runtime_device_pointer_word(packed_arg_values[i])) {
+                arg_info.push_back(cumetalKernelArgInfo_t{
+                    .kind = CUMETAL_ARG_BUFFER,
+                    .size_bytes = 0,
+                });
+            } else {
+                const std::uint32_t scalar_size =
+                    (packed_arg_values[i] <= 0xFFFFFFFFull) ? 4u : 8u;
+                arg_info.push_back(cumetalKernelArgInfo_t{
+                    .kind = CUMETAL_ARG_BYTES,
+                    .size_bytes = scalar_size,
+                });
+            }
         }
     } else if (kernelParams != nullptr) {
         std::size_t arg_count = 0;
@@ -950,19 +975,14 @@ CUresult cuLaunchKernel(CUfunction f,
         }
 
         launch_params.reserve(arg_count);
+        arg_info.reserve(arg_count);
         for (std::size_t i = 0; i < arg_count; ++i) {
             launch_params.push_back(kernelParams[i]);
+            arg_info.push_back(cumetalKernelArgInfo_t{
+                .kind = CUMETAL_ARG_BUFFER,
+                .size_bytes = 0,
+            });
         }
-    }
-
-    std::vector<cumetalKernelArgInfo_t> arg_info;
-    arg_info.reserve(launch_params.size());
-    for (std::size_t i = 0; i < launch_params.size(); ++i) {
-        (void)i;
-        arg_info.push_back(cumetalKernelArgInfo_t{
-            .kind = CUMETAL_ARG_BUFFER,
-            .size_bytes = 0,
-        });
     }
 
     const cumetalKernel_t kernel{

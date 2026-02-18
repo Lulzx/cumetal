@@ -167,6 +167,7 @@ ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
 ctest --test-dir build -R functional_driver_host_pointer_api --output-on-failure
 ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
+ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R unit_allocation_table --output-on-failure

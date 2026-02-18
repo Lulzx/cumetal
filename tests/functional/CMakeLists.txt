@@ -159,6 +159,10 @@ add_executable(cumetal_driver_launch_extra_test
     driver_launch_extra_test.cpp
 )
 
+add_executable(cumetal_driver_launch_extra_scalar_test
+    driver_launch_extra_scalar_test.cpp
+)
+
 add_executable(cumetal_driver_stream_wait_event_test
     driver_stream_wait_event_test.cpp
 )
@@ -358,6 +362,11 @@ target_link_libraries(cumetal_driver_module_load_data_test
 )
 
 target_link_libraries(cumetal_driver_launch_extra_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_launch_extra_scalar_test
     PRIVATE
         cumetal_runtime
 )
@@ -645,6 +654,13 @@ target_compile_options(cumetal_driver_launch_extra_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_driver_launch_extra_scalar_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_driver_stream_wait_event_test
     PRIVATE
         -Wall
@@ -923,6 +939,16 @@ add_test(
 )
 
 set_tests_properties(functional_driver_launch_extra PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_launch_extra_scalar
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_driver_launch_extra_scalar_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/matrix_mul_scalar.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/matrix_mul_scalar.metallib
+)
+
+set_tests_properties(functional_driver_launch_extra_scalar PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_driver_stream_wait_event
