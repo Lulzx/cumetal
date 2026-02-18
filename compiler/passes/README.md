@@ -12,3 +12,6 @@ Current status:
 - `addrspace` rewrite scaffold maps:
   - `ld.*`/`st.*` in `.shared`, `.global`, `.local` spaces
   - `cvta.to.*` casts to explicit LLVM address spaces
+- `metadata` scaffold emits kernel metadata fields:
+  - `air.kernel`, `air.version`, `language.version`
+  - per-argument `type` and `name` records

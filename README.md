@@ -20,6 +20,7 @@ Implemented today:
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
+  - initial `metadata` pass for AIR-style kernel metadata fields
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
   - synchronous `cudaMemcpy` on UMA via `memcpy`
@@ -157,6 +158,7 @@ ctest --test-dir build -R unit_metallib_parser --output-on-failure
 ctest --test-dir build -R unit_ptx_parser --output-on-failure
 ctest --test-dir build -R unit_intrinsic_lower --output-on-failure
 ctest --test-dir build -R unit_addrspace_pass --output-on-failure
+ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_install_uninstall_scripts --output-on-failure
 ```
 
