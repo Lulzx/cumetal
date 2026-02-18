@@ -8,14 +8,28 @@ WORKDIR="$3"
 XCODE15_DIR="${CUMETAL_XCODE15_DEVELOPER_DIR:-}"
 XCODE16_DIR="${CUMETAL_XCODE16_DEVELOPER_DIR:-}"
 
+DEFAULT_DEVELOPER_DIR="$(xcode-select -p 2>/dev/null || true)"
+if [[ -z "$XCODE15_DIR" ]]; then
+  XCODE15_DIR="$DEFAULT_DEVELOPER_DIR"
+fi
+if [[ -z "$XCODE16_DIR" ]]; then
+  XCODE16_DIR="$DEFAULT_DEVELOPER_DIR"
+fi
+
 if [[ -z "$XCODE15_DIR" || -z "$XCODE16_DIR" ]]; then
-  echo "SKIP: set CUMETAL_XCODE15_DEVELOPER_DIR and CUMETAL_XCODE16_DEVELOPER_DIR"
+  echo "SKIP: no Xcode developer directory found"
+  echo "      set CUMETAL_XCODE15_DEVELOPER_DIR/CUMETAL_XCODE16_DEVELOPER_DIR or run xcode-select --switch"
   exit 77
 fi
 
 if [[ ! -d "$XCODE15_DIR" || ! -d "$XCODE16_DIR" ]]; then
   echo "SKIP: configured Xcode developer directories do not exist"
   exit 77
+fi
+
+if [[ "$XCODE15_DIR" == "$XCODE16_DIR" ]]; then
+  echo "INFO: single-Xcode fallback mode (matrix compare uses the same developer dir):"
+  echo "      $XCODE15_DIR"
 fi
 
 mkdir -p "$WORKDIR"

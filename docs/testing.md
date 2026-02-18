@@ -101,6 +101,14 @@ ctest --test-dir build -R conformance_phase4_functional --output-on-failure
 ctest --test-dir build -R conformance_llmc_gpt2fp32cu --output-on-failure
 ```
 
+Notes:
+- `conformance_phase4_functional` now prints per-test progress (`[i/N]`) and applies a per-test timeout.
+- Override per-test timeout with `CUMETAL_CONFORMANCE_SINGLE_TEST_TIMEOUT` (seconds, default `120`).
+- `air_abi_xcode_matrix_regression` uses `CUMETAL_XCODE15_DEVELOPER_DIR`/`CUMETAL_XCODE16_DEVELOPER_DIR` when set.
+  If unset, it falls back to `xcode-select -p` for both slots (single-Xcode mode).
+- `conformance_llmc_gpt2fp32cu` is registered only when llm.c is configured (set `CUMETAL_LLMC_DIR`
+  before CMake configure, or place checkout at `../llm.c` relative to this repo root).
+
 Direct invocation with custom threshold/regex:
 
 ```bash
@@ -143,4 +151,3 @@ If `xcrun metal`/`xcrun metallib` are unavailable
 ./build/air_validate /tmp/vector_add.experimental.metallib \
   --require-function-list --require-metadata
 ```
-

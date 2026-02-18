@@ -319,16 +319,32 @@ bool parse_fatbin_wrapper_ptx(const void* image, std::string* out_ptx) {
         return false;
     }
 
-    FatbinWrapper wrapper{};
-    std::memcpy(&wrapper, image, sizeof(wrapper));
-    if (wrapper.magic != kFatbinWrapperMagic || wrapper.data == nullptr) {
-        return false;
-    }
+    // Some fatbin wrappers prepend private fields before the canonical wrapper.
+    const auto* raw = static_cast<const std::uint8_t*>(image);
+    constexpr std::size_t kOffsets[] = {0u, 16u};
+    for (const std::size_t offset : kOffsets) {
+        std::uint32_t magic = 0;
+        std::uint32_t version = 0;
+        std::memcpy(&magic, raw + offset, sizeof(magic));
+        std::memcpy(&version, raw + offset + sizeof(magic), sizeof(version));
+        if (magic != kFatbinWrapperMagic || version == 0 || version > 3) {
+            continue;
+        }
 
-    if (parse_direct_ptx_image(wrapper.data, out_ptx)) {
-        return true;
+        const void* data = nullptr;
+        std::memcpy(&data, raw + offset + sizeof(magic) + sizeof(version), sizeof(data));
+        if (data == nullptr) {
+            continue;
+        }
+
+        if (parse_direct_ptx_image(data, out_ptx)) {
+            return true;
+        }
+        if (parse_fatbin_blob_ptx(data, out_ptx)) {
+            return true;
+        }
     }
-    return parse_fatbin_blob_ptx(wrapper.data, out_ptx);
+    return false;
 }
 
 bool parse_ptx_image(const void* image, std::string* out_ptx) {

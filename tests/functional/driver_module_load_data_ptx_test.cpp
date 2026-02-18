@@ -25,6 +25,12 @@ struct FatbinWrapper {
     const void* unknown = nullptr;
 };
 
+struct FatbinWrapperPrefixed {
+    std::uint64_t prefix0 = 0;
+    std::uint64_t prefix1 = 0;
+    FatbinWrapper wrapper{};
+};
+
 struct FatbinBlobHeader {
     std::uint32_t magic = kFatbinBlobMagic;
     std::uint16_t version = 1;
@@ -210,6 +216,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    FatbinWrapperPrefixed wrapper_prefixed{};
+    wrapper_prefixed.prefix0 = 0x1111222233334444ull;
+    wrapper_prefixed.prefix1 = 0x5555666677778888ull;
+    wrapper_prefixed.wrapper.data = fatbin_blob.data();
+    if (cuModuleLoadData(&module, &wrapper_prefixed) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(prefixed fatbin wrapper) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after prefixed fatbin wrapper load failed\n");
+        return 1;
+    }
+
     if (cuModuleLoadData(&module, fatbin_blob.data()) != CUDA_SUCCESS || module == nullptr) {
         std::fprintf(stderr, "FAIL: cuModuleLoadData(fatbin blob) failed\n");
         return 1;
@@ -261,8 +285,11 @@ int main(int argc, char** argv) {
     FatbinWrapper invalid_wrapper{};
     invalid_wrapper.magic = 0x12345678u;
     invalid_wrapper.data = fatbin_blob.data();
-    if (cuModuleLoadData(&module, &invalid_wrapper) != CUDA_ERROR_INVALID_IMAGE) {
-        std::fprintf(stderr, "FAIL: invalid fatbin wrapper magic should return CUDA_ERROR_INVALID_IMAGE\n");
+    const CUresult invalid_wrapper_status = cuModuleLoadData(&module, &invalid_wrapper);
+    if (invalid_wrapper_status != CUDA_ERROR_INVALID_IMAGE) {
+        std::fprintf(stderr,
+                     "FAIL: invalid fatbin wrapper magic expected CUDA_ERROR_INVALID_IMAGE got %d\n",
+                     static_cast<int>(invalid_wrapper_status));
         return 1;
     }
 

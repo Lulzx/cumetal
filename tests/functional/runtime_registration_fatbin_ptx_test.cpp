@@ -41,6 +41,12 @@ struct FatbinWrapper {
     const void* unknown = nullptr;
 };
 
+struct FatbinWrapperPrefixed {
+    std::uint64_t prefix0 = 0;
+    std::uint64_t prefix1 = 0;
+    FatbinWrapper wrapper{};
+};
+
 struct FatbinBlobHeader {
     std::uint32_t magic = kFatbinBlobMagic;
     std::uint16_t version = 1;
@@ -197,6 +203,62 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "FAIL: launch should fail after __cudaUnregisterFatBinary\n");
         return 1;
     }
+
+    FatbinWrapperPrefixed wrapper_prefixed{};
+    wrapper_prefixed.prefix0 = 0x1111222233334444ull;
+    wrapper_prefixed.prefix1 = 0x5555666677778888ull;
+    wrapper_prefixed.wrapper.data = fatbin_blob.data();
+    fatbin_handle = __cudaRegisterFatBinary(&wrapper_prefixed);
+    if (fatbin_handle == nullptr) {
+        std::fprintf(stderr, "FAIL: __cudaRegisterFatBinary (prefixed wrapper) returned null\n");
+        return 1;
+    }
+
+    __cudaRegisterFunction(fatbin_handle,
+                           reinterpret_cast<const void*>(&vector_add_host_stub),
+                           device_function,
+                           nullptr,
+                           0,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr,
+                           nullptr);
+
+    if (cudaLaunchKernel(reinterpret_cast<const void*>(&vector_add_host_stub),
+                         grid_dim,
+                         block_dim,
+                         args,
+                         0,
+                         nullptr) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaLaunchKernel through prefixed fatbin wrapper failed\n");
+        return 1;
+    }
+
+    if (cudaDeviceSynchronize() != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaDeviceSynchronize after prefixed fatbin wrapper launch failed\n");
+        return 1;
+    }
+
+    if (cudaMemcpy(host_c.data(), dev_c, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr,
+                     "FAIL: cudaMemcpy device->host after prefixed fatbin wrapper launch failed\n");
+        return 1;
+    }
+
+    for (std::size_t i = 0; i < kElementCount; ++i) {
+        const float expected = host_a[i] + host_b[i];
+        if (!nearly_equal(host_c[i], expected)) {
+            std::fprintf(stderr,
+                         "FAIL: prefixed fatbin wrapper mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_c[i]),
+                         static_cast<double>(expected));
+            return 1;
+        }
+    }
+
+    __cudaUnregisterFatBinary(fatbin_handle);
 
     fatbin_handle = __cudaRegisterFatBinary(fatbin_blob.data());
     if (fatbin_handle == nullptr) {
