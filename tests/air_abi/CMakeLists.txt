@@ -146,6 +146,16 @@ add_test(
 )
 
 add_test(
+    NAME air_abi_cumetalc_ptx_emit_load_xcrun
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_ptx_emit_and_load_xcrun.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:cumetal_metal_load_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.ptx
+            ${CMAKE_CURRENT_BINARY_DIR}/vector_add.cumetalc.from_ptx.xcrun.load.metallib
+)
+
+add_test(
     NAME air_abi_ptx2llvm_positional_default_output
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_ptx2llvm_positional_default_output.sh
@@ -162,6 +172,7 @@ set_tests_properties(
     air_abi_cumetalc_positional_emit_load_xcrun
     air_abi_cumetalc_default_output_emit_load_xcrun
     air_abi_multikernel_emit_validate_load_xcrun
+    air_abi_cumetalc_ptx_emit_load_xcrun
     PROPERTIES
         SKIP_RETURN_CODE 77
 )

@@ -114,6 +114,7 @@ ctest --test-dir build -R air_abi_multikernel_emit_validate_load_xcrun --output-
 ctest --test-dir build -R air_abi_ptx_to_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_experimental_validate --output-on-failure
 ctest --test-dir build -R air_abi_cumetalc_ptx_default_output_validate --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_ptx_emit_load_xcrun --output-on-failure
 ctest --test-dir build -R air_abi_ptx2llvm_positional_default_output --output-on-failure
 ```
 
