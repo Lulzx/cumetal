@@ -564,6 +564,88 @@ cublasStatus_t cublasDnrm2(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasIsamax(cublasHandle_t handle, int n, const float* x, int incx, int* result) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || result == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (x == nullptr && n > 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        *result = 0;
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(result) != 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    int best_index = 0;
+    float best_value = std::fabs(x[0]);
+    for (int i = 1; i < n; ++i) {
+        const float value = std::fabs(x[i * incx]);
+        if (value > best_value) {
+            best_value = value;
+            best_index = i;
+        }
+    }
+    *result = best_index + 1;  // cuBLAS uses 1-based indexing.
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasIdamax(cublasHandle_t handle,
+                            int n,
+                            const double* x,
+                            int incx,
+                            int* result) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || result == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (x == nullptr && n > 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        *result = 0;
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(result) != 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    int best_index = 0;
+    double best_value = std::fabs(x[0]);
+    for (int i = 1; i < n; ++i) {
+        const double value = std::fabs(x[i * incx]);
+        if (value > best_value) {
+            best_value = value;
+            best_index = i;
+        }
+    }
+    *result = best_index + 1;  // cuBLAS uses 1-based indexing.
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
                            cublasOperation_t transb,

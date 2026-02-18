@@ -997,6 +997,86 @@ int main() {
         return 1;
     }
 
+    int expected_isamax = 1;
+    float best_isamax = std::fabs(host_dot_x[0]);
+    for (int i = 1; i < kDotCount; ++i) {
+        const float value = std::fabs(host_dot_x[i]);
+        if (value > best_isamax) {
+            best_isamax = value;
+            expected_isamax = i + 1;
+        }
+    }
+    int isamax_result = 0;
+    if (cublasIsamax(handle, kDotCount, dev_dot_x, 1, &isamax_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasIsamax failed\n");
+        return 1;
+    }
+    if (isamax_result != expected_isamax) {
+        std::fprintf(stderr,
+                     "FAIL: ISAMAX mismatch (got=%d expected=%d)\n",
+                     isamax_result,
+                     expected_isamax);
+        return 1;
+    }
+    if (cublasIsamax(handle, kDotCount, host_dot_x.data(), 1, &isamax_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in ISAMAX\n");
+        return 1;
+    }
+
+    int expected_idamax = 1;
+    double best_idamax = std::fabs(host_ddot_x[0]);
+    for (int i = 1; i < kDotCount; ++i) {
+        const double value = std::fabs(host_ddot_x[i]);
+        if (value > best_idamax) {
+            best_idamax = value;
+            expected_idamax = i + 1;
+        }
+    }
+    int idamax_result = 0;
+    if (cublasIdamax(handle, kDotCount, dev_ddot_x, 1, &idamax_result) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasIdamax failed\n");
+        return 1;
+    }
+    if (idamax_result != expected_idamax) {
+        std::fprintf(stderr,
+                     "FAIL: IDAMAX mismatch (got=%d expected=%d)\n",
+                     idamax_result,
+                     expected_idamax);
+        return 1;
+    }
+    if (cublasIdamax(handle, kDotCount, host_ddot_x.data(), 1, &idamax_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in IDAMAX\n");
+        return 1;
+    }
+
+    int* dev_index = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_index), sizeof(int)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for index result failed\n");
+        return 1;
+    }
+    if (cublasIsamax(handle, kDotCount, dev_dot_x, 1, dev_index) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for device result in ISAMAX\n");
+        return 1;
+    }
+    if (cublasIdamax(handle, kDotCount, dev_ddot_x, 1, dev_index) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for device result in IDAMAX\n");
+        return 1;
+    }
+
+    int zero_isamax = -1;
+    if (cublasIsamax(handle, 0, dev_dot_x, 1, &zero_isamax) != CUBLAS_STATUS_SUCCESS || zero_isamax != 0) {
+        std::fprintf(stderr, "FAIL: cublasIsamax n==0 behavior mismatch\n");
+        return 1;
+    }
+    int zero_idamax = -1;
+    if (cublasIdamax(handle, 0, dev_ddot_x, 1, &zero_idamax) != CUBLAS_STATUS_SUCCESS ||
+        zero_idamax != 0) {
+        std::fprintf(stderr, "FAIL: cublasIdamax n==0 behavior mismatch\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
@@ -1007,7 +1087,8 @@ int main() {
         cudaFree(dev_dx) != cudaSuccess || cudaFree(dev_dy) != cudaSuccess ||
         cudaFree(dev_swap_dx) != cudaSuccess || cudaFree(dev_swap_dy) != cudaSuccess ||
         cudaFree(dev_dot_x) != cudaSuccess || cudaFree(dev_dot_y) != cudaSuccess ||
-        cudaFree(dev_ddot_x) != cudaSuccess || cudaFree(dev_ddot_y) != cudaSuccess) {
+        cudaFree(dev_ddot_x) != cudaSuccess || cudaFree(dev_ddot_y) != cudaSuccess ||
+        cudaFree(dev_index) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }
@@ -1021,6 +1102,6 @@ int main() {
         return 1;
     }
 
-    std::printf("PASS: cuBLAS shim SAXPY/SGEMM operations validated\n");
+    std::printf("PASS: cuBLAS shim operations validated\n");
     return 0;
 }

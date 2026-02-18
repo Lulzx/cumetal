@@ -81,6 +81,8 @@ cublasStatus_t cublasSasum(cublasHandle_t handle, int n, const float* x, int inc
 cublasStatus_t cublasDasum(cublasHandle_t handle, int n, const double* x, int incx, double* result);
 cublasStatus_t cublasSnrm2(cublasHandle_t handle, int n, const float* x, int incx, float* result);
 cublasStatus_t cublasDnrm2(cublasHandle_t handle, int n, const double* x, int incx, double* result);
+cublasStatus_t cublasIsamax(cublasHandle_t handle, int n, const float* x, int incx, int* result);
+cublasStatus_t cublasIdamax(cublasHandle_t handle, int n, const double* x, int incx, int* result);
 
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
