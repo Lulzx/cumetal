@@ -410,6 +410,33 @@ cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device) {
     return fail(cudaSuccess);
 }
 
+cudaError_t cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes) {
+    if (free_bytes == nullptr || total_bytes == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    cumetal::metal_backend::DeviceProperties backend_props;
+    std::string error;
+    const cudaError_t query_status =
+        cumetal::metal_backend::query_device_properties(&backend_props, &error);
+    if (query_status != cudaSuccess) {
+        return fail(query_status);
+    }
+
+    RuntimeState& state = runtime_state();
+    const std::size_t allocated_bytes = state.allocations.total_allocated_size();
+    const std::size_t total_mem = backend_props.total_global_mem;
+
+    *total_bytes = total_mem;
+    *free_bytes = allocated_bytes >= total_mem ? 0 : (total_mem - allocated_bytes);
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaMalloc(void** dev_ptr, size_t size) {
     if (dev_ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);

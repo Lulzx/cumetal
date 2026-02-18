@@ -108,6 +108,7 @@ cudaError_t cudaGetDevice(int* device);
 cudaError_t cudaSetDevice(int device);
 cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device);
 cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device);
+cudaError_t cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes);
 cudaError_t cudaMalloc(void** dev_ptr, size_t size);
 cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags);

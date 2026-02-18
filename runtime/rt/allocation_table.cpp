@@ -82,4 +82,14 @@ bool AllocationTable::resolve(const void* ptr, ResolvedAllocation* resolved) con
     return true;
 }
 
+std::size_t AllocationTable::total_allocated_size() const {
+    std::shared_lock lock(mutex_);
+    std::size_t total = 0;
+    for (const auto& [address, entry] : entries_) {
+        (void)address;
+        total += entry.size;
+    }
+    return total;
+}
+
 }  // namespace cumetal::rt

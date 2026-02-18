@@ -26,6 +26,7 @@ Supported runtime API subset:
 - `cudaGetDeviceCount`, `cudaGetDevice`, `cudaSetDevice`, `cudaGetDeviceProperties`, `cudaDeviceGetAttribute`
 - `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
 - `cudaHostAlloc`, `cudaFreeHost`
+- `cudaMemGetInfo`
 - `cudaMemcpy`, `cudaMemcpyAsync`
 - `cudaMemset`, `cudaMemsetAsync`
 - `cudaLaunchKernel`
@@ -46,6 +47,7 @@ Supported driver API subset:
 - `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
 - `cuMemAlloc`, `cuMemFree`
+- `cuMemGetInfo`
 - `cuMemAllocHost`, `cuMemFreeHost`
 - `cuMemcpyHtoD`, `cuMemcpyDtoH`, `cuMemcpyDtoD`
 - `cuMemcpyHtoDAsync`, `cuMemcpyDtoHAsync`, `cuMemcpyDtoDAsync`
@@ -89,6 +91,7 @@ ctest --test-dir build -R functional_runtime_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_query --output-on-failure
 ctest --test-dir build -R functional_runtime_memcpy_kind --output-on-failure
+ctest --test-dir build -R functional_runtime_mem_get_info --output-on-failure
 ctest --test-dir build -R functional_runtime_host_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_flags --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_callback --output-on-failure
@@ -104,6 +107,7 @@ ctest --test-dir build -R functional_driver_stream_callback --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
 ctest --test-dir build -R functional_driver_memset --output-on-failure
+ctest --test-dir build -R functional_driver_mem_get_info --output-on-failure
 ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
 ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure

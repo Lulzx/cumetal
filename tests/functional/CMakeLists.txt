@@ -31,6 +31,10 @@ add_executable(cumetal_runtime_memcpy_kind_test
     runtime_memcpy_kind_test.cpp
 )
 
+add_executable(cumetal_runtime_mem_get_info_test
+    runtime_mem_get_info_test.cpp
+)
+
 add_executable(cumetal_runtime_host_alloc_test
     runtime_host_alloc_test.cpp
 )
@@ -91,6 +95,10 @@ add_executable(cumetal_driver_memset_test
     driver_memset_test.cpp
 )
 
+add_executable(cumetal_driver_mem_get_info_test
+    driver_mem_get_info_test.cpp
+)
+
 add_executable(cumetal_driver_host_alloc_test
     driver_host_alloc_test.cpp
 )
@@ -142,6 +150,11 @@ target_link_libraries(cumetal_runtime_stream_query_test
 )
 
 target_link_libraries(cumetal_runtime_memcpy_kind_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_mem_get_info_test
     PRIVATE
         cumetal_runtime
 )
@@ -221,6 +234,11 @@ target_link_libraries(cumetal_driver_memset_test
         cumetal_runtime
 )
 
+target_link_libraries(cumetal_driver_mem_get_info_test
+    PRIVATE
+        cumetal_runtime
+)
+
 target_link_libraries(cumetal_driver_host_alloc_test
     PRIVATE
         cumetal_runtime
@@ -289,6 +307,13 @@ target_compile_options(cumetal_runtime_stream_query_test
 )
 
 target_compile_options(cumetal_runtime_memcpy_kind_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_mem_get_info_test
     PRIVATE
         -Wall
         -Wextra
@@ -400,6 +425,13 @@ target_compile_options(cumetal_driver_memset_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_driver_mem_get_info_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_driver_host_alloc_test
     PRIVATE
         -Wall
@@ -501,6 +533,11 @@ add_test(
 )
 
 add_test(
+    NAME functional_runtime_mem_get_info
+    COMMAND cumetal_runtime_mem_get_info_test
+)
+
+add_test(
     NAME functional_runtime_host_alloc
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
             ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
@@ -588,6 +625,11 @@ set_tests_properties(functional_driver_async_memcpy PROPERTIES SKIP_RETURN_CODE 
 add_test(
     NAME functional_driver_memset
     COMMAND cumetal_driver_memset_test
+)
+
+add_test(
+    NAME functional_driver_mem_get_info
+    COMMAND cumetal_driver_mem_get_info_test
 )
 
 add_test(

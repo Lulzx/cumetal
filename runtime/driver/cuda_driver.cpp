@@ -863,6 +863,10 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                                           reinterpret_cast<cudaStream_t>(hStream)));
 }
 
+CUresult cuMemGetInfo(size_t* freeBytes, size_t* totalBytes) {
+    return map_cuda_error(cudaMemGetInfo(freeBytes, totalBytes));
+}
+
 CUresult cuMemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) {
     return map_cuda_error(cudaMemset(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                      static_cast<int>(uc),

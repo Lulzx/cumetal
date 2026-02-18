@@ -132,6 +132,7 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                            CUdeviceptr srcDevice,
                            size_t ByteCount,
                            CUstream hStream);
+CUresult cuMemGetInfo(size_t* freeBytes, size_t* totalBytes);
 CUresult cuMemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N);
 CUresult cuMemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream);
 

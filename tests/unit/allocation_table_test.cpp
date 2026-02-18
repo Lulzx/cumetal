@@ -45,6 +45,9 @@ int main() {
     if (!expect(table.insert(base, sizeof(memory), buffer, &error), "insert base allocation")) {
         return 1;
     }
+    if (!expect(table.total_allocated_size() == sizeof(memory), "total allocated tracks insert")) {
+        return 1;
+    }
 
     cumetal::rt::AllocationTable::ResolvedAllocation resolved;
     if (!expect(table.resolve(base, &resolved), "resolve base pointer")) {
@@ -80,6 +83,9 @@ int main() {
     }
 
     if (!expect(table.erase(base), "erase existing allocation")) {
+        return 1;
+    }
+    if (!expect(table.total_allocated_size() == 0, "total allocated tracks erase")) {
         return 1;
     }
     if (!expect(!table.resolve(base, &resolved), "resolve after erase fails")) {

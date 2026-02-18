@@ -26,6 +26,7 @@ public:
                 std::string* error_message);
     bool erase(void* base);
     bool resolve(const void* ptr, ResolvedAllocation* resolved) const;
+    std::size_t total_allocated_size() const;
 
 private:
     struct Entry {
