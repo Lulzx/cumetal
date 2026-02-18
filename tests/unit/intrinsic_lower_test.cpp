@@ -31,6 +31,7 @@ int main() {
     mul.lo.s32 %r3, %r2, %r0;
     mad.lo.s32 %r4, %r2, %r3, %r1;
     bar.sync 0;
+    call.uni (%r6), vprintf, ("tid=%u", %r0);
     foo.bar %r5, %r4;
     ret;
 }
@@ -84,6 +85,11 @@ int main() {
     if (!expect(lowered.instructions[5].translated &&
                     lowered.instructions[5].opcode == "air.threadgroup_barrier",
                 "bar.sync mapped to barrier intrinsic")) {
+        return 1;
+    }
+    if (!expect(!lowered.instructions[6].translated &&
+                    lowered.instructions[6].opcode == "call.uni",
+                "call instruction preserved for printf lowering stage")) {
         return 1;
     }
     if (!expect(!lowered.warnings.empty(), "unsupported opcode emits warning")) {

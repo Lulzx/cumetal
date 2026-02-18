@@ -8,6 +8,7 @@ Current status:
   - thread-index special registers (`%tid.*`, `%ctaid.*`, `%ntid.*`, `%nctaid.*`)
   - barriers (`bar.sync*`)
   - basic math (`add*`, `sub*`, `mul*`, `mad*`)
+  - `call*` passthrough (consumed by `printf_lower` for `printf`/`vprintf`)
 - strict mode reports unmapped opcodes as hard errors.
 - `addrspace` rewrite scaffold maps:
   - `ld.*`/`st.*` in `.shared`, `.global`, `.local` spaces

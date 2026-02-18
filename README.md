@@ -21,7 +21,7 @@ Implemented today:
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
     including concrete vector-add body emission for vector-add signatures
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
-  - initial PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
+  - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
   - initial `intrinsic_lower` pass for thread-index/barrier/basic-math mappings
   - initial `printf_lower` pass for PTX `printf`/`vprintf` call extraction and format-table metadata
   - initial `addrspace` pass for shared/global/local load-store + `cvta.to.*` rewrites
