@@ -70,6 +70,40 @@ int main() {
         return 1;
     }
 
+    double* device_output_double = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_double), kCount * sizeof(double)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for double output failed\n");
+        return 1;
+    }
+    if (curandGenerateUniformDouble(generator, device_output_double, kCount) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerateUniformDouble failed\n");
+        return 1;
+    }
+
+    std::vector<double> host_double(kCount, 0.0);
+    if (cudaMemcpy(host_double.data(),
+                   device_output_double,
+                   kCount * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for double output failed\n");
+        return 1;
+    }
+    bool has_double_variation = false;
+    for (std::size_t i = 0; i < kCount; ++i) {
+        const double value = host_double[i];
+        if (value < 0.0 || value > 1.0) {
+            std::fprintf(stderr, "FAIL: generated double value out of range [0,1]: %f\n", value);
+            return 1;
+        }
+        if (i > 0 && host_double[i] != host_double[i - 1]) {
+            has_double_variation = true;
+        }
+    }
+    if (!has_double_variation) {
+        std::fprintf(stderr, "FAIL: generated double sequence has no variation\n");
+        return 1;
+    }
+
     std::vector<float> host_output(kCount, 0.0f);
     if (curandGenerateUniform(generator, host_output.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host output pointer\n");
@@ -83,6 +117,10 @@ int main() {
 
     if (cudaFree(device_output) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_double) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for double output failed\n");
         return 1;
     }
     if (curandDestroyGenerator(generator) != CURAND_STATUS_SUCCESS) {

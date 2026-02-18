@@ -9,6 +9,7 @@
 struct curandGenerator_st {
     std::mt19937_64 engine{0};
     std::uniform_real_distribution<float> uniform{0.0f, 1.0f};
+    std::uniform_real_distribution<double> uniform_double{0.0, 1.0};
     std::mutex mutex;
 };
 
@@ -73,6 +74,32 @@ curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_
     std::lock_guard<std::mutex> lock(generator->mutex);
     for (size_t i = 0; i < num; ++i) {
         output_ptr[i] = generator->uniform(generator->engine);
+    }
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandGenerateUniformDouble(curandGenerator_t generator,
+                                           double* output_ptr,
+                                           size_t num) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (output_ptr == nullptr && num > 0) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (num == 0) {
+        return CURAND_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
+        return CURAND_STATUS_TYPE_ERROR;
+    }
+    if (cudaDeviceSynchronize() != cudaSuccess) {
+        return CURAND_STATUS_PREEXISTING_FAILURE;
+    }
+
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    for (size_t i = 0; i < num; ++i) {
+        output_ptr[i] = generator->uniform_double(generator->engine);
     }
     return CURAND_STATUS_SUCCESS;
 }

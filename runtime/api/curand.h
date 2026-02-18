@@ -33,6 +33,9 @@ curandStatus_t curandDestroyGenerator(curandGenerator_t generator);
 curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,
                                                    unsigned long long seed);
 curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_ptr, size_t num);
+curandStatus_t curandGenerateUniformDouble(curandGenerator_t generator,
+                                           double* output_ptr,
+                                           size_t num);
 
 #ifdef __cplusplus
 }
