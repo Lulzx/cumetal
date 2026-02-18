@@ -11,6 +11,7 @@ Implemented today:
 - Phase 0.5 tooling:
   - `air_inspect`: `.metallib` container inspection
   - `cumetal-air-emitter`: `.metallib` emission (xcrun-backed + experimental mode)
+  - `cumetalc`: thin compiler-driver CLI over the AIR emitter
   - `air_validate`: structural checks + optional `xcrun metal -validate`
   - `cumetal_metal_load_test`: `MTLDevice.newLibraryWithData:` acceptance test
 - Early Phase 0 runtime path:
@@ -81,9 +82,11 @@ Generate and validate a reference metallib (requires full Xcode)
 ./scripts/generate_reference_metallib.sh
 ./build/air_inspect tests/air_abi/reference/reference.metallib
 ./build/air_validate tests/air_abi/reference/reference.metallib --xcrun
+./build/cumetalc --mode xcrun --input tests/air_abi/reference/vector_add.metal --output /tmp/vector_add.cumetalc.metallib --overwrite
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
 ctest --test-dir build -R air_abi_validate_negative --output-on-failure
+ctest --test-dir build -R air_abi_cumetalc_emit_load_xcrun --output-on-failure
 ```
 
 Runtime execution tests

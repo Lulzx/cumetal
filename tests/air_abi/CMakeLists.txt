@@ -64,6 +64,15 @@ add_test(
 )
 
 add_test(
+    NAME air_abi_cumetalc_emit_load_xcrun
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_xcrun_emit_and_load.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:cumetal_metal_load_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/vector_add.cumetalc.xcrun.load.metallib
+)
+
+add_test(
     NAME air_abi_validate_negative
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_negative_validation.sh
             $<TARGET_FILE:air_validate>
@@ -74,6 +83,7 @@ set_tests_properties(
     air_abi_validate_reference
     air_abi_emit_validate_xcrun
     air_abi_emit_load_xcrun
+    air_abi_cumetalc_emit_load_xcrun
     PROPERTIES
         SKIP_RETURN_CODE 77
 )

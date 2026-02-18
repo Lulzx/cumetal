@@ -126,6 +126,22 @@ target_link_libraries(cumetal-air-emitter
         cumetal_air_emitter
 )
 
+add_executable(cumetalc
+    compiler/cumetalc/main.cpp
+)
+
+target_link_libraries(cumetalc
+    PRIVATE
+        cumetal_air_emitter
+)
+
+target_compile_options(cumetalc
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_executable(air_inspect
     tools/air_inspect/main.cpp
 )
@@ -154,6 +170,7 @@ install(TARGETS
     air_inspect
     air_validate
     cumetal-air-emitter
+    cumetalc
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
