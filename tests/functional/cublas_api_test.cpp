@@ -196,9 +196,125 @@ int main() {
         }
     }
 
+    constexpr int mt = 3;
+    constexpr int nt = 2;
+    constexpr int kt = 4;
+    constexpr int lda_t = kt;  // A is stored as (kt x mt), then transposed in op(A)
+    constexpr int ldb_t = kt;  // B is (kt x nt)
+    constexpr int ldc_t = mt;  // C is (mt x nt)
+
+    std::vector<float> host_at(lda_t * mt);
+    std::vector<float> host_bt(ldb_t * nt);
+    std::vector<float> host_ct(ldc_t * nt);
+    std::vector<float> expected_ct(ldc_t * nt);
+
+    for (int col = 0; col < mt; ++col) {
+        for (int row = 0; row < kt; ++row) {
+            host_at[row + col * lda_t] =
+                0.2f + static_cast<float>(row + 1) * static_cast<float>(col + 1) * 0.1f;
+        }
+    }
+    for (int col = 0; col < nt; ++col) {
+        for (int row = 0; row < kt; ++row) {
+            host_bt[row + col * ldb_t] =
+                0.3f + static_cast<float>(row + 2) * static_cast<float>(col + 1) * 0.07f;
+        }
+    }
+    for (int col = 0; col < nt; ++col) {
+        for (int row = 0; row < mt; ++row) {
+            host_ct[row + col * ldc_t] = static_cast<float>((row + col + 1) * 0.15f);
+            expected_ct[row + col * ldc_t] = host_ct[row + col * ldc_t];
+        }
+    }
+
+    const float alpha_t = 0.9f;
+    const float beta_t = 0.4f;
+    for (int col = 0; col < nt; ++col) {
+        for (int row = 0; row < mt; ++row) {
+            float sum = 0.0f;
+            for (int p = 0; p < kt; ++p) {
+                const float a_value = host_at[p + row * lda_t];  // transposed access
+                const float b_value = host_bt[p + col * ldb_t];
+                sum += a_value * b_value;
+            }
+            expected_ct[row + col * ldc_t] = alpha_t * sum + beta_t * expected_ct[row + col * ldc_t];
+        }
+    }
+
+    float* dev_at = nullptr;
+    float* dev_bt = nullptr;
+    float* dev_ct = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_at), host_at.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_bt), host_bt.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_ct), host_ct.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for transposed SGEMM failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_at, host_at.data(), host_at.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_bt, host_bt.data(), host_bt.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_ct, host_ct.data(), host_ct.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for transposed SGEMM failed\n");
+        return 1;
+    }
+
+    if (cublasSgemm(handle,
+                    CUBLAS_OP_T,
+                    CUBLAS_OP_N,
+                    mt,
+                    nt,
+                    kt,
+                    &alpha_t,
+                    dev_at,
+                    lda_t,
+                    dev_bt,
+                    ldb_t,
+                    &beta_t,
+                    dev_ct,
+                    ldc_t) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemm transposed case failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_ct.data(), dev_ct, host_ct.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for transposed SGEMM failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_ct.size(); ++i) {
+        if (!nearly_equal(host_ct[i], expected_ct[i])) {
+            std::fprintf(stderr,
+                         "FAIL: transposed SGEMM mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_ct[i]),
+                         static_cast<double>(expected_ct[i]));
+            return 1;
+        }
+    }
+
+    if (cublasSgemm(handle,
+                    CUBLAS_OP_T,
+                    CUBLAS_OP_N,
+                    mt,
+                    nt,
+                    kt,
+                    &alpha_t,
+                    dev_at,
+                    mt - 1,
+                    dev_bt,
+                    ldb_t,
+                    &beta_t,
+                    dev_ct,
+                    ldc_t) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid lda\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
-        cudaFree(dev_c) != cudaSuccess) {
+        cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
+        cudaFree(dev_bt) != cudaSuccess || cudaFree(dev_ct) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }
