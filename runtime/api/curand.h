@@ -45,6 +45,11 @@ curandStatus_t curandGenerateNormal(curandGenerator_t generator,
                                     size_t num,
                                     float mean,
                                     float stddev);
+curandStatus_t curandGenerateNormalDouble(curandGenerator_t generator,
+                                          double* output_ptr,
+                                          size_t num,
+                                          double mean,
+                                          double stddev);
 
 #ifdef __cplusplus
 }
