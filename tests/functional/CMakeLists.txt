@@ -814,6 +814,21 @@ add_test(
 set_tests_properties(functional_runtime_vector_add PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
+    NAME functional_runtime_vector_add_heap_alloc
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_runtime_vector_add_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(
+    functional_runtime_vector_add_heap_alloc
+    PROPERTIES
+        SKIP_RETURN_CODE 77
+        ENVIRONMENT "CUMETAL_MTLHEAP_ALLOC=1;CUMETAL_MTLHEAP_CHUNK_BYTES=1048576"
+)
+
+add_test(
     NAME functional_runtime_vector_add_cu
     COMMAND bash
             ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_cu_runtime_vector_add.sh

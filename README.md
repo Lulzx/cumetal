@@ -30,6 +30,8 @@ Implemented today:
   - initial phase1 pipeline API chaining parser + passes for a selected PTX entry
 - Early Phase 0 runtime path:
   - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
+  - optional `MTLHeap`-backed sub-allocation path for `cudaMalloc` / `cuMemAlloc`
+    (`CUMETAL_MTLHEAP_ALLOC=1`, chunk size override: `CUMETAL_MTLHEAP_CHUNK_BYTES`)
   - synchronous `cudaMemcpy` on UMA via `memcpy`
   - kernel launch through Metal compute pipelines (`setBuffer` + `setBytes`)
   - default-stream, per-thread default stream, and user-stream execution
@@ -168,6 +170,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 
 ```bash
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_vector_add_heap_alloc --output-on-failure
 ctest --test-dir build -R functional_runtime_vector_add_cu --output-on-failure
 ctest --test-dir build -R functional_runtime_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure

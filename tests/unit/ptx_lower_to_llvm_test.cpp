@@ -53,7 +53,8 @@ int main() {
     if (!expect(contains(lowered.llvm_ir, "define void @vector_add("), "kernel definition emitted")) {
         return 1;
     }
-    if (!expect(contains(lowered.llvm_ir, "ptr addrspace(1) %vector_add_param_0"), "u64 param mapped")) {
+    if (!expect(contains(lowered.llvm_ir, "float addrspace(1)* %vector_add_param_0"),
+                "u64 param mapped")) {
         return 1;
     }
     if (!expect(contains(lowered.llvm_ir, "i32 %vector_add_param_3"), "u32 param mapped")) {
@@ -63,7 +64,7 @@ int main() {
                 "vector-add floating add body emitted")) {
         return 1;
     }
-    if (!expect(contains(lowered.llvm_ir, "store float %sum, ptr addrspace(1) %c.ptr"),
+    if (!expect(contains(lowered.llvm_ir, "store float %sum, float addrspace(1)* %c.ptr"),
                 "vector-add store emitted")) {
         return 1;
     }
@@ -73,7 +74,7 @@ int main() {
     if (!expect(contains(lowered.llvm_ir, "\"air.version\"=\"2.8\""), "air.version emitted")) {
         return 1;
     }
-    if (!expect(contains(lowered.llvm_ir, "!air.language_version = !{!2}"),
+    if (!expect(contains(lowered.llvm_ir, "!air.language_version = !{!"),
                 "air language version metadata emitted")) {
         return 1;
     }
@@ -105,12 +106,12 @@ int main() {
         return 1;
     }
     if (!expect(contains(matrix_lowered.llvm_ir,
-                         "define void @matrix_mul(ptr addrspace(1) %matrix_mul_param_0"),
+                         "define void @matrix_mul(float addrspace(1)* %matrix_mul_param_0"),
                 "matrix multiply kernel definition emitted")) {
         return 1;
     }
     if (!expect(contains(matrix_lowered.llvm_ir,
-                         "%row = udiv i32 %matrix_mul_param_4, %matrix_mul_param_3"),
+                         "%row = udiv i32 %matrix_mul_param_4, %n.val"),
                 "matrix row index derivation emitted")) {
         return 1;
     }
@@ -118,11 +119,11 @@ int main() {
                 "matrix multiply fmul emitted")) {
         return 1;
     }
-    if (!expect(contains(matrix_lowered.llvm_ir, "%acc.new = fadd float %acc.old, %prod"),
+    if (!expect(contains(matrix_lowered.llvm_ir, "%acc.next = fadd float %acc, %prod"),
                 "matrix multiply accumulation emitted")) {
         return 1;
     }
-    if (!expect(contains(matrix_lowered.llvm_ir, "store float %acc.final, ptr addrspace(1) %c.ptr"),
+    if (!expect(contains(matrix_lowered.llvm_ir, "store float %acc, float addrspace(1)* %c.ptr"),
                 "matrix multiply store emitted")) {
         return 1;
     }

@@ -60,7 +60,7 @@ bool parse_major_minor(const std::string& value, int* major, int* minor) {
 
 std::string map_param_type_to_llvm(const std::string& ptx_type) {
     if (ptx_type == ".u64" || ptx_type == ".s64" || ptx_type == ".b64") {
-        return "ptr addrspace(1)";
+        return "float addrspace(1)*";
     }
     if (ptx_type == ".u32" || ptx_type == ".s32" || ptx_type == ".b32") {
         return "i32";
@@ -90,6 +90,58 @@ std::map<std::string, std::string> to_field_map(const cumetal::passes::KernelMet
     return map;
 }
 
+bool is_pointer_type(const std::string& llvm_type) {
+    return llvm_type.find('*') != std::string::npos;
+}
+
+bool is_device_buffer_pointer(const std::string& llvm_type) {
+    return llvm_type.find("addrspace(1)*") != std::string::npos;
+}
+
+bool is_constant_buffer_pointer(const std::string& llvm_type) {
+    return llvm_type.find("addrspace(2)*") != std::string::npos;
+}
+
+std::string pointee_type_from_pointer(const std::string& llvm_type) {
+    const std::size_t star = llvm_type.find('*');
+    if (star == std::string::npos) {
+        return "i8";
+    }
+    return trim(llvm_type.substr(0, star));
+}
+
+std::string air_type_name_for_param(const ParamInfo& param, bool is_thread_position) {
+    if (is_thread_position) {
+        return "uint";
+    }
+    if (is_device_buffer_pointer(param.llvm_type)) {
+        return pointee_type_from_pointer(param.llvm_type) == "double" ? "double" : "float";
+    }
+    if (is_constant_buffer_pointer(param.llvm_type)) {
+        return "uint";
+    }
+    if (param.llvm_type == "float") {
+        return "float";
+    }
+    if (param.llvm_type == "double") {
+        return "double";
+    }
+    if (param.llvm_type == "i64") {
+        return "ulong";
+    }
+    if (param.llvm_type == "i32") {
+        return "uint";
+    }
+    return "uint";
+}
+
+int byte_size_for_llvm_type(const std::string& llvm_type) {
+    if (llvm_type.find("double") != std::string::npos || llvm_type.find("i64") != std::string::npos) {
+        return 8;
+    }
+    return 4;
+}
+
 std::string lowercase(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
@@ -102,8 +154,8 @@ bool looks_like_vector_add_signature(const std::string& entry_name,
     if (params.size() < 4) {
         return false;
     }
-    if (params[0].llvm_type != "ptr addrspace(1)" || params[1].llvm_type != "ptr addrspace(1)" ||
-        params[2].llvm_type != "ptr addrspace(1)") {
+    if (!is_device_buffer_pointer(params[0].llvm_type) || !is_device_buffer_pointer(params[1].llvm_type) ||
+        !is_device_buffer_pointer(params[2].llvm_type)) {
         return false;
     }
     if (params[3].llvm_type != "i32" && params[3].llvm_type != "i64") {
@@ -119,17 +171,13 @@ bool is_integer_llvm_type(const std::string& llvm_type) {
     return !llvm_type.empty() && llvm_type[0] == 'i';
 }
 
-int alignment_for_type(const std::string& llvm_type) {
-    return llvm_type == "i64" ? 8 : 4;
-}
-
 bool looks_like_matrix_mul_signature(const std::string& entry_name,
                                      const std::vector<ParamInfo>& params) {
     if (params.size() < 5) {
         return false;
     }
-    if (params[0].llvm_type != "ptr addrspace(1)" || params[1].llvm_type != "ptr addrspace(1)" ||
-        params[2].llvm_type != "ptr addrspace(1)") {
+    if (!is_device_buffer_pointer(params[0].llvm_type) || !is_device_buffer_pointer(params[1].llvm_type) ||
+        !is_device_buffer_pointer(params[2].llvm_type)) {
         return false;
     }
     if (!is_integer_llvm_type(params[3].llvm_type) || params[3].llvm_type != params[4].llvm_type) {
@@ -167,16 +215,16 @@ void emit_vector_add_body(std::ostringstream& ir, const std::vector<ParamInfo>& 
     const std::string& idx_name = params[3].name;
     const std::string idx_type = params[3].llvm_type;
 
-    ir << "  %a.ptr = getelementptr float, ptr addrspace(1) %" << a_name << ", " << idx_type << " %"
+    ir << "  %a.ptr = getelementptr float, float addrspace(1)* %" << a_name << ", " << idx_type << " %"
        << idx_name << "\n";
-    ir << "  %b.ptr = getelementptr float, ptr addrspace(1) %" << b_name << ", " << idx_type << " %"
+    ir << "  %b.ptr = getelementptr float, float addrspace(1)* %" << b_name << ", " << idx_type << " %"
        << idx_name << "\n";
-    ir << "  %c.ptr = getelementptr float, ptr addrspace(1) %" << c_name << ", " << idx_type << " %"
+    ir << "  %c.ptr = getelementptr float, float addrspace(1)* %" << c_name << ", " << idx_type << " %"
        << idx_name << "\n";
-    ir << "  %a.val = load float, ptr addrspace(1) %a.ptr, align 4\n";
-    ir << "  %b.val = load float, ptr addrspace(1) %b.ptr, align 4\n";
+    ir << "  %a.val = load float, float addrspace(1)* %a.ptr, align 4\n";
+    ir << "  %b.val = load float, float addrspace(1)* %b.ptr, align 4\n";
     ir << "  %sum = fadd float %a.val, %b.val\n";
-    ir << "  store float %sum, ptr addrspace(1) %c.ptr, align 4\n";
+    ir << "  store float %sum, float addrspace(1)* %c.ptr, align 4\n";
     ir << "  ret void\n";
 }
 
@@ -187,44 +235,37 @@ void emit_matrix_mul_body(std::ostringstream& ir, const std::vector<ParamInfo>& 
     const std::string& n_name = params[3].name;
     const std::string& idx_name = params[4].name;
     const std::string idx_type = params[4].llvm_type;
-    const int idx_align = alignment_for_type(idx_type);
 
-    ir << "  %row = udiv " << idx_type << " %" << idx_name << ", %" << n_name << "\n";
-    ir << "  %col = urem " << idx_type << " %" << idx_name << ", %" << n_name << "\n";
-    ir << "  %acc.slot = alloca float, align 4\n";
-    ir << "  store float 0.000000e+00, ptr %acc.slot, align 4\n";
-    ir << "  %k.slot = alloca " << idx_type << ", align " << idx_align << "\n";
-    ir << "  store " << idx_type << " 0, ptr %k.slot, align " << idx_align << "\n";
+    ir << "  %n.val = load i32, i32 addrspace(2)* %" << n_name << ", align 4\n";
+    ir << "  %row = udiv " << idx_type << " %" << idx_name << ", %n.val\n";
+    ir << "  %col = urem " << idx_type << " %" << idx_name << ", %n.val\n";
     ir << "  br label %mm.loop\n\n";
     ir << "mm.loop:\n";
-    ir << "  %k = load " << idx_type << ", ptr %k.slot, align " << idx_align << "\n";
-    ir << "  %k.in.bounds = icmp ult " << idx_type << " %k, %" << n_name << "\n";
+    ir << "  %k = phi " << idx_type << " [ 0, %entry ], [ %k.next, %mm.body ]\n";
+    ir << "  %acc = phi float [ 0.000000e+00, %entry ], [ %acc.next, %mm.body ]\n";
+    ir << "  %k.in.bounds = icmp ult " << idx_type << " %k, %n.val\n";
     ir << "  br i1 %k.in.bounds, label %mm.body, label %mm.done\n\n";
     ir << "mm.body:\n";
-    ir << "  %a.row.base = mul " << idx_type << " %row, %" << n_name << "\n";
+    ir << "  %a.row.base = mul " << idx_type << " %row, %n.val\n";
     ir << "  %a.index = add " << idx_type << " %a.row.base, %k\n";
-    ir << "  %b.row.base = mul " << idx_type << " %k, %" << n_name << "\n";
+    ir << "  %b.row.base = mul " << idx_type << " %k, %n.val\n";
     ir << "  %b.index = add " << idx_type << " %b.row.base, %col\n";
-    ir << "  %a.ptr = getelementptr float, ptr addrspace(1) %" << a_name << ", " << idx_type
+    ir << "  %a.ptr = getelementptr float, float addrspace(1)* %" << a_name << ", " << idx_type
        << " %a.index\n";
-    ir << "  %b.ptr = getelementptr float, ptr addrspace(1) %" << b_name << ", " << idx_type
+    ir << "  %b.ptr = getelementptr float, float addrspace(1)* %" << b_name << ", " << idx_type
        << " %b.index\n";
-    ir << "  %a.val = load float, ptr addrspace(1) %a.ptr, align 4\n";
-    ir << "  %b.val = load float, ptr addrspace(1) %b.ptr, align 4\n";
+    ir << "  %a.val = load float, float addrspace(1)* %a.ptr, align 4\n";
+    ir << "  %b.val = load float, float addrspace(1)* %b.ptr, align 4\n";
     ir << "  %prod = fmul float %a.val, %b.val\n";
-    ir << "  %acc.old = load float, ptr %acc.slot, align 4\n";
-    ir << "  %acc.new = fadd float %acc.old, %prod\n";
-    ir << "  store float %acc.new, ptr %acc.slot, align 4\n";
+    ir << "  %acc.next = fadd float %acc, %prod\n";
     ir << "  %k.next = add " << idx_type << " %k, 1\n";
-    ir << "  store " << idx_type << " %k.next, ptr %k.slot, align " << idx_align << "\n";
     ir << "  br label %mm.loop\n\n";
     ir << "mm.done:\n";
-    ir << "  %c.row.base = mul " << idx_type << " %row, %" << n_name << "\n";
+    ir << "  %c.row.base = mul " << idx_type << " %row, %n.val\n";
     ir << "  %c.index = add " << idx_type << " %c.row.base, %col\n";
-    ir << "  %c.ptr = getelementptr float, ptr addrspace(1) %" << c_name << ", " << idx_type
+    ir << "  %c.ptr = getelementptr float, float addrspace(1)* %" << c_name << ", " << idx_type
        << " %c.index\n";
-    ir << "  %acc.final = load float, ptr %acc.slot, align 4\n";
-    ir << "  store float %acc.final, ptr addrspace(1) %c.ptr, align 4\n";
+    ir << "  store float %acc, float addrspace(1)* %c.ptr, align 4\n";
     ir << "  ret void\n";
 }
 
@@ -268,6 +309,13 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         params.push_back({.ptx_type = ptx_type, .llvm_type = llvm_type, .name = arg_name});
     }
 
+    const bool vector_add_signature = looks_like_vector_add_signature(pipeline.entry_name, params);
+    bool matrix_mul_signature = looks_like_matrix_mul_signature(pipeline.entry_name, params);
+    if (matrix_mul_signature && params.size() >= 5) {
+        params[3].llvm_type = "i32 addrspace(2)*";
+        arg_decls[3] = params[3].llvm_type + " %" + params[3].name;
+    }
+
     int air_major = 2;
     int air_minor = 8;
     if (const auto it = fields.find("air.version"); it != fields.end()) {
@@ -293,9 +341,9 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     ir << ") #0 {\n";
     ir << "entry:\n";
 
-    if (looks_like_vector_add_signature(pipeline.entry_name, params)) {
+    if (vector_add_signature) {
         emit_vector_add_body(ir, params);
-    } else if (looks_like_matrix_mul_signature(pipeline.entry_name, params)) {
+    } else if (matrix_mul_signature) {
         emit_matrix_mul_body(ir, params);
     } else {
         emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
@@ -303,14 +351,99 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     }
     ir << "}\n\n";
 
+    std::ostringstream kernel_type;
+    kernel_type << "void (";
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        if (i > 0) {
+            kernel_type << ", ";
+        }
+        kernel_type << params[i].llvm_type;
+    }
+    kernel_type << ")* @" << pipeline.entry_name;
+
+    int thread_position_index = -1;
+    for (int i = static_cast<int>(params.size()) - 1; i >= 0; --i) {
+        if (!is_pointer_type(params[static_cast<std::size_t>(i)].llvm_type)) {
+            thread_position_index = i;
+            break;
+        }
+    }
+
+    const int kernel_node_id = 0;
+    const int empty_tuple_id = 1;
+    const int kernel_args_tuple_id = 2;
+    int next_meta_id = 3;
+
+    std::vector<int> arg_meta_ids;
+    arg_meta_ids.reserve(params.size());
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        arg_meta_ids.push_back(next_meta_id++);
+    }
+
+    const int compile_opt_denorm_id = next_meta_id++;
+    const int compile_opt_fast_math_id = next_meta_id++;
+    const int compile_opt_fbfetch_id = next_meta_id++;
+    const int air_version_tuple_id = next_meta_id++;
+    const int language_version_tuple_id = next_meta_id++;
+
     ir << "attributes #0 = { \"air.kernel\" \"air.version\"=\"" << air_major << "."
        << air_minor << "\" }\n\n";
-    ir << "!air.kernel = !{!0}\n";
-    ir << "!0 = !{ptr @" << pipeline.entry_name << "}\n";
-    ir << "!air.compile_options = !{!1}\n";
-    ir << "!1 = !{!\"cumetal.phase1.pipeline\"}\n";
-    ir << "!air.language_version = !{!2}\n";
-    ir << "!2 = !{i32 " << language_major << ", i32 " << language_minor << "}\n";
+    ir << "!air.kernel = !{!" << kernel_node_id << "}\n";
+    ir << "!" << kernel_node_id << " = !{" << kernel_type.str() << ", !" << empty_tuple_id << ", !"
+       << kernel_args_tuple_id << "}\n";
+    ir << "!" << empty_tuple_id << " = !{}\n";
+    ir << "!" << kernel_args_tuple_id << " = !{";
+    for (std::size_t i = 0; i < arg_meta_ids.size(); ++i) {
+        if (i > 0) {
+            ir << ", ";
+        }
+        ir << "!" << arg_meta_ids[i];
+    }
+    ir << "}\n";
+
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        const ParamInfo& param = params[i];
+        const bool is_thread_position = static_cast<int>(i) == thread_position_index;
+        const std::string air_type_name = air_type_name_for_param(param, is_thread_position);
+        const int arg_size = byte_size_for_llvm_type(param.llvm_type);
+        const int arg_align = arg_size;
+
+        if (is_thread_position) {
+            ir << "!" << arg_meta_ids[i] << " = !{i32 " << i
+               << ", !\"air.thread_position_in_grid\", !\"air.arg_type_name\", !\"" << air_type_name
+               << "\", !\"air.arg_name\", !\"" << param.name << "\"}\n";
+            continue;
+        }
+
+        if (is_device_buffer_pointer(param.llvm_type)) {
+            ir << "!" << arg_meta_ids[i]
+               << " = !{i32 " << i << ", !\"air.buffer\", !\"air.location_index\", i32 " << i
+               << ", i32 1, !\"air.read_write\", !\"air.address_space\", i32 1, !\"air.arg_type_size\", i32 "
+               << arg_size << ", !\"air.arg_type_align_size\", i32 " << arg_align
+               << ", !\"air.arg_type_name\", !\"" << air_type_name << "\", !\"air.arg_name\", !\""
+               << param.name << "\"}\n";
+            continue;
+        }
+
+        ir << "!" << arg_meta_ids[i] << " = !{i32 " << i
+           << ", !\"air.buffer\", !\"air.buffer_size\", i32 " << arg_size
+           << ", !\"air.location_index\", i32 " << i
+           << ", i32 1, !\"air.read\", !\"air.address_space\", i32 2, !\"air.arg_type_size\", i32 "
+           << arg_size << ", !\"air.arg_type_align_size\", i32 " << arg_align
+           << ", !\"air.arg_type_name\", !\"" << air_type_name << "\", !\"air.arg_name\", !\""
+           << param.name << "\"}\n";
+    }
+
+    ir << "!air.compile_options = !{!" << compile_opt_denorm_id << ", !" << compile_opt_fast_math_id
+       << ", !" << compile_opt_fbfetch_id << "}\n";
+    ir << "!" << compile_opt_denorm_id << " = !{!\"air.compile.denorms_disable\"}\n";
+    ir << "!" << compile_opt_fast_math_id << " = !{!\"air.compile.fast_math_enable\"}\n";
+    ir << "!" << compile_opt_fbfetch_id << " = !{!\"air.compile.framebuffer_fetch_enable\"}\n";
+    ir << "!air.version = !{!" << air_version_tuple_id << "}\n";
+    ir << "!air.language_version = !{!" << language_version_tuple_id << "}\n";
+    ir << "!" << air_version_tuple_id << " = !{i32 " << air_major << ", i32 " << air_minor << ", i32 0}\n";
+    ir << "!" << language_version_tuple_id << " = !{!\"Metal\", i32 " << language_major << ", i32 "
+       << language_minor << ", i32 0}\n";
 
     result.ok = true;
     result.entry_name = pipeline.entry_name;

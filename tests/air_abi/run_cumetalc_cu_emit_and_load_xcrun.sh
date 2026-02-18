@@ -26,11 +26,6 @@ if ! xcrun --find metallib >/dev/null 2>&1; then
   exit 77
 fi
 
-if ! command -v llvm-as >/dev/null 2>&1; then
-  echo "SKIP: llvm-as not available for .cu->LLVM->xcrun flow"
-  exit 77
-fi
-
 "$CUMETALC" \
   --mode xcrun \
   --input "$INPUT_CU" \

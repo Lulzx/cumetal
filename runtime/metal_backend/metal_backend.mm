@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -17,6 +18,42 @@ namespace {
 
 cudaError_t check_command_buffer_status(id<MTLCommandBuffer> command_buffer, std::string* error_message);
 cudaError_t map_command_buffer_error(NSError* command_error);
+
+constexpr std::size_t kDefaultHeapChunkBytes = 64ull * 1024ull * 1024ull;
+
+bool env_truthy(const char* value) {
+    if (value == nullptr) {
+        return false;
+    }
+    std::string lowered(value);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on";
+}
+
+std::size_t parse_size_env(const char* value, std::size_t fallback) {
+    if (value == nullptr || value[0] == '\0') {
+        return fallback;
+    }
+    char* end = nullptr;
+    const unsigned long long parsed = std::strtoull(value, &end, 10);
+    if (end == value || *end != '\0' || parsed == 0) {
+        return fallback;
+    }
+    return static_cast<std::size_t>(parsed);
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment) {
+    if (alignment == 0) {
+        return value;
+    }
+    const std::size_t remainder = value % alignment;
+    if (remainder == 0) {
+        return value;
+    }
+    return value + (alignment - remainder);
+}
 
 class BufferImpl final : public Buffer {
 public:
@@ -169,12 +206,20 @@ private:
 };
 
 struct BackendState {
+    struct HeapArena {
+        id<MTLHeap> heap = nil;
+        std::size_t size = 0;
+    };
+
     std::mutex mutex;
     bool initialized = false;
+    bool heap_suballoc_enabled = false;
+    std::size_t heap_chunk_bytes = kDefaultHeapChunkBytes;
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;
     std::unordered_map<std::string, id<MTLLibrary>> library_cache;
     std::unordered_map<std::string, id<MTLComputePipelineState>> pipeline_cache;
+    std::vector<HeapArena> buffer_heaps;
     std::vector<std::weak_ptr<StreamImpl>> streams;
 };
 
@@ -206,6 +251,10 @@ bool ensure_initialized(std::string* error_message) {
             }
             return false;
         }
+
+        backend.heap_suballoc_enabled = env_truthy(std::getenv("CUMETAL_MTLHEAP_ALLOC"));
+        backend.heap_chunk_bytes =
+            parse_size_env(std::getenv("CUMETAL_MTLHEAP_CHUNK_BYTES"), kDefaultHeapChunkBytes);
 
         backend.initialized = true;
         return true;
@@ -423,6 +472,52 @@ std::vector<std::shared_ptr<StreamImpl>> collect_live_streams_locked(BackendStat
     return live;
 }
 
+id<MTLBuffer> allocate_buffer_from_heap_locked(BackendState& backend,
+                                               std::size_t size,
+                                               std::string* error_message) {
+    constexpr MTLResourceOptions kBufferOptions = MTLResourceStorageModeShared;
+    for (BackendState::HeapArena& arena : backend.buffer_heaps) {
+        id<MTLBuffer> buffer = [arena.heap newBufferWithLength:size options:kBufferOptions];
+        if (buffer != nil) {
+            return buffer;
+        }
+    }
+
+    const MTLSizeAndAlign size_and_align =
+        [backend.device heapBufferSizeAndAlignWithLength:size options:kBufferOptions];
+    const std::size_t aligned_size = align_up(
+        static_cast<std::size_t>(size_and_align.size), static_cast<std::size_t>(size_and_align.align));
+    const std::size_t arena_size = std::max(backend.heap_chunk_bytes, aligned_size);
+    if (arena_size == 0) {
+        if (error_message != nullptr) {
+            *error_message = "heapBufferSizeAndAlignWithLength returned invalid size";
+        }
+        return nil;
+    }
+
+    MTLHeapDescriptor* descriptor = [[MTLHeapDescriptor alloc] init];
+    [descriptor setStorageMode:MTLStorageModeShared];
+    [descriptor setSize:arena_size];
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 110000
+    [descriptor setType:MTLHeapTypeAutomatic];
+#endif
+
+    id<MTLHeap> heap = [backend.device newHeapWithDescriptor:descriptor];
+    if (heap == nil) {
+        if (error_message != nullptr) {
+            *error_message = "newHeapWithDescriptor failed";
+        }
+        return nil;
+    }
+
+    backend.buffer_heaps.push_back(BackendState::HeapArena{.heap = heap, .size = arena_size});
+    id<MTLBuffer> buffer = [heap newBufferWithLength:size options:kBufferOptions];
+    if (buffer == nil && error_message != nullptr) {
+        *error_message = "newBufferWithLength from heap failed";
+    }
+    return buffer;
+}
+
 }  // namespace
 
 cudaError_t initialize(std::string* error_message) {
@@ -496,12 +591,21 @@ cudaError_t allocate_buffer(std::size_t size,
     BackendState& backend = state();
     std::lock_guard<std::mutex> lock(backend.mutex);
 
-    id<MTLBuffer> buffer = [backend.device newBufferWithLength:size options:MTLStorageModeShared];
+    id<MTLBuffer> buffer = nil;
+    if (backend.heap_suballoc_enabled) {
+        buffer = allocate_buffer_from_heap_locked(backend, size, error_message);
+    }
+    if (buffer == nil) {
+        buffer = [backend.device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    }
     if (buffer == nil) {
         if (error_message != nullptr) {
             *error_message = "newBufferWithLength failed";
         }
         return cudaErrorMemoryAllocation;
+    }
+    if (error_message != nullptr) {
+        error_message->clear();
     }
 
     *out_buffer = std::make_shared<BufferImpl>(buffer);

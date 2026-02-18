@@ -462,23 +462,33 @@ EmitResult emit_with_xcrun(const EmitOptions& options) {
         }
         prepared_air = true;
     } else if (extension == ".ll" || extension == ".llvm") {
-        if (!command_exists("llvm-as")) {
-            result.error = "llvm-as is required for xcrun mode with LLVM IR input";
-            std::filesystem::remove_all(temp_dir);
-            return result;
+        if (command_exists("llvm-as")) {
+            const std::string command = "llvm-as " + quote_shell(options.input.string()) + " -o " +
+                                        quote_shell(temp_air.string()) + " 2>&1";
+            const CommandResult cmd = run_command_capture(command);
+            result.logs.push_back("$ " + command);
+            result.logs.push_back(cmd.output);
+            if (!cmd.started || cmd.exit_code != 0) {
+                result.error = "failed to assemble LLVM IR with llvm-as";
+                std::filesystem::remove_all(temp_dir);
+                return result;
+            }
+            prepared_air = true;
+        } else {
+            const std::string command = "xcrun metal -c " + quote_shell(options.input.string()) + " -o " +
+                                        quote_shell(temp_air.string()) + " 2>&1";
+            const CommandResult cmd = run_command_capture(command);
+            result.logs.push_back("$ " + command);
+            result.logs.push_back(cmd.output);
+            if (!cmd.started || cmd.exit_code != 0) {
+                result.error =
+                    "failed to compile LLVM IR with xcrun metal fallback (llvm-as unavailable)";
+                std::filesystem::remove_all(temp_dir);
+                return result;
+            }
+            result.logs.push_back("used xcrun metal fallback for LLVM IR assembly (no llvm-as)");
+            prepared_air = true;
         }
-
-        const std::string command = "llvm-as " + quote_shell(options.input.string()) + " -o " +
-                                    quote_shell(temp_air.string()) + " 2>&1";
-        const CommandResult cmd = run_command_capture(command);
-        result.logs.push_back("$ " + command);
-        result.logs.push_back(cmd.output);
-        if (!cmd.started || cmd.exit_code != 0) {
-            result.error = "failed to assemble LLVM IR with llvm-as";
-            std::filesystem::remove_all(temp_dir);
-            return result;
-        }
-        prepared_air = true;
     } else if (extension == ".bc") {
         std::filesystem::copy_file(options.input, temp_air,
                                    std::filesystem::copy_options::overwrite_existing);

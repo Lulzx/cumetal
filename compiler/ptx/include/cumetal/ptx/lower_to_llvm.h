@@ -10,7 +10,7 @@ struct LowerToLlvmOptions {
     bool strict = false;
     std::string entry_name;
     std::string module_id = "cumetal.ptx.module";
-    std::string target_triple = "air64-apple-macosx14.0.0";
+    std::string target_triple = "air64_v28-apple-macosx26.0.0";
 };
 
 struct LowerToLlvmResult {
