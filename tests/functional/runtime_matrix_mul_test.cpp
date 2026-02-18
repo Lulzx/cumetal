@@ -68,10 +68,11 @@ int main(int argc, char** argv) {
     void* dev_a = nullptr;
     void* dev_b = nullptr;
     void* dev_c = nullptr;
+    void* dev_n = nullptr;
 
     const std::size_t bytes = element_count * sizeof(float);
     if (cudaMalloc(&dev_a, bytes) != cudaSuccess || cudaMalloc(&dev_b, bytes) != cudaSuccess ||
-        cudaMalloc(&dev_c, bytes) != cudaSuccess) {
+        cudaMalloc(&dev_c, bytes) != cudaSuccess || cudaMalloc(&dev_n, sizeof(std::uint32_t)) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaMalloc failed\n");
         return 1;
     }
@@ -82,11 +83,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    std::uint32_t n = kMatrixN;
+    if (cudaMemcpy(dev_n, &n, sizeof(n), cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy n host->device failed\n");
+        return 1;
+    }
+
     static const cumetalKernelArgInfo_t kArgInfo[] = {
         {CUMETAL_ARG_BUFFER, 0},
         {CUMETAL_ARG_BUFFER, 0},
         {CUMETAL_ARG_BUFFER, 0},
-        {CUMETAL_ARG_BYTES, sizeof(std::uint32_t)},
+        {CUMETAL_ARG_BUFFER, 0},
     };
 
     const cumetalKernel_t kernel{
@@ -99,8 +106,8 @@ int main(int argc, char** argv) {
     void* arg_a = dev_a;
     void* arg_b = dev_b;
     void* arg_c = dev_c;
-    std::uint32_t n = kMatrixN;
-    void* launch_args[] = {&arg_a, &arg_b, &arg_c, &n};
+    void* arg_n = dev_n;
+    void* launch_args[] = {&arg_a, &arg_b, &arg_c, &arg_n};
 
     const dim3 block_dim(kBlockX, kBlockY, 1);
     const dim3 grid_dim((kMatrixN + kBlockX - 1) / kBlockX, (kMatrixN + kBlockY - 1) / kBlockY, 1);
@@ -136,7 +143,7 @@ int main(int argc, char** argv) {
     }
 
     if (cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
-        cudaFree(dev_c) != cudaSuccess) {
+        cudaFree(dev_c) != cudaSuccess || cudaFree(dev_n) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }

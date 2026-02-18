@@ -87,6 +87,10 @@ add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
 
+add_executable(cumetal_driver_matrix_mul_test
+    driver_matrix_mul_test.cpp
+)
+
 add_executable(cumetal_driver_device_api_test
     driver_device_api_test.cpp
 )
@@ -264,6 +268,11 @@ target_link_libraries(cumetal_runtime_profiler_api_test
 )
 
 target_link_libraries(cumetal_driver_vector_add_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_matrix_mul_test
     PRIVATE
         cumetal_runtime
 )
@@ -504,6 +513,13 @@ target_compile_options(cumetal_runtime_profiler_api_test
 )
 
 target_compile_options(cumetal_driver_vector_add_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_matrix_mul_test
     PRIVATE
         -Wall
         -Wextra
@@ -792,6 +808,16 @@ add_test(
 )
 
 set_tests_properties(functional_driver_vector_add PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_matrix_mul
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_driver_matrix_mul_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/matrix_mul.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/driver_matrix_mul.metallib
+)
+
+set_tests_properties(functional_driver_matrix_mul PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_driver_device_api

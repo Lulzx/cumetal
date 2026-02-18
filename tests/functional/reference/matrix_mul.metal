@@ -4,8 +4,9 @@ using namespace metal;
 kernel void matrix_mul(device const float* a [[buffer(0)]],
                        device const float* b [[buffer(1)]],
                        device float* c [[buffer(2)]],
-                       constant uint& n [[buffer(3)]],
+                       device const uint* n_ptr [[buffer(3)]],
                        uint2 gid [[thread_position_in_grid]]) {
+    const uint n = n_ptr[0];
     if (gid.x >= n || gid.y >= n) {
         return;
     }
