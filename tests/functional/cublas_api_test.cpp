@@ -654,6 +654,96 @@ int main() {
         return 1;
     }
 
+    constexpr int kDotCount = 1024;
+    std::vector<float> host_dot_x(kDotCount);
+    std::vector<float> host_dot_y(kDotCount);
+    for (int i = 0; i < kDotCount; ++i) {
+        host_dot_x[i] = static_cast<float>((i * 2) % 31) * 0.2f;
+        host_dot_y[i] = static_cast<float>((i * 5) % 19) * 0.3f;
+    }
+    float* dev_dot_x = nullptr;
+    float* dev_dot_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_dot_x), host_dot_x.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_dot_y), host_dot_y.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for SDOT failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_dot_x, host_dot_x.data(), host_dot_x.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_dot_y, host_dot_y.data(), host_dot_y.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for SDOT failed\n");
+        return 1;
+    }
+
+    float expected_sdot = 0.0f;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_sdot += host_dot_x[i] * host_dot_y[i];
+    }
+    float dot_result = 0.0f;
+    if (cublasSdot(handle, kDotCount, dev_dot_x, 1, dev_dot_y, 1, &dot_result) !=
+        CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSdot failed\n");
+        return 1;
+    }
+    if (std::fabs(dot_result - expected_sdot) > 5e-3f) {
+        std::fprintf(stderr,
+                     "FAIL: SDOT mismatch (got=%f expected=%f)\n",
+                     static_cast<double>(dot_result),
+                     static_cast<double>(expected_sdot));
+        return 1;
+    }
+    if (cublasSdot(handle, kDotCount, host_dot_x.data(), 1, dev_dot_y, 1, &dot_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SDOT\n");
+        return 1;
+    }
+
+    std::vector<double> host_ddot_x(kDotCount);
+    std::vector<double> host_ddot_y(kDotCount);
+    for (int i = 0; i < kDotCount; ++i) {
+        host_ddot_x[i] = 0.1 + static_cast<double>((i * 7) % 29) * 0.2;
+        host_ddot_y[i] = 0.2 + static_cast<double>((i * 11) % 17) * 0.15;
+    }
+    double* dev_ddot_x = nullptr;
+    double* dev_ddot_y = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_ddot_x), host_ddot_x.size() * sizeof(double)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_ddot_y), host_ddot_y.size() * sizeof(double)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DDOT failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_ddot_x,
+                   host_ddot_x.data(),
+                   host_ddot_x.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_ddot_y,
+                   host_ddot_y.data(),
+                   host_ddot_y.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DDOT failed\n");
+        return 1;
+    }
+
+    double expected_ddot = 0.0;
+    for (int i = 0; i < kDotCount; ++i) {
+        expected_ddot += host_ddot_x[i] * host_ddot_y[i];
+    }
+    double ddot_result = 0.0;
+    if (cublasDdot(handle, kDotCount, dev_ddot_x, 1, dev_ddot_y, 1, &ddot_result) !=
+        CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDdot failed\n");
+        return 1;
+    }
+    if (std::fabs(ddot_result - expected_ddot) > 1e-9) {
+        std::fprintf(stderr, "FAIL: DDOT mismatch (got=%f expected=%f)\n", ddot_result, expected_ddot);
+        return 1;
+    }
+    if (cublasDdot(handle, kDotCount, dev_ddot_x, 1, host_ddot_y.data(), 1, &ddot_result) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host Y in DDOT\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
@@ -661,7 +751,9 @@ int main() {
         cudaFree(dev_an) != cudaSuccess || cudaFree(dev_bn) != cudaSuccess ||
         cudaFree(dev_cn) != cudaSuccess || cudaFree(dev_ad) != cudaSuccess ||
         cudaFree(dev_bd) != cudaSuccess || cudaFree(dev_cd) != cudaSuccess ||
-        cudaFree(dev_dx) != cudaSuccess || cudaFree(dev_dy) != cudaSuccess) {
+        cudaFree(dev_dx) != cudaSuccess || cudaFree(dev_dy) != cudaSuccess ||
+        cudaFree(dev_dot_x) != cudaSuccess || cudaFree(dev_dot_y) != cudaSuccess ||
+        cudaFree(dev_ddot_x) != cudaSuccess || cudaFree(dev_ddot_y) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }

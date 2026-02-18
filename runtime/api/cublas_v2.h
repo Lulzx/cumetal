@@ -48,6 +48,20 @@ cublasStatus_t cublasDaxpy(cublasHandle_t handle,
                            double* y,
                            int incy);
 cublasStatus_t cublasDscal(cublasHandle_t handle, int n, const double* alpha, double* x, int incx);
+cublasStatus_t cublasSdot(cublasHandle_t handle,
+                          int n,
+                          const float* x,
+                          int incx,
+                          const float* y,
+                          int incy,
+                          float* result);
+cublasStatus_t cublasDdot(cublasHandle_t handle,
+                          int n,
+                          const double* x,
+                          int incx,
+                          const double* y,
+                          int incy,
+                          double* result);
 
 cublasStatus_t cublasSgemm(cublasHandle_t handle,
                            cublasOperation_t transa,
