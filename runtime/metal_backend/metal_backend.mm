@@ -16,6 +16,7 @@ namespace cumetal::metal_backend {
 namespace {
 
 cudaError_t check_command_buffer_status(id<MTLCommandBuffer> command_buffer, std::string* error_message);
+cudaError_t map_command_buffer_error(NSError* command_error);
 
 class BufferImpl final : public Buffer {
 public:
@@ -371,13 +372,38 @@ cudaError_t check_command_buffer_status(id<MTLCommandBuffer> command_buffer, std
     }
 
     NSError* command_error = [command_buffer error];
+    const cudaError_t mapped_error = map_command_buffer_error(command_error);
     if (error_message != nullptr) {
         *error_message = "command buffer failed";
         if (command_error != nil) {
             *error_message += " (" + std::string([[command_error localizedDescription] UTF8String]) + ")";
         }
     }
-    return cudaErrorUnknown;
+    return mapped_error;
+}
+
+cudaError_t map_command_buffer_error(NSError* command_error) {
+    if (command_error == nil) {
+        return cudaErrorUnknown;
+    }
+
+    if (![[command_error domain] isEqualToString:MTLCommandBufferErrorDomain]) {
+        return cudaErrorUnknown;
+    }
+
+    const MTLCommandBufferError code = static_cast<MTLCommandBufferError>([command_error code]);
+    switch (code) {
+        case MTLCommandBufferErrorTimeout:
+            return cudaErrorLaunchTimeout;
+        case MTLCommandBufferErrorPageFault:
+            return cudaErrorIllegalAddress;
+        case MTLCommandBufferErrorAccessRevoked:
+            return cudaErrorDevicesUnavailable;
+        case MTLCommandBufferErrorInternal:
+            return cudaErrorUnknown;
+        default:
+            return cudaErrorUnknown;
+    }
 }
 
 std::vector<std::shared_ptr<StreamImpl>> collect_live_streams_locked(BackendState& backend) {

@@ -12,8 +12,11 @@ typedef enum cudaError {
     cudaErrorInvalidValue = 1,
     cudaErrorMemoryAllocation = 2,
     cudaErrorInitializationError = 3,
+    cudaErrorLaunchTimeout = 6,
     cudaErrorInvalidDevicePointer = 17,
     cudaErrorNotReady = 34,
+    cudaErrorDevicesUnavailable = 46,
+    cudaErrorIllegalAddress = 700,
     cudaErrorUnknown = 999,
 } cudaError_t;
 

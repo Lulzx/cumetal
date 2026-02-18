@@ -1298,10 +1298,16 @@ const char* cudaGetErrorName(cudaError_t error) {
             return "cudaErrorMemoryAllocation";
         case cudaErrorInitializationError:
             return "cudaErrorInitializationError";
+        case cudaErrorLaunchTimeout:
+            return "cudaErrorLaunchTimeout";
         case cudaErrorInvalidDevicePointer:
             return "cudaErrorInvalidDevicePointer";
         case cudaErrorNotReady:
             return "cudaErrorNotReady";
+        case cudaErrorDevicesUnavailable:
+            return "cudaErrorDevicesUnavailable";
+        case cudaErrorIllegalAddress:
+            return "cudaErrorIllegalAddress";
         case cudaErrorUnknown:
             return "cudaErrorUnknown";
     }
@@ -1318,10 +1324,16 @@ const char* cudaGetErrorString(cudaError_t error) {
             return "cudaErrorMemoryAllocation";
         case cudaErrorInitializationError:
             return "cudaErrorInitializationError";
+        case cudaErrorLaunchTimeout:
+            return "cudaErrorLaunchTimeout";
         case cudaErrorInvalidDevicePointer:
             return "cudaErrorInvalidDevicePointer";
         case cudaErrorNotReady:
             return "cudaErrorNotReady";
+        case cudaErrorDevicesUnavailable:
+            return "cudaErrorDevicesUnavailable";
+        case cudaErrorIllegalAddress:
+            return "cudaErrorIllegalAddress";
         case cudaErrorUnknown:
             return "cudaErrorUnknown";
     }

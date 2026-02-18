@@ -25,6 +25,7 @@ Implemented today:
   - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
   - shared runtime artifact: `libcumetal.dylib` (plus `cuda.h` / `cuda_runtime.h` install headers)
   - startup conflict warning if another `libcuda.dylib` is already loaded
+  - Metal command-buffer failures map to CUDA timeout/illegal-address/devices-unavailable errors
 
 Supported runtime API subset:
 

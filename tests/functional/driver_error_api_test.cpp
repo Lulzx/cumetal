@@ -45,6 +45,22 @@ int main() {
         return 1;
     }
 
+    if (cuGetErrorName(CUDA_ERROR_LAUNCH_TIMEOUT, &name) != CUDA_SUCCESS ||
+        std::strcmp(name, "CUDA_ERROR_LAUNCH_TIMEOUT") != 0) {
+        std::fprintf(stderr, "FAIL: launch-timeout driver error name mismatch\n");
+        return 1;
+    }
+    if (cuGetErrorName(CUDA_ERROR_ILLEGAL_ADDRESS, &name) != CUDA_SUCCESS ||
+        std::strcmp(name, "CUDA_ERROR_ILLEGAL_ADDRESS") != 0) {
+        std::fprintf(stderr, "FAIL: illegal-address driver error name mismatch\n");
+        return 1;
+    }
+    if (cuGetErrorName(CUDA_ERROR_DEVICES_UNAVAILABLE, &name) != CUDA_SUCCESS ||
+        std::strcmp(name, "CUDA_ERROR_DEVICES_UNAVAILABLE") != 0) {
+        std::fprintf(stderr, "FAIL: devices-unavailable driver error name mismatch\n");
+        return 1;
+    }
+
     std::printf("PASS: driver error APIs behave correctly\n");
     return 0;
 }

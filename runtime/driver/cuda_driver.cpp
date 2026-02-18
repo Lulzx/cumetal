@@ -67,8 +67,14 @@ CUresult map_cuda_error(cudaError_t error) {
             return CUDA_ERROR_OUT_OF_MEMORY;
         case cudaErrorInitializationError:
             return CUDA_ERROR_NOT_INITIALIZED;
+        case cudaErrorLaunchTimeout:
+            return CUDA_ERROR_LAUNCH_TIMEOUT;
         case cudaErrorNotReady:
             return CUDA_ERROR_NOT_READY;
+        case cudaErrorIllegalAddress:
+            return CUDA_ERROR_ILLEGAL_ADDRESS;
+        case cudaErrorDevicesUnavailable:
+            return CUDA_ERROR_DEVICES_UNAVAILABLE;
         case cudaErrorUnknown:
             return CUDA_ERROR_UNKNOWN;
     }
@@ -1197,6 +1203,9 @@ CUresult cuGetErrorName(CUresult error, const char** pStr) {
         case CUDA_ERROR_NOT_INITIALIZED:
             *pStr = "CUDA_ERROR_NOT_INITIALIZED";
             break;
+        case CUDA_ERROR_DEVICES_UNAVAILABLE:
+            *pStr = "CUDA_ERROR_DEVICES_UNAVAILABLE";
+            break;
         case CUDA_ERROR_INVALID_DEVICE:
             *pStr = "CUDA_ERROR_INVALID_DEVICE";
             break;
@@ -1211,6 +1220,12 @@ CUresult cuGetErrorName(CUresult error, const char** pStr) {
             break;
         case CUDA_ERROR_NOT_READY:
             *pStr = "CUDA_ERROR_NOT_READY";
+            break;
+        case CUDA_ERROR_ILLEGAL_ADDRESS:
+            *pStr = "CUDA_ERROR_ILLEGAL_ADDRESS";
+            break;
+        case CUDA_ERROR_LAUNCH_TIMEOUT:
+            *pStr = "CUDA_ERROR_LAUNCH_TIMEOUT";
             break;
         case CUDA_ERROR_UNKNOWN:
             *pStr = "CUDA_ERROR_UNKNOWN";

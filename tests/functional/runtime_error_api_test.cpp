@@ -88,6 +88,26 @@ int main() {
         return 1;
     }
 
+    if (std::strcmp(cudaGetErrorName(cudaErrorLaunchTimeout), "cudaErrorLaunchTimeout") != 0 ||
+        std::strcmp(cudaGetErrorString(cudaErrorLaunchTimeout), "cudaErrorLaunchTimeout") != 0) {
+        std::fprintf(stderr, "FAIL: launch-timeout error name/string mismatch\n");
+        return 1;
+    }
+
+    if (std::strcmp(cudaGetErrorName(cudaErrorIllegalAddress), "cudaErrorIllegalAddress") != 0 ||
+        std::strcmp(cudaGetErrorString(cudaErrorIllegalAddress), "cudaErrorIllegalAddress") != 0) {
+        std::fprintf(stderr, "FAIL: illegal-address error name/string mismatch\n");
+        return 1;
+    }
+
+    if (std::strcmp(cudaGetErrorName(cudaErrorDevicesUnavailable), "cudaErrorDevicesUnavailable") !=
+            0 ||
+        std::strcmp(cudaGetErrorString(cudaErrorDevicesUnavailable),
+                    "cudaErrorDevicesUnavailable") != 0) {
+        std::fprintf(stderr, "FAIL: devices-unavailable error name/string mismatch\n");
+        return 1;
+    }
+
     std::printf("PASS: runtime error APIs behave correctly\n");
     return 0;
 }
