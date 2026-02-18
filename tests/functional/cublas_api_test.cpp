@@ -311,10 +311,127 @@ int main() {
         return 1;
     }
 
+    constexpr int mn = 2;
+    constexpr int nn = 3;
+    constexpr int kn = 4;
+    constexpr int lda_n = mn;  // A is (mn x kn)
+    constexpr int ldb_n = nn;  // B is stored as (nn x kn), then transposed in op(B)
+    constexpr int ldc_n = mn;  // C is (mn x nn)
+
+    std::vector<float> host_an(lda_n * kn);
+    std::vector<float> host_bn(ldb_n * kn);
+    std::vector<float> host_cn(ldc_n * nn);
+    std::vector<float> expected_cn(ldc_n * nn);
+
+    for (int col = 0; col < kn; ++col) {
+        for (int row = 0; row < mn; ++row) {
+            host_an[row + col * lda_n] =
+                0.4f + static_cast<float>(row + 1) * static_cast<float>(col + 1) * 0.09f;
+        }
+    }
+    for (int col = 0; col < kn; ++col) {
+        for (int row = 0; row < nn; ++row) {
+            host_bn[row + col * ldb_n] =
+                0.1f + static_cast<float>(row + 2) * static_cast<float>(col + 1) * 0.06f;
+        }
+    }
+    for (int col = 0; col < nn; ++col) {
+        for (int row = 0; row < mn; ++row) {
+            host_cn[row + col * ldc_n] = static_cast<float>((row + 1) * (col + 1)) * 0.2f;
+            expected_cn[row + col * ldc_n] = host_cn[row + col * ldc_n];
+        }
+    }
+
+    const float alpha_nt = 1.1f;
+    const float beta_nt = 0.3f;
+    for (int col = 0; col < nn; ++col) {
+        for (int row = 0; row < mn; ++row) {
+            float sum = 0.0f;
+            for (int p = 0; p < kn; ++p) {
+                const float a_value = host_an[row + p * lda_n];
+                const float b_value = host_bn[col + p * ldb_n];  // transposed access
+                sum += a_value * b_value;
+            }
+            expected_cn[row + col * ldc_n] = alpha_nt * sum + beta_nt * expected_cn[row + col * ldc_n];
+        }
+    }
+
+    float* dev_an = nullptr;
+    float* dev_bn = nullptr;
+    float* dev_cn = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_an), host_an.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_bn), host_bn.size() * sizeof(float)) != cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_cn), host_cn.size() * sizeof(float)) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for N,T SGEMM failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_an, host_an.data(), host_an.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_bn, host_bn.data(), host_bn.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess ||
+        cudaMemcpy(dev_cn, host_cn.data(), host_cn.size() * sizeof(float), cudaMemcpyHostToDevice) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for N,T SGEMM failed\n");
+        return 1;
+    }
+
+    if (cublasSgemm(handle,
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_T,
+                    mn,
+                    nn,
+                    kn,
+                    &alpha_nt,
+                    dev_an,
+                    lda_n,
+                    dev_bn,
+                    ldb_n,
+                    &beta_nt,
+                    dev_cn,
+                    ldc_n) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSgemm N,T case failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_cn.data(), dev_cn, host_cn.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for N,T SGEMM failed\n");
+        return 1;
+    }
+    for (std::size_t i = 0; i < host_cn.size(); ++i) {
+        if (!nearly_equal(host_cn[i], expected_cn[i])) {
+            std::fprintf(stderr,
+                         "FAIL: N,T SGEMM mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_cn[i]),
+                         static_cast<double>(expected_cn[i]));
+            return 1;
+        }
+    }
+
+    if (cublasSgemm(handle,
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_T,
+                    mn,
+                    nn,
+                    kn,
+                    &alpha_nt,
+                    dev_an,
+                    lda_n,
+                    dev_bn,
+                    nn - 1,
+                    &beta_nt,
+                    dev_cn,
+                    ldc_n) != CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for invalid ldb\n");
+        return 1;
+    }
+
     if (cudaFree(dev_x) != cudaSuccess || cudaFree(dev_y) != cudaSuccess ||
         cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess ||
         cudaFree(dev_c) != cudaSuccess || cudaFree(dev_at) != cudaSuccess ||
-        cudaFree(dev_bt) != cudaSuccess || cudaFree(dev_ct) != cudaSuccess) {
+        cudaFree(dev_bt) != cudaSuccess || cudaFree(dev_ct) != cudaSuccess ||
+        cudaFree(dev_an) != cudaSuccess || cudaFree(dev_bn) != cudaSuccess ||
+        cudaFree(dev_cn) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
         return 1;
     }
