@@ -83,6 +83,8 @@ CUresult cuLaunchKernel(CUfunction f,
 
 CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize);
 CUresult cuMemFree(CUdeviceptr dptr);
+CUresult cuMemAllocHost(void** pp, size_t bytesize);
+CUresult cuMemFreeHost(void* p);
 CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount);
 CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount);
 CUresult cuMemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount);

@@ -506,6 +506,14 @@ CUresult cuMemFree(CUdeviceptr dptr) {
     return map_cuda_error(cudaFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dptr))));
 }
 
+CUresult cuMemAllocHost(void** pp, size_t bytesize) {
+    return map_cuda_error(cudaHostAlloc(pp, bytesize, cudaHostAllocDefault));
+}
+
+CUresult cuMemFreeHost(void* p) {
+    return map_cuda_error(cudaFreeHost(p));
+}
+
 CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount) {
     return map_cuda_error(cudaMemcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                      srcHost,
