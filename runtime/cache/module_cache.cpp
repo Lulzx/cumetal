@@ -30,10 +30,10 @@ std::filesystem::path default_cache_root() {
     }
 
     if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
-        return std::filesystem::path(home) / ".cache" / "cumetal" / "modules";
+        return std::filesystem::path(home) / "Library" / "Caches" / "io.cumetal" / "kernels";
     }
 
-    return std::filesystem::temp_directory_path() / "cumetal" / "modules";
+    return std::filesystem::temp_directory_path() / "io.cumetal" / "kernels";
 }
 
 std::string hash_to_hex(std::uint64_t hash) {

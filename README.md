@@ -26,6 +26,7 @@ Implemented today:
   - shared runtime artifact: `libcumetal.dylib` (plus `cuda.h` / `cuda_runtime.h` install headers)
   - startup conflict warning if another `libcuda.dylib` is already loaded
   - Metal command-buffer failures map to CUDA timeout/illegal-address/devices-unavailable errors
+  - default module cache root: `$HOME/Library/Caches/io.cumetal/kernels` (override: `CUMETAL_CACHE_DIR`)
 
 Supported runtime API subset:
 

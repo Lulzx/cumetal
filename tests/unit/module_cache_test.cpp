@@ -26,9 +26,34 @@ bool read_bytes(const std::filesystem::path& path, std::vector<std::uint8_t>* ou
 }  // namespace
 
 int main() {
-    const char* old_cache = std::getenv("CUMETAL_CACHE_DIR");
-    const bool had_old_cache = old_cache != nullptr;
-    const std::string old_cache_value = had_old_cache ? std::string(old_cache) : std::string();
+    struct EnvSnapshot {
+        bool had_cache = false;
+        std::string cache_value;
+        bool had_home = false;
+        std::string home_value;
+
+        ~EnvSnapshot() {
+            if (had_cache) {
+                (void)setenv("CUMETAL_CACHE_DIR", cache_value.c_str(), 1);
+            } else {
+                (void)unsetenv("CUMETAL_CACHE_DIR");
+            }
+            if (had_home) {
+                (void)setenv("HOME", home_value.c_str(), 1);
+            } else {
+                (void)unsetenv("HOME");
+            }
+        }
+    } env;
+
+    if (const char* old_cache = std::getenv("CUMETAL_CACHE_DIR"); old_cache != nullptr) {
+        env.had_cache = true;
+        env.cache_value = old_cache;
+    }
+    if (const char* old_home = std::getenv("HOME"); old_home != nullptr) {
+        env.had_home = true;
+        env.home_value = old_home;
+    }
 
     const auto nonce = std::to_string(static_cast<long long>(
         std::filesystem::file_time_type::clock::now().time_since_epoch().count()));
@@ -82,14 +107,37 @@ int main() {
         return 1;
     }
 
+    if (unsetenv("CUMETAL_CACHE_DIR") != 0) {
+        std::fprintf(stderr, "FAIL: unsetenv(CUMETAL_CACHE_DIR) failed\n");
+        return 1;
+    }
+    const std::filesystem::path home_root = cache_root / "home";
+    const std::string home_root_str = home_root.string();
+    if (setenv("HOME", home_root_str.c_str(), 1) != 0) {
+        std::fprintf(stderr, "FAIL: setenv(HOME) failed\n");
+        return 1;
+    }
+
+    const std::vector<std::uint8_t> default_bytes = {
+        'M', 'T', 'L', 'B', 0xaa, 0xbb, 0xcc, 0xdd,
+    };
+    std::filesystem::path staged_default;
+    if (!cumetal::cache::stage_metallib_bytes(
+            default_bytes.data(), default_bytes.size(), &staged_default, &error)) {
+        std::fprintf(stderr, "FAIL: stage_metallib_bytes default-path call failed: %s\n", error.c_str());
+        return 1;
+    }
+
+    const std::filesystem::path expected_root = home_root / "Library" / "Caches" / "io.cumetal" / "kernels";
+    const std::string expected_root_str = expected_root.lexically_normal().string();
+    const std::string staged_default_str = staged_default.lexically_normal().string();
+    if (staged_default_str.rfind(expected_root_str, 0) != 0) {
+        std::fprintf(stderr, "FAIL: default cache root mismatch\n");
+        return 1;
+    }
+
     std::error_code ec;
     std::filesystem::remove_all(cache_root, ec);
-
-    if (had_old_cache) {
-        (void)setenv("CUMETAL_CACHE_DIR", old_cache_value.c_str(), 1);
-    } else {
-        (void)unsetenv("CUMETAL_CACHE_DIR");
-    }
 
     std::printf("PASS: module cache stages deterministic paths for metallib payloads\n");
     return 0;
