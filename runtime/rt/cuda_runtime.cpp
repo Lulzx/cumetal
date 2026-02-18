@@ -434,6 +434,67 @@ cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
     return fail(status);
 }
 
+cudaError_t cudaStreamQuery(cudaStream_t stream) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    if (stream == nullptr) {
+        std::vector<std::shared_ptr<cumetal::metal_backend::Stream>> streams;
+        {
+            RuntimeState& state = runtime_state();
+            std::lock_guard<std::mutex> lock(state.stream_mutex);
+            streams.reserve(state.streams.size());
+            for (const auto& it : state.streams) {
+                streams.push_back(it.second);
+            }
+        }
+
+        for (const auto& backend_stream : streams) {
+            std::uint64_t tail_ticket = 0;
+            bool complete = true;
+            std::string error;
+            const cudaError_t tail_status =
+                cumetal::metal_backend::stream_tail_ticket(backend_stream, &tail_ticket, &error);
+            if (tail_status != cudaSuccess) {
+                return fail(tail_status);
+            }
+            const cudaError_t query_status =
+                cumetal::metal_backend::stream_query_ticket(backend_stream, tail_ticket,
+                                                            &complete, &error);
+            if (query_status != cudaSuccess) {
+                return fail(query_status);
+            }
+            if (!complete) {
+                return fail(cudaErrorNotReady);
+            }
+        }
+
+        return fail(cudaSuccess);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    if (!resolve_stream_handle(stream, &backend_stream)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    std::uint64_t tail_ticket = 0;
+    bool complete = true;
+    std::string error;
+    const cudaError_t tail_status =
+        cumetal::metal_backend::stream_tail_ticket(backend_stream, &tail_ticket, &error);
+    if (tail_status != cudaSuccess) {
+        return fail(tail_status);
+    }
+    const cudaError_t query_status =
+        cumetal::metal_backend::stream_query_ticket(backend_stream, tail_ticket, &complete, &error);
+    if (query_status != cudaSuccess) {
+        return fail(query_status);
+    }
+    return fail(complete ? cudaSuccess : cudaErrorNotReady);
+}
+
 cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags) {
     if (event == nullptr || flags != 0) {
         return fail(cudaErrorInvalidValue);

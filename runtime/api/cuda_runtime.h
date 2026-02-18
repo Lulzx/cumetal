@@ -78,6 +78,7 @@ cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
+cudaError_t cudaStreamQuery(cudaStream_t stream);
 cudaError_t cudaStreamWaitEvent(cudaStream_t stream, cudaEvent_t event, unsigned int flags);
 cudaError_t cudaEventCreate(cudaEvent_t* event);
 cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event, unsigned int flags);

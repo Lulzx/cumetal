@@ -23,6 +23,10 @@ add_executable(cumetal_runtime_stream_wait_event_test
     runtime_stream_wait_event_test.cpp
 )
 
+add_executable(cumetal_runtime_stream_query_test
+    runtime_stream_query_test.cpp
+)
+
 add_executable(cumetal_runtime_axpy_offset_test
     runtime_axpy_offset_test.cpp
 )
@@ -48,6 +52,11 @@ target_link_libraries(cumetal_runtime_event_test
 )
 
 target_link_libraries(cumetal_runtime_stream_wait_event_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_stream_query_test
     PRIVATE
         cumetal_runtime
 )
@@ -86,6 +95,13 @@ target_compile_options(cumetal_runtime_event_test
 )
 
 target_compile_options(cumetal_runtime_stream_wait_event_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_stream_query_test
     PRIVATE
         -Wall
         -Wextra
@@ -148,6 +164,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_stream_wait_event PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_stream_query
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_runtime_stream_query_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(functional_runtime_stream_query PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_axpy_offset
