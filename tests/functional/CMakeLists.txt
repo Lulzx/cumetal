@@ -766,6 +766,18 @@ add_test(
 set_tests_properties(functional_runtime_vector_add PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
+    NAME functional_runtime_vector_add_cu
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_cumetalc_cu_runtime_vector_add.sh
+            $<TARGET_FILE:cumetalc>
+            $<TARGET_FILE:cumetal_runtime_vector_add_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/vector_add.cu
+            ${CMAKE_CURRENT_BINARY_DIR}/vector_add.from_cu.xcrun.metallib
+)
+
+set_tests_properties(functional_runtime_vector_add_cu PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
     NAME functional_runtime_matrix_mul
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
             $<TARGET_FILE:cumetal_runtime_matrix_mul_test>

@@ -135,6 +135,7 @@ These tests compile Metal kernels with `xcrun` and run them through the CuMetal 
 
 ```bash
 ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_vector_add_cu --output-on-failure
 ctest --test-dir build -R functional_runtime_matrix_mul --output-on-failure
 ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
 ctest --test-dir build -R functional_runtime_null_stream_sync --output-on-failure
