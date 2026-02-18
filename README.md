@@ -45,4 +45,4 @@ If `xcrun metal`/`xcrun metallib` are unavailable
 License
 -------
 
-Apache 2.0 (proposed).
+[Apache 2.0](./LICENSE)
