@@ -34,6 +34,8 @@ typedef struct dim3 {
 #endif
 } dim3;
 
+typedef struct cudaStream_st* cudaStream_t;
+
 typedef enum cumetalArgKind {
     CUMETAL_ARG_BUFFER = 0,
     CUMETAL_ARG_BYTES = 1,
@@ -57,13 +59,16 @@ cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 cudaError_t cudaMallocHost(void** ptr, size_t size);
 cudaError_t cudaFree(void* dev_ptr);
 cudaError_t cudaMemcpy(void* dst, const void* src, size_t count, cudaMemcpyKind kind);
+cudaError_t cudaStreamCreate(cudaStream_t* stream);
+cudaError_t cudaStreamDestroy(cudaStream_t stream);
+cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaDeviceSynchronize(void);
 cudaError_t cudaLaunchKernel(const void* func,
                              dim3 grid_dim,
                              dim3 block_dim,
                              void** args,
                              size_t shared_mem,
-                             void* stream);
+                             cudaStream_t stream);
 cudaError_t cudaGetLastError(void);
 cudaError_t cudaPeekAtLastError(void);
 const char* cudaGetErrorString(cudaError_t error);

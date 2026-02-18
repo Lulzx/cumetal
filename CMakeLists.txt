@@ -138,6 +138,7 @@ if(CUMETAL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests/air_abi)
     add_subdirectory(tests/functional)
+    add_subdirectory(tests/unit)
 endif()
 
 install(TARGETS

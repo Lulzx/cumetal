@@ -3,9 +3,11 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace cumetal::metal_backend {
 namespace {
@@ -30,6 +32,32 @@ private:
     id<MTLBuffer> buffer_;
 };
 
+class StreamImpl final : public Stream {
+public:
+    explicit StreamImpl(id<MTLCommandQueue> queue) : queue_(queue) {}
+
+    id<MTLCommandQueue> queue() const {
+        return queue_;
+    }
+
+    void add_pending(id<MTLCommandBuffer> command_buffer) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_buffers_.push_back(command_buffer);
+    }
+
+    std::vector<id<MTLCommandBuffer>> take_pending() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<id<MTLCommandBuffer>> pending;
+        pending.swap(pending_buffers_);
+        return pending;
+    }
+
+private:
+    id<MTLCommandQueue> queue_;
+    std::mutex mutex_;
+    std::vector<id<MTLCommandBuffer>> pending_buffers_;
+};
+
 struct BackendState {
     std::mutex mutex;
     bool initialized = false;
@@ -37,6 +65,7 @@ struct BackendState {
     id<MTLCommandQueue> queue = nil;
     std::unordered_map<std::string, id<MTLLibrary>> library_cache;
     std::unordered_map<std::string, id<MTLComputePipelineState>> pipeline_cache;
+    std::vector<std::weak_ptr<StreamImpl>> streams;
 };
 
 BackendState& state() {
@@ -155,9 +184,48 @@ id<MTLComputePipelineState> load_pipeline_locked(BackendState& backend,
             return nil;
         }
 
+        if ([pipeline threadExecutionWidth] != 32) {
+            if (error_message != nullptr) {
+                *error_message = "unsupported Metal threadExecutionWidth (expected 32)";
+            }
+            return nil;
+        }
+
         backend.pipeline_cache.emplace(cache_key, pipeline);
         return pipeline;
     }
+}
+
+cudaError_t check_command_buffer_status(id<MTLCommandBuffer> command_buffer, std::string* error_message) {
+    if ([command_buffer status] != MTLCommandBufferStatusError) {
+        return cudaSuccess;
+    }
+
+    NSError* command_error = [command_buffer error];
+    if (error_message != nullptr) {
+        *error_message = "command buffer failed";
+        if (command_error != nil) {
+            *error_message += " (" + std::string([[command_error localizedDescription] UTF8String]) + ")";
+        }
+    }
+    return cudaErrorUnknown;
+}
+
+std::vector<std::shared_ptr<StreamImpl>> collect_live_streams_locked(BackendState& backend) {
+    std::vector<std::shared_ptr<StreamImpl>> live;
+    std::vector<std::weak_ptr<StreamImpl>> retained;
+    retained.reserve(backend.streams.size());
+    live.reserve(backend.streams.size());
+
+    for (const std::weak_ptr<StreamImpl>& weak_stream : backend.streams) {
+        if (auto stream = weak_stream.lock()) {
+            live.push_back(stream);
+            retained.push_back(stream);
+        }
+    }
+
+    backend.streams.swap(retained);
+    return live;
 }
 
 }  // namespace
@@ -195,14 +263,81 @@ cudaError_t allocate_buffer(std::size_t size,
     return cudaSuccess;
 }
 
+cudaError_t create_stream(std::shared_ptr<Stream>* out_stream, std::string* error_message) {
+    if (out_stream == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "create_stream invalid argument";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (!ensure_initialized(error_message)) {
+        return cudaErrorInitializationError;
+    }
+
+    BackendState& backend = state();
+    std::lock_guard<std::mutex> lock(backend.mutex);
+
+    id<MTLCommandQueue> queue = [backend.device newCommandQueue];
+    if (queue == nil) {
+        if (error_message != nullptr) {
+            *error_message = "failed to create stream command queue";
+        }
+        return cudaErrorUnknown;
+    }
+
+    std::shared_ptr<StreamImpl> stream = std::make_shared<StreamImpl>(queue);
+    backend.streams.push_back(stream);
+    *out_stream = stream;
+    return cudaSuccess;
+}
+
+cudaError_t destroy_stream(const std::shared_ptr<Stream>& stream, std::string* error_message) {
+    if (stream == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "destroy_stream invalid argument";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    return stream_synchronize(stream, error_message);
+}
+
+cudaError_t stream_synchronize(const std::shared_ptr<Stream>& stream, std::string* error_message) {
+    auto stream_impl = std::dynamic_pointer_cast<StreamImpl>(stream);
+    if (stream_impl == nullptr) {
+        if (error_message != nullptr) {
+            *error_message = "stream_synchronize received unknown stream type";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    for (id<MTLCommandBuffer> command_buffer : stream_impl->take_pending()) {
+        [command_buffer waitUntilCompleted];
+        const cudaError_t status = check_command_buffer_status(command_buffer, error_message);
+        if (status != cudaSuccess) {
+            return status;
+        }
+    }
+    return cudaSuccess;
+}
+
 cudaError_t launch_kernel(const std::string& metallib_path,
                           const std::string& kernel_name,
                           const LaunchConfig& config,
                           const std::vector<KernelArg>& args,
+                          const std::shared_ptr<Stream>& stream,
                           std::string* error_message) {
     if (metallib_path.empty() || kernel_name.empty()) {
         if (error_message != nullptr) {
             *error_message = "launch_kernel requires metallib path and kernel name";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (args.size() > 31) {
+        if (error_message != nullptr) {
+            *error_message = "kernel argument count exceeds Metal argument index limit (31)";
         }
         return cudaErrorInvalidValue;
     }
@@ -219,17 +354,36 @@ cudaError_t launch_kernel(const std::string& metallib_path,
         return cudaErrorInitializationError;
     }
 
-    BackendState& backend = state();
-    std::lock_guard<std::mutex> lock(backend.mutex);
+    std::shared_ptr<StreamImpl> stream_impl;
+    if (stream != nullptr) {
+        stream_impl = std::dynamic_pointer_cast<StreamImpl>(stream);
+        if (stream_impl == nullptr) {
+            if (error_message != nullptr) {
+                *error_message = "launch_kernel received unknown stream type";
+            }
+            return cudaErrorInvalidValue;
+        }
+    }
 
-    id<MTLComputePipelineState> pipeline =
-        load_pipeline_locked(backend, metallib_path, kernel_name, error_message);
-    if (pipeline == nil) {
-        return cudaErrorInvalidValue;
+    BackendState& backend = state();
+    id<MTLComputePipelineState> pipeline = nil;
+    id<MTLCommandQueue> queue = nil;
+    {
+        std::lock_guard<std::mutex> lock(backend.mutex);
+        pipeline = load_pipeline_locked(backend, metallib_path, kernel_name, error_message);
+        if (pipeline == nil) {
+            return cudaErrorInvalidValue;
+        }
+
+        if (stream_impl != nullptr) {
+            queue = stream_impl->queue();
+        } else {
+            queue = backend.queue;
+        }
     }
 
     @autoreleasepool {
-        id<MTLCommandBuffer> command_buffer = [backend.queue commandBuffer];
+        id<MTLCommandBuffer> command_buffer = [queue commandBuffer];
         if (command_buffer == nil) {
             if (error_message != nullptr) {
                 *error_message = "failed to create command buffer";
@@ -297,19 +451,14 @@ cudaError_t launch_kernel(const std::string& metallib_path,
         [encoder endEncoding];
 
         [command_buffer commit];
-        [command_buffer waitUntilCompleted];
 
-        if ([command_buffer status] == MTLCommandBufferStatusError) {
-            NSError* command_error = [command_buffer error];
-            if (error_message != nullptr) {
-                *error_message = "command buffer failed";
-                if (command_error != nil) {
-                    *error_message +=
-                        " (" + std::string([[command_error localizedDescription] UTF8String]) + ")";
-                }
-            }
-            return cudaErrorUnknown;
+        if (stream_impl != nullptr) {
+            stream_impl->add_pending(command_buffer);
+            return cudaSuccess;
         }
+
+        [command_buffer waitUntilCompleted];
+        return check_command_buffer_status(command_buffer, error_message);
     }
 
     return cudaSuccess;
@@ -319,6 +468,21 @@ cudaError_t synchronize(std::string* error_message) {
     if (!ensure_initialized(error_message)) {
         return cudaErrorInitializationError;
     }
+
+    BackendState& backend = state();
+    std::vector<std::shared_ptr<StreamImpl>> streams;
+    {
+        std::lock_guard<std::mutex> lock(backend.mutex);
+        streams = collect_live_streams_locked(backend);
+    }
+
+    for (const std::shared_ptr<StreamImpl>& stream : streams) {
+        const cudaError_t status = stream_synchronize(stream, error_message);
+        if (status != cudaSuccess) {
+            return status;
+        }
+    }
+
     return cudaSuccess;
 }
 

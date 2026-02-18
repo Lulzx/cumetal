@@ -17,6 +17,11 @@ public:
     virtual std::size_t length() const = 0;
 };
 
+class Stream {
+public:
+    virtual ~Stream() = default;
+};
+
 struct KernelArg {
     enum class Kind {
         kBuffer,
@@ -39,10 +44,14 @@ cudaError_t initialize(std::string* error_message);
 cudaError_t allocate_buffer(std::size_t size,
                             std::shared_ptr<Buffer>* out_buffer,
                             std::string* error_message);
+cudaError_t create_stream(std::shared_ptr<Stream>* out_stream, std::string* error_message);
+cudaError_t destroy_stream(const std::shared_ptr<Stream>& stream, std::string* error_message);
+cudaError_t stream_synchronize(const std::shared_ptr<Stream>& stream, std::string* error_message);
 cudaError_t launch_kernel(const std::string& metallib_path,
                           const std::string& kernel_name,
                           const LaunchConfig& config,
                           const std::vector<KernelArg>& args,
+                          const std::shared_ptr<Stream>& stream,
                           std::string* error_message);
 cudaError_t synchronize(std::string* error_message);
 

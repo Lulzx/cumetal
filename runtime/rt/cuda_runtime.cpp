@@ -4,9 +4,13 @@
 #include "metal_backend.h"
 
 #include <cstring>
+#include <new>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+struct cudaStream_st {};
 
 namespace {
 
@@ -15,6 +19,8 @@ struct RuntimeState {
     cudaError_t init_status = cudaSuccess;
     std::string init_error;
     cumetal::rt::AllocationTable allocations;
+    std::mutex stream_mutex;
+    std::unordered_map<cudaStream_t, std::shared_ptr<cumetal::metal_backend::Stream>> streams;
 };
 
 RuntimeState& runtime_state() {
@@ -41,6 +47,41 @@ cudaError_t ensure_initialized() {
 cudaError_t fail(cudaError_t error) {
     set_last_error(error);
     return error;
+}
+
+bool resolve_stream_handle(cudaStream_t stream,
+                           std::shared_ptr<cumetal::metal_backend::Stream>* out_stream) {
+    if (stream == nullptr || out_stream == nullptr) {
+        return false;
+    }
+
+    RuntimeState& state = runtime_state();
+    std::lock_guard<std::mutex> lock(state.stream_mutex);
+    const auto found = state.streams.find(stream);
+    if (found == state.streams.end()) {
+        return false;
+    }
+
+    *out_stream = found->second;
+    return true;
+}
+
+bool erase_stream_handle(cudaStream_t stream,
+                         std::shared_ptr<cumetal::metal_backend::Stream>* out_stream) {
+    if (stream == nullptr || out_stream == nullptr) {
+        return false;
+    }
+
+    RuntimeState& state = runtime_state();
+    std::lock_guard<std::mutex> lock(state.stream_mutex);
+    const auto found = state.streams.find(stream);
+    if (found == state.streams.end()) {
+        return false;
+    }
+
+    *out_stream = std::move(found->second);
+    state.streams.erase(found);
+    return true;
 }
 
 }  // namespace
@@ -103,6 +144,17 @@ cudaError_t cudaFree(void* dev_ptr) {
         return fail(cudaSuccess);
     }
 
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::string error;
+    const cudaError_t sync_status = cumetal::metal_backend::synchronize(&error);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
     RuntimeState& state = runtime_state();
     if (!state.allocations.erase(dev_ptr)) {
         return fail(cudaErrorInvalidDevicePointer);
@@ -145,18 +197,87 @@ cudaError_t cudaDeviceSynchronize(void) {
     return fail(status);
 }
 
+cudaError_t cudaStreamCreate(cudaStream_t* stream) {
+    if (stream == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    std::string error;
+    const cudaError_t status = cumetal::metal_backend::create_stream(&backend_stream, &error);
+    if (status != cudaSuccess || backend_stream == nullptr) {
+        return fail(status == cudaSuccess ? cudaErrorUnknown : status);
+    }
+
+    auto* handle = new (std::nothrow) cudaStream_st{};
+    if (handle == nullptr) {
+        return fail(cudaErrorMemoryAllocation);
+    }
+
+    RuntimeState& state = runtime_state();
+    {
+        std::lock_guard<std::mutex> lock(state.stream_mutex);
+        state.streams.emplace(handle, std::move(backend_stream));
+    }
+
+    *stream = handle;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaStreamDestroy(cudaStream_t stream) {
+    if (stream == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    if (!erase_stream_handle(stream, &backend_stream)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    std::string error;
+    const cudaError_t status = cumetal::metal_backend::destroy_stream(backend_stream, &error);
+    delete stream;
+    return fail(status);
+}
+
+cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
+    if (stream == nullptr) {
+        return cudaDeviceSynchronize();
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    if (!resolve_stream_handle(stream, &backend_stream)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    std::string error;
+    const cudaError_t status = cumetal::metal_backend::stream_synchronize(backend_stream, &error);
+    return fail(status);
+}
+
 cudaError_t cudaLaunchKernel(const void* func,
                              dim3 grid_dim,
                              dim3 block_dim,
                              void** args,
                              size_t shared_mem,
-                             void* stream) {
+                             cudaStream_t stream) {
     if (func == nullptr || grid_dim.x == 0 || grid_dim.y == 0 || grid_dim.z == 0 || block_dim.x == 0 ||
         block_dim.y == 0 || block_dim.z == 0) {
-        return fail(cudaErrorInvalidValue);
-    }
-
-    if (stream != nullptr) {
         return fail(cudaErrorInvalidValue);
     }
 
@@ -167,6 +288,14 @@ cudaError_t cudaLaunchKernel(const void* func,
 
     const auto* kernel = static_cast<const cumetalKernel_t*>(func);
     if (kernel->metallib_path == nullptr || kernel->kernel_name == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    if (kernel->arg_count > 31) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
+    if (stream != nullptr && !resolve_stream_handle(stream, &backend_stream)) {
         return fail(cudaErrorInvalidValue);
     }
 
@@ -222,7 +351,7 @@ cudaError_t cudaLaunchKernel(const void* func,
     std::string error;
     const cudaError_t status =
         cumetal::metal_backend::launch_kernel(kernel->metallib_path, kernel->kernel_name, config,
-                                              launch_args, &error);
+                                              launch_args, backend_stream, &error);
     return fail(status);
 }
 

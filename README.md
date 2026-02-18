@@ -3,15 +3,37 @@ CuMetal
 
 CuMetal is an experimental CUDA compiler/runtime for Apple Silicon GPUs.
 
-Current code implements Phase 0.5 (metallib validation harness):
+Current status
+--------------
 
-- `air_inspect`: inspect `.metallib` container structure
-- `cumetal-air-emitter`: emit `.metallib` (xcrun mode or experimental mode)
-- `air_validate`: structural checks and optional `xcrun metal -validate`
-- `cumetal_metal_load_test`: check `MTLDevice.newLibraryWithData:` acceptance
+Implemented today:
 
-This is bootstrap code for the compiler/runtime pipeline.
-CUDA kernel execution is not implemented yet.
+- Phase 0.5 tooling:
+  - `air_inspect`: `.metallib` container inspection
+  - `cumetal-air-emitter`: `.metallib` emission (xcrun-backed + experimental mode)
+  - `air_validate`: structural checks + optional `xcrun metal -validate`
+  - `cumetal_metal_load_test`: `MTLDevice.newLibraryWithData:` acceptance test
+- Early Phase 0 runtime path:
+  - allocation tracking (`ptr -> MTLBuffer`) with offset resolution
+  - synchronous `cudaMemcpy` on UMA via `memcpy`
+  - kernel launch through Metal compute pipelines (`setBuffer` + `setBytes`)
+  - default-stream and user-stream execution (`cudaStreamCreate/Destroy/Synchronize`)
+  - runtime functional tests for vector add and saxpy
+
+Supported runtime API subset:
+
+- `cudaInit`
+- `cudaMalloc`, `cudaMallocManaged`, `cudaMallocHost`, `cudaFree`
+- `cudaMemcpy`
+- `cudaLaunchKernel`
+- `cudaStreamCreate`, `cudaStreamDestroy`, `cudaStreamSynchronize`
+- `cudaDeviceSynchronize`
+- `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorString`
+
+Current limitations:
+
+- This is not yet a full CUDA Runtime/Driver implementation.
+- Kernel launch currently uses a CuMetal descriptor (`cumetalKernel_t`) rather than NVCC fatbin registration.
 
 Build
 -----
@@ -30,6 +52,18 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/air_validate tests/air_abi/reference/reference.metallib --xcrun
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
 ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
+```
+
+Runtime execution tests
+-----------------------
+
+These tests compile Metal kernels with `xcrun` and run them through the CuMetal runtime:
+
+```bash
+ctest --test-dir build -R functional_runtime_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_stream_vector_add --output-on-failure
+ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
+ctest --test-dir build -R unit_allocation_table --output-on-failure
 ```
 
 If `xcrun metal`/`xcrun metallib` are unavailable
