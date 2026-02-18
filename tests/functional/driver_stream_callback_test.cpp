@@ -46,6 +46,16 @@ int main() {
         std::fprintf(stderr, "FAIL: cuInit failed\n");
         return 1;
     }
+    CUdevice device = 0;
+    if (cuDeviceGet(&device, 0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuDeviceGet failed\n");
+        return 1;
+    }
+    CUcontext context = nullptr;
+    if (cuCtxCreate(&context, 0, device) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate failed\n");
+        return 1;
+    }
 
     CUstream stream = nullptr;
     if (cuStreamCreate(&stream, CU_STREAM_DEFAULT) != CUDA_SUCCESS) {
@@ -97,6 +107,10 @@ int main() {
 
     if (cuStreamDestroy(stream) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuStreamDestroy failed\n");
+        return 1;
+    }
+    if (cuCtxDestroy(context) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 

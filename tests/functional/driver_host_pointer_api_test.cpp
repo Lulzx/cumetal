@@ -9,6 +9,16 @@ int main() {
         std::fprintf(stderr, "FAIL: cuInit failed\n");
         return 1;
     }
+    CUdevice device = 0;
+    if (cuDeviceGet(&device, 0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuDeviceGet failed\n");
+        return 1;
+    }
+    CUcontext context = nullptr;
+    if (cuCtxCreate(&context, 0, device) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate failed\n");
+        return 1;
+    }
 
     constexpr std::size_t kBytes = 1024;
     void* host_ptr = nullptr;
@@ -102,6 +112,10 @@ int main() {
     }
     if (cuMemFreeHost(mapped_host_ptr) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuMemFreeHost(mapped) failed\n");
+        return 1;
+    }
+    if (cuCtxDestroy(context) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 

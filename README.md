@@ -21,6 +21,7 @@ Implemented today:
   - runtime functional tests for vector add and saxpy
   - driver module loading from both in-memory metallib bytes and filesystem paths
   - on-disk cache for `cuModuleLoadData` metallib byte payloads
+  - driver stream/event/memory APIs enforce `cuInit` + current-context requirements
 
 Supported runtime API subset:
 
@@ -115,6 +116,7 @@ ctest --test-dir build -R functional_driver_device_attribute --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
 ctest --test-dir build -R functional_driver_stream_callback --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
+ctest --test-dir build -R functional_driver_context_requirements --output-on-failure
 ctest --test-dir build -R functional_driver_async_memcpy --output-on-failure
 ctest --test-dir build -R functional_driver_memset --output-on-failure
 ctest --test-dir build -R functional_driver_mem_get_info --output-on-failure

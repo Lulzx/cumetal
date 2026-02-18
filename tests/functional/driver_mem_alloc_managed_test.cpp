@@ -8,6 +8,16 @@ int main() {
         std::fprintf(stderr, "FAIL: cuInit failed\n");
         return 1;
     }
+    CUdevice device = 0;
+    if (cuDeviceGet(&device, 0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuDeviceGet failed\n");
+        return 1;
+    }
+    CUcontext context = nullptr;
+    if (cuCtxCreate(&context, 0, device) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate failed\n");
+        return 1;
+    }
 
     constexpr size_t kBytes = 1024;
     CUdeviceptr ptr = 0;
@@ -41,6 +51,11 @@ int main() {
 
     if (cuMemAllocManaged(&ptr, kBytes, 1) != CUDA_ERROR_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: unsupported managed flags should fail\n");
+        return 1;
+    }
+
+    if (cuCtxDestroy(context) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 

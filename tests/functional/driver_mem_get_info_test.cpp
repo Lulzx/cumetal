@@ -7,6 +7,16 @@ int main() {
         std::fprintf(stderr, "FAIL: cuInit failed\n");
         return 1;
     }
+    CUdevice device = 0;
+    if (cuDeviceGet(&device, 0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuDeviceGet failed\n");
+        return 1;
+    }
+    CUcontext context = nullptr;
+    if (cuCtxCreate(&context, 0, device) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate failed\n");
+        return 1;
+    }
 
     size_t free0 = 0;
     size_t total0 = 0;
@@ -68,6 +78,11 @@ int main() {
 
     if (cuMemGetInfo(&free0, nullptr) != CUDA_ERROR_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: null total output pointer should fail\n");
+        return 1;
+    }
+
+    if (cuCtxDestroy(context) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 

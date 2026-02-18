@@ -107,6 +107,10 @@ add_executable(cumetal_driver_context_switch_test
     driver_context_switch_test.cpp
 )
 
+add_executable(cumetal_driver_context_requirements_test
+    driver_context_requirements_test.cpp
+)
+
 add_executable(cumetal_driver_async_memcpy_test
     driver_async_memcpy_test.cpp
 )
@@ -273,6 +277,11 @@ target_link_libraries(cumetal_driver_stream_callback_test
 )
 
 target_link_libraries(cumetal_driver_context_switch_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_context_requirements_test
     PRIVATE
         cumetal_runtime
 )
@@ -503,6 +512,13 @@ target_compile_options(cumetal_driver_stream_callback_test
 )
 
 target_compile_options(cumetal_driver_context_switch_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_context_requirements_test
     PRIVATE
         -Wall
         -Wextra
@@ -747,6 +763,11 @@ add_test(
 add_test(
     NAME functional_driver_context_switch
     COMMAND cumetal_driver_context_switch_test
+)
+
+add_test(
+    NAME functional_driver_context_requirements
+    COMMAND cumetal_driver_context_requirements_test
 )
 
 add_test(

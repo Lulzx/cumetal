@@ -79,6 +79,18 @@ bool has_current_context_locked(const DriverState& state) {
     return state.current_context != nullptr;
 }
 
+CUresult require_initialized_context() {
+    DriverState& state = driver_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.initialized) {
+        return CUDA_ERROR_NOT_INITIALIZED;
+    }
+    if (!has_current_context_locked(state)) {
+        return CUDA_ERROR_INVALID_CONTEXT;
+    }
+    return CUDA_SUCCESS;
+}
+
 bool is_valid_function_locked(const DriverState& state, CUfunction function) {
     return function != nullptr && state.functions.find(function) != state.functions.end();
 }
@@ -566,18 +578,34 @@ CUresult cuStreamCreate(CUstream* phStream, unsigned int flags) {
     if (flags != CU_STREAM_DEFAULT && flags != CU_STREAM_NON_BLOCKING) {
         return CUDA_ERROR_INVALID_VALUE;
     }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaStreamCreateWithFlags(reinterpret_cast<cudaStream_t*>(phStream), flags));
 }
 
 CUresult cuStreamDestroy(CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaStreamDestroy(reinterpret_cast<cudaStream_t>(hStream)));
 }
 
 CUresult cuStreamSynchronize(CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(hStream)));
 }
 
 CUresult cuStreamQuery(CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaStreamQuery(reinterpret_cast<cudaStream_t>(hStream)));
 }
 
@@ -587,6 +615,10 @@ CUresult cuStreamAddCallback(CUstream hStream,
                              unsigned int flags) {
     if (callback == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
     }
 
     auto* payload = new (std::nothrow) DriverStreamCallbackPayload{};
@@ -610,33 +642,61 @@ CUresult cuStreamAddCallback(CUstream hStream,
 }
 
 CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaStreamWaitEvent(reinterpret_cast<cudaStream_t>(hStream),
                                               reinterpret_cast<cudaEvent_t>(hEvent),
                                               flags));
 }
 
 CUresult cuEventCreate(CUevent* phEvent, unsigned int flags) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventCreateWithFlags(reinterpret_cast<cudaEvent_t*>(phEvent), flags));
 }
 
 CUresult cuEventDestroy(CUevent hEvent) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventDestroy(reinterpret_cast<cudaEvent_t>(hEvent)));
 }
 
 CUresult cuEventRecord(CUevent hEvent, CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventRecord(reinterpret_cast<cudaEvent_t>(hEvent),
                                           reinterpret_cast<cudaStream_t>(hStream)));
 }
 
 CUresult cuEventSynchronize(CUevent hEvent) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventSynchronize(reinterpret_cast<cudaEvent_t>(hEvent)));
 }
 
 CUresult cuEventQuery(CUevent hEvent) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventQuery(reinterpret_cast<cudaEvent_t>(hEvent)));
 }
 
 CUresult cuEventElapsedTime(float* pMilliseconds, CUevent hStart, CUevent hEnd) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaEventElapsedTime(pMilliseconds,
                                                reinterpret_cast<cudaEvent_t>(hStart),
                                                reinterpret_cast<cudaEvent_t>(hEnd)));
@@ -719,6 +779,10 @@ CUresult cuModuleLoadDataEx(CUmodule* module,
 CUresult cuModuleUnload(CUmodule module) {
     if (module == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
     }
 
     DriverState& state = driver_state();
@@ -915,6 +979,10 @@ CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize) {
     if (dptr == nullptr || bytesize == 0) {
         return CUDA_ERROR_INVALID_VALUE;
     }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
 
     void* allocated = nullptr;
     const cudaError_t status = cudaMalloc(&allocated, bytesize);
@@ -930,6 +998,10 @@ CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flag
     if (dptr == nullptr || bytesize == 0) {
         return CUDA_ERROR_INVALID_VALUE;
     }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
 
     void* allocated = nullptr;
     const cudaError_t status = cudaMallocManaged(&allocated, bytesize, flags);
@@ -942,20 +1014,36 @@ CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flag
 }
 
 CUresult cuMemFree(CUdeviceptr dptr) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dptr))));
 }
 
 CUresult cuMemAllocHost(void** pp, size_t bytesize) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaHostAlloc(pp, bytesize, cudaHostAllocDefault));
 }
 
 CUresult cuMemHostAlloc(void** pp, size_t bytesize, unsigned int flags) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaHostAlloc(pp, bytesize, flags));
 }
 
 CUresult cuMemHostGetDevicePointer(CUdeviceptr* pdptr, void* p, unsigned int flags) {
     if (pdptr == nullptr) {
         return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
     }
 
     void* device_ptr = nullptr;
@@ -969,14 +1057,26 @@ CUresult cuMemHostGetDevicePointer(CUdeviceptr* pdptr, void* p, unsigned int fla
 }
 
 CUresult cuMemHostGetFlags(unsigned int* pFlags, void* p) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaHostGetFlags(pFlags, p));
 }
 
 CUresult cuMemFreeHost(void* p) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaFreeHost(p));
 }
 
 CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                      srcHost,
                                      ByteCount,
@@ -984,6 +1084,10 @@ CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCou
 }
 
 CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpy(dstHost,
                                      reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
                                      ByteCount,
@@ -991,6 +1095,10 @@ CUresult cuMemcpyDtoH(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount) {
 }
 
 CUresult cuMemcpyDtoD(CUdeviceptr dstDevice, CUdeviceptr srcDevice, size_t ByteCount) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                      reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
                                      ByteCount,
@@ -1001,6 +1109,10 @@ CUresult cuMemcpyHtoDAsync(CUdeviceptr dstDevice,
                            const void* srcHost,
                            size_t ByteCount,
                            CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpyAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                           srcHost,
                                           ByteCount,
@@ -1012,6 +1124,10 @@ CUresult cuMemcpyDtoHAsync(void* dstHost,
                            CUdeviceptr srcDevice,
                            size_t ByteCount,
                            CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpyAsync(dstHost,
                                           reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
                                           ByteCount,
@@ -1023,6 +1139,10 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                            CUdeviceptr srcDevice,
                            size_t ByteCount,
                            CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemcpyAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                           reinterpret_cast<void*>(static_cast<std::uintptr_t>(srcDevice)),
                                           ByteCount,
@@ -1031,16 +1151,28 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
 }
 
 CUresult cuMemGetInfo(size_t* freeBytes, size_t* totalBytes) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemGetInfo(freeBytes, totalBytes));
 }
 
 CUresult cuMemsetD8(CUdeviceptr dstDevice, unsigned char uc, size_t N) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemset(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                      static_cast<int>(uc),
                                      N));
 }
 
 CUresult cuMemsetD8Async(CUdeviceptr dstDevice, unsigned char uc, size_t N, CUstream hStream) {
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
     return map_cuda_error(cudaMemsetAsync(reinterpret_cast<void*>(static_cast<std::uintptr_t>(dstDevice)),
                                           static_cast<int>(uc),
                                           N,
