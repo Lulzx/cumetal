@@ -104,8 +104,10 @@ ctest --test-dir build -R functional_runtime_device_properties --output-on-failu
 ctest --test-dir build -R functional_runtime_device_attribute --output-on-failure
 ctest --test-dir build -R functional_runtime_device_reset --output-on-failure
 ctest --test-dir build -R functional_runtime_device_flags --output-on-failure
+ctest --test-dir build -R functional_runtime_error_api --output-on-failure
 ctest --test-dir build -R functional_driver_vector_add --output-on-failure
 ctest --test-dir build -R functional_driver_device_api --output-on-failure
+ctest --test-dir build -R functional_driver_error_api --output-on-failure
 ctest --test-dir build -R functional_driver_device_query --output-on-failure
 ctest --test-dir build -R functional_driver_device_attribute --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
