@@ -22,6 +22,21 @@ int main() {
         std::fprintf(stderr, "FAIL: curandSetPseudoRandomGeneratorSeed failed\n");
         return 1;
     }
+    cudaStream_t stream = nullptr;
+    if (cudaStreamCreate(&stream) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamCreate failed\n");
+        return 1;
+    }
+    if (curandSetStream(generator, stream) != CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandSetStream failed\n");
+        return 1;
+    }
+    cudaStream_t queried_stream = nullptr;
+    if (curandGetStream(generator, &queried_stream) != CURAND_STATUS_SUCCESS ||
+        queried_stream != stream) {
+        std::fprintf(stderr, "FAIL: curandGetStream mismatch\n");
+        return 1;
+    }
 
     float* device_output = nullptr;
     if (cudaMalloc(reinterpret_cast<void**>(&device_output), kCount * sizeof(float)) != cudaSuccess) {
@@ -161,6 +176,14 @@ int main() {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_NOT_INITIALIZED for null generator out ptr\n");
         return 1;
     }
+    if (curandSetStream(nullptr, stream) != CURAND_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_NOT_INITIALIZED for null generator in setStream\n");
+        return 1;
+    }
+    if (curandGetStream(generator, nullptr) != CURAND_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_NOT_INITIALIZED for null out stream ptr\n");
+        return 1;
+    }
 
     if (cudaFree(device_output) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");
@@ -178,7 +201,11 @@ int main() {
         std::fprintf(stderr, "FAIL: curandDestroyGenerator failed\n");
         return 1;
     }
+    if (cudaStreamDestroy(stream) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamDestroy failed\n");
+        return 1;
+    }
 
-    std::printf("PASS: cuRAND uniform generation shim works on device allocations\n");
+    std::printf("PASS: cuRAND generation + stream binding shim works on device allocations\n");
     return 0;
 }

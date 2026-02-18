@@ -10,6 +10,7 @@ struct curandGenerator_st {
     std::mt19937_64 engine{0};
     std::uniform_real_distribution<float> uniform{0.0f, 1.0f};
     std::uniform_real_distribution<double> uniform_double{0.0, 1.0};
+    cudaStream_t stream = nullptr;
     std::mutex mutex;
 };
 
@@ -43,6 +44,26 @@ curandStatus_t curandDestroyGenerator(curandGenerator_t generator) {
     return CURAND_STATUS_SUCCESS;
 }
 
+curandStatus_t curandSetStream(curandGenerator_t generator, cudaStream_t stream) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    generator->stream = stream;
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandGetStream(curandGenerator_t generator, cudaStream_t* stream) {
+    if (generator == nullptr || stream == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    *stream = generator->stream;
+    return CURAND_STATUS_SUCCESS;
+}
+
 curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,
                                                    unsigned long long seed) {
     if (generator == nullptr) {
@@ -67,7 +88,7 @@ curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_
     if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
         return CURAND_STATUS_TYPE_ERROR;
     }
-    if (cudaDeviceSynchronize() != cudaSuccess) {
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
         return CURAND_STATUS_PREEXISTING_FAILURE;
     }
 
@@ -93,7 +114,7 @@ curandStatus_t curandGenerateUniformDouble(curandGenerator_t generator,
     if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
         return CURAND_STATUS_TYPE_ERROR;
     }
-    if (cudaDeviceSynchronize() != cudaSuccess) {
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
         return CURAND_STATUS_PREEXISTING_FAILURE;
     }
 
@@ -124,7 +145,7 @@ curandStatus_t curandGenerateNormal(curandGenerator_t generator,
     if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
         return CURAND_STATUS_TYPE_ERROR;
     }
-    if (cudaDeviceSynchronize() != cudaSuccess) {
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
         return CURAND_STATUS_PREEXISTING_FAILURE;
     }
 

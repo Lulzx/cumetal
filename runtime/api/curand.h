@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 
+#include "cuda_runtime.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,6 +32,8 @@ typedef enum curandRngType {
 
 curandStatus_t curandCreateGenerator(curandGenerator_t* generator, curandRngType_t rng_type);
 curandStatus_t curandDestroyGenerator(curandGenerator_t generator);
+curandStatus_t curandSetStream(curandGenerator_t generator, cudaStream_t stream);
+curandStatus_t curandGetStream(curandGenerator_t generator, cudaStream_t* stream);
 curandStatus_t curandSetPseudoRandomGeneratorSeed(curandGenerator_t generator,
                                                    unsigned long long seed);
 curandStatus_t curandGenerateUniform(curandGenerator_t generator, float* output_ptr, size_t num);
