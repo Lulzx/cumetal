@@ -253,4 +253,28 @@ curandStatus_t curandGenerateLogNormalDouble(curandGenerator_t generator,
     return CURAND_STATUS_SUCCESS;
 }
 
+curandStatus_t curandGenerate(curandGenerator_t generator, unsigned int* output_ptr, size_t num) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (output_ptr == nullptr && num > 0) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (num == 0) {
+        return CURAND_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
+        return CURAND_STATUS_TYPE_ERROR;
+    }
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
+        return CURAND_STATUS_PREEXISTING_FAILURE;
+    }
+
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    for (size_t i = 0; i < num; ++i) {
+        output_ptr[i] = static_cast<unsigned int>(generator->engine());
+    }
+    return CURAND_STATUS_SUCCESS;
+}
+
 }  // extern "C"

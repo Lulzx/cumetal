@@ -1,6 +1,7 @@
 #include "cuda_runtime.h"
 #include "curand.h"
 
+#include <cstdint>
 #include <cstddef>
 #include <cstdio>
 #include <vector>
@@ -308,6 +309,43 @@ int main() {
         return 1;
     }
 
+    std::uint32_t* device_output_uint = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&device_output_uint), kCount * sizeof(std::uint32_t)) !=
+        cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for uint output failed\n");
+        return 1;
+    }
+    if (curandGenerate(generator, reinterpret_cast<unsigned int*>(device_output_uint), kCount) !=
+        CURAND_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: curandGenerate failed\n");
+        return 1;
+    }
+    std::vector<std::uint32_t> host_uint(kCount, 0);
+    if (cudaMemcpy(host_uint.data(),
+                   device_output_uint,
+                   kCount * sizeof(std::uint32_t),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for uint output failed\n");
+        return 1;
+    }
+    bool has_uint_variation = false;
+    for (std::size_t i = 1; i < kCount; ++i) {
+        if (host_uint[i] != host_uint[i - 1]) {
+            has_uint_variation = true;
+            break;
+        }
+    }
+    if (!has_uint_variation) {
+        std::fprintf(stderr, "FAIL: generated uint sequence has no variation\n");
+        return 1;
+    }
+
+    std::vector<unsigned int> host_uint_out(kCount, 0u);
+    if (curandGenerate(generator, host_uint_out.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
+        std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host uint output pointer\n");
+        return 1;
+    }
+
     std::vector<float> host_output(kCount, 0.0f);
     if (curandGenerateUniform(generator, host_output.data(), kCount) != CURAND_STATUS_TYPE_ERROR) {
         std::fprintf(stderr, "FAIL: expected CURAND_STATUS_TYPE_ERROR for host output pointer\n");
@@ -349,6 +387,10 @@ int main() {
     }
     if (cudaFree(device_output_lognormal_double) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree for lognormal double output failed\n");
+        return 1;
+    }
+    if (cudaFree(device_output_uint) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaFree for uint output failed\n");
         return 1;
     }
     if (curandDestroyGenerator(generator) != CURAND_STATUS_SUCCESS) {
