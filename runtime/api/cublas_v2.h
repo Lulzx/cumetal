@@ -29,6 +29,7 @@ typedef enum cublasOperation_t {
 
 cublasStatus_t cublasCreate(cublasHandle_t* handle);
 cublasStatus_t cublasDestroy(cublasHandle_t handle);
+cublasStatus_t cublasGetVersion(cublasHandle_t handle, int* version);
 cublasStatus_t cublasSetStream(cublasHandle_t handle, cudaStream_t stream_id);
 cublasStatus_t cublasGetStream(cublasHandle_t handle, cudaStream_t* stream_id);
 

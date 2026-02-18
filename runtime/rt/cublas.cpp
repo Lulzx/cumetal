@@ -13,6 +13,8 @@ extern "C" int cumetalRuntimeIsDevicePointer(const void* ptr);
 
 namespace {
 
+constexpr int kCublasCompatVersion = 12000;
+
 bool is_valid_operation(cublasOperation_t op) {
     return op == CUBLAS_OP_N || op == CUBLAS_OP_T || op == CUBLAS_OP_C;
 }
@@ -49,6 +51,14 @@ cublasStatus_t cublasDestroy(cublasHandle_t handle) {
         return CUBLAS_STATUS_NOT_INITIALIZED;
     }
     delete handle;
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasGetVersion(cublasHandle_t handle, int* version) {
+    if (handle == nullptr || version == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    *version = kCublasCompatVersion;
     return CUBLAS_STATUS_SUCCESS;
 }
 

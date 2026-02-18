@@ -30,6 +30,15 @@ int main() {
         std::fprintf(stderr, "FAIL: cublasCreate failed\n");
         return 1;
     }
+    int cublas_version = 0;
+    if (cublasGetVersion(handle, &cublas_version) != CUBLAS_STATUS_SUCCESS || cublas_version <= 0) {
+        std::fprintf(stderr, "FAIL: cublasGetVersion failed\n");
+        return 1;
+    }
+    if (cublasGetVersion(handle, nullptr) != CUBLAS_STATUS_NOT_INITIALIZED) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_NOT_INITIALIZED for null version ptr\n");
+        return 1;
+    }
 
     cudaStream_t stream = nullptr;
     if (cudaStreamCreate(&stream) != cudaSuccess) {
