@@ -144,6 +144,38 @@ cublasStatus_t cublasSscal(cublasHandle_t handle, int n, const float* alpha, flo
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasSswap(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0 || cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const int xi = i * incx;
+        const int yi = i * incy;
+        const float tmp = x[xi];
+        x[xi] = y[yi];
+        y[yi] = tmp;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 cublasStatus_t cublasDaxpy(cublasHandle_t handle,
                            int n,
                            const double* alpha,
@@ -204,6 +236,38 @@ cublasStatus_t cublasDscal(cublasHandle_t handle, int n, const double* alpha, do
     const double alpha_value = *alpha;
     for (int i = 0; i < n; ++i) {
         x[i * incx] *= alpha_value;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDswap(cublasHandle_t handle, int n, double* x, int incx, double* y, int incy) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (n < 0 || incx <= 0 || incy <= 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (x == nullptr || y == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (cumetalRuntimeIsDevicePointer(x) == 0 || cumetalRuntimeIsDevicePointer(y) == 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const int xi = i * incx;
+        const int yi = i * incy;
+        const double tmp = x[xi];
+        x[xi] = y[yi];
+        y[yi] = tmp;
     }
     return CUBLAS_STATUS_SUCCESS;
 }

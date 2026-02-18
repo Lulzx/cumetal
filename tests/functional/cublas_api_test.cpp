@@ -143,6 +143,30 @@ int main() {
         std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for null alpha in SSCAL\n");
         return 1;
     }
+    std::vector<float> expected_swap_x = host_y;
+    std::vector<float> expected_swap_y = host_x;
+    if (cublasSswap(handle, kVecCount, dev_x, 1, dev_y, 1) != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasSswap failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_x.data(), dev_x, host_x.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+            cudaSuccess ||
+        cudaMemcpy(host_y.data(), dev_y, host_y.size() * sizeof(float), cudaMemcpyDeviceToHost) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for SSWAP failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kVecCount; ++i) {
+        if (!nearly_equal(host_x[i], expected_swap_x[i]) || !nearly_equal(host_y[i], expected_swap_y[i])) {
+            std::fprintf(stderr, "FAIL: SSWAP mismatch at %d\n", i);
+            return 1;
+        }
+    }
+    if (cublasSswap(handle, kVecCount, expected_swap_x.data(), 1, dev_y, 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in SSWAP\n");
+        return 1;
+    }
 
     constexpr int m = 2;
     constexpr int n = 3;
@@ -663,6 +687,64 @@ int main() {
         return 1;
     }
 
+    constexpr int kSwapDoubleCount = 512;
+    std::vector<double> host_swap_dx(kSwapDoubleCount);
+    std::vector<double> host_swap_dy(kSwapDoubleCount);
+    for (int i = 0; i < kSwapDoubleCount; ++i) {
+        host_swap_dx[i] = 0.75 + static_cast<double>((i * 3) % 41) * 0.05;
+        host_swap_dy[i] = -0.25 + static_cast<double>((i * 5) % 37) * 0.04;
+    }
+    std::vector<double> expected_swap_dx = host_swap_dy;
+    std::vector<double> expected_swap_dy = host_swap_dx;
+    double* dev_swap_dx = nullptr;
+    double* dev_swap_dy = nullptr;
+    if (cudaMalloc(reinterpret_cast<void**>(&dev_swap_dx), host_swap_dx.size() * sizeof(double)) !=
+            cudaSuccess ||
+        cudaMalloc(reinterpret_cast<void**>(&dev_swap_dy), host_swap_dy.size() * sizeof(double)) !=
+            cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMalloc for DSWAP failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(dev_swap_dx,
+                   host_swap_dx.data(),
+                   host_swap_dx.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dev_swap_dy,
+                   host_swap_dy.data(),
+                   host_swap_dy.size() * sizeof(double),
+                   cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy host->device for DSWAP failed\n");
+        return 1;
+    }
+    if (cublasDswap(handle, kSwapDoubleCount, dev_swap_dx, 1, dev_swap_dy, 1) !=
+        CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cublasDswap failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(host_swap_dx.data(),
+                   dev_swap_dx,
+                   host_swap_dx.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess ||
+        cudaMemcpy(host_swap_dy.data(),
+                   dev_swap_dy,
+                   host_swap_dy.size() * sizeof(double),
+                   cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaMemcpy device->host for DSWAP failed\n");
+        return 1;
+    }
+    for (int i = 0; i < kSwapDoubleCount; ++i) {
+        if (std::fabs(host_swap_dx[i] - expected_swap_dx[i]) > 1e-12 ||
+            std::fabs(host_swap_dy[i] - expected_swap_dy[i]) > 1e-12) {
+            std::fprintf(stderr, "FAIL: DSWAP mismatch at %d\n", i);
+            return 1;
+        }
+    }
+    if (cublasDswap(handle, kSwapDoubleCount, host_swap_dx.data(), 1, dev_swap_dy, 1) !=
+        CUBLAS_STATUS_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: expected CUBLAS_STATUS_INVALID_VALUE for host X in DSWAP\n");
+        return 1;
+    }
+
     constexpr int kDotCount = 1024;
     std::vector<float> host_dot_x(kDotCount);
     std::vector<float> host_dot_y(kDotCount);
@@ -846,6 +928,7 @@ int main() {
         cudaFree(dev_cn) != cudaSuccess || cudaFree(dev_ad) != cudaSuccess ||
         cudaFree(dev_bd) != cudaSuccess || cudaFree(dev_cd) != cudaSuccess ||
         cudaFree(dev_dx) != cudaSuccess || cudaFree(dev_dy) != cudaSuccess ||
+        cudaFree(dev_swap_dx) != cudaSuccess || cudaFree(dev_swap_dy) != cudaSuccess ||
         cudaFree(dev_dot_x) != cudaSuccess || cudaFree(dev_dot_y) != cudaSuccess ||
         cudaFree(dev_ddot_x) != cudaSuccess || cudaFree(dev_ddot_y) != cudaSuccess) {
         std::fprintf(stderr, "FAIL: cudaFree failed\n");

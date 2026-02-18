@@ -98,6 +98,7 @@ Supported library shim subset:
   - `cublasCreate`, `cublasDestroy`, `cublasGetVersion`
   - `cublasSetStream`, `cublasGetStream`
   - `cublasSaxpy`, `cublasSscal`, `cublasSgemm`
+  - `cublasSswap`, `cublasDswap`
   - `cublasSdot`, `cublasDdot`
   - `cublasSasum`, `cublasDasum`
   - `cublasSnrm2`, `cublasDnrm2`
