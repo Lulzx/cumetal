@@ -95,6 +95,11 @@ Supported library shim subset:
   - `cublasCreate`, `cublasDestroy`, `cublasSetStream`, `cublasGetStream`
   - `cublasSaxpy`, `cublasSgemm`
 
+Library alias compatibility:
+
+- Build/install also provides `libcublas.dylib` and `libcurand.dylib` aliases to
+  `libcumetal.dylib`, so software linked against CUDA library names can resolve shim symbols.
+
 Current limitations:
 
 - This is not yet a full CUDA Runtime/Driver implementation.

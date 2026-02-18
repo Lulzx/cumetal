@@ -255,3 +255,12 @@ add_test(
             ${CMAKE_SOURCE_DIR}/install/uninstall.sh
             ${CMAKE_BINARY_DIR}
 )
+
+add_test(
+    NAME unit_runtime_library_aliases
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_library_aliases_test.sh
+            $<TARGET_FILE:cumetal_runtime>
+            $<TARGET_FILE_DIR:cumetal_runtime>/libcublas.dylib
+            $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
+)

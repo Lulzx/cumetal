@@ -132,6 +132,19 @@ target_compile_options(cumetal_runtime
         -Wpedantic
 )
 
+if(APPLE)
+    add_custom_command(
+        TARGET cumetal_runtime
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+                $<TARGET_FILE_NAME:cumetal_runtime>
+                $<TARGET_FILE_DIR:cumetal_runtime>/libcublas.dylib
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+                $<TARGET_FILE_NAME:cumetal_runtime>
+                $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
+    )
+endif()
+
 add_library(cumetal_air_validate STATIC
     compiler/air_validate/src/validator.cpp
 )
@@ -278,6 +291,20 @@ install(TARGETS
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
 )
+
+if(APPLE)
+    install(CODE [[
+        file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/lib")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E create_symlink
+                    "libcumetal.dylib"
+                    "${CMAKE_INSTALL_PREFIX}/lib/libcublas.dylib")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E create_symlink
+                    "libcumetal.dylib"
+                    "${CMAKE_INSTALL_PREFIX}/lib/libcurand.dylib")
+    ]])
+endif()
 
 install(FILES
     runtime/api/cublas_v2.h
