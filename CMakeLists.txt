@@ -113,6 +113,9 @@ set_source_files_properties(
 
 target_include_directories(cumetal_runtime
     PUBLIC
+        compiler/air_emitter/include
+        compiler/common/include
+        compiler/ptx/include
         runtime/api
         runtime/cache
         runtime/error
@@ -205,6 +208,12 @@ add_executable(cumetal-air-emitter
 target_link_libraries(cumetal-air-emitter
     PRIVATE
         cumetal_air_emitter
+)
+
+target_link_libraries(cumetal_runtime
+    PRIVATE
+        cumetal_air_emitter
+        cumetal_ptx_codegen
 )
 
 add_executable(cumetalc

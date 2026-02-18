@@ -1,9 +1,13 @@
 #include "cuda.h"
 
+#include "cumetal/air_emitter/emitter.h"
+#include "cumetal/common/metallib.h"
+#include "cumetal/ptx/lower_to_llvm.h"
 #include "cuda_runtime.h"
 #include "module_cache.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <cstdint>
 #include <filesystem>
@@ -37,6 +41,24 @@ namespace {
 extern "C" int cumetalRuntimeIsDevicePointer(const void* ptr);
 
 constexpr int kCudaCompatVersion = 12000;
+constexpr std::uint32_t kFatbinWrapperMagic = 0x466243b1u;
+constexpr std::uint32_t kFatbinBlobMagic = 0xBA55ED50u;
+constexpr std::uint16_t kFatbinHeaderMinSize = 16u;
+constexpr std::size_t kMaxImageBytes = 64ull * 1024ull * 1024ull;
+
+struct FatbinWrapper {
+    std::uint32_t magic = 0;
+    std::uint32_t version = 0;
+    const void* data = nullptr;
+    const void* unknown = nullptr;
+};
+
+struct FatbinBlobHeader {
+    std::uint32_t magic = 0;
+    std::uint16_t version = 0;
+    std::uint16_t header_size = 0;
+    std::uint64_t fat_size = 0;
+};
 
 struct DriverState {
     std::mutex mutex;
@@ -179,6 +201,133 @@ bool parse_metallib_path_image(const void* image, std::string* out_path) {
     }
 
     *out_path = candidate.string();
+    return true;
+}
+
+bool extract_ptx_cstr(const char* chars, std::size_t max_bytes, std::string* out_ptx) {
+    if (chars == nullptr || out_ptx == nullptr || max_bytes == 0) {
+        return false;
+    }
+
+    const void* terminator = std::memchr(chars, '\0', max_bytes);
+    if (terminator == nullptr) {
+        return false;
+    }
+
+    const std::size_t size = static_cast<const char*>(terminator) - chars;
+    if (size == 0 || size >= max_bytes) {
+        return false;
+    }
+
+    const std::string candidate(chars, size);
+    if (candidate.find(".version") == std::string::npos ||
+        candidate.find(".entry") == std::string::npos) {
+        return false;
+    }
+
+    *out_ptx = candidate;
+    return true;
+}
+
+bool extract_ptx_from_blob(const std::uint8_t* bytes,
+                           std::size_t size,
+                           std::string* out_ptx) {
+    if (bytes == nullptr || out_ptx == nullptr || size < 16) {
+        return false;
+    }
+
+    static constexpr char kMarker[] = ".version";
+    constexpr std::size_t kMarkerLen = sizeof(kMarker) - 1;
+
+    for (std::size_t i = 0; i + kMarkerLen < size; ++i) {
+        if (std::memcmp(bytes + i, kMarker, kMarkerLen) != 0) {
+            continue;
+        }
+
+        std::string candidate;
+        if (extract_ptx_cstr(reinterpret_cast<const char*>(bytes + i), size - i, &candidate)) {
+            *out_ptx = std::move(candidate);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool parse_ptx_image(const void* image, std::string* out_ptx) {
+    if (image == nullptr || out_ptx == nullptr) {
+        return false;
+    }
+
+    const auto* bytes = static_cast<const std::uint8_t*>(image);
+    if (bytes[0] == static_cast<std::uint8_t>('.')) {
+        if (extract_ptx_cstr(static_cast<const char*>(image), 1ull << 20, out_ptx)) {
+            return true;
+        }
+    }
+
+    const auto* wrapper = static_cast<const FatbinWrapper*>(image);
+    if (wrapper->magic != kFatbinWrapperMagic || wrapper->data == nullptr) {
+        return false;
+    }
+
+    const auto* blob = static_cast<const std::uint8_t*>(wrapper->data);
+    FatbinBlobHeader header{};
+    std::memcpy(&header, blob, sizeof(header));
+    if (header.magic != kFatbinBlobMagic || header.header_size < kFatbinHeaderMinSize) {
+        return false;
+    }
+
+    const std::size_t header_size = static_cast<std::size_t>(header.header_size);
+    const std::size_t fat_size = static_cast<std::size_t>(header.fat_size);
+    if (fat_size == 0 || header_size > kMaxImageBytes || fat_size > kMaxImageBytes ||
+        header_size > (kMaxImageBytes - fat_size)) {
+        return false;
+    }
+
+    return extract_ptx_from_blob(blob + header_size, fat_size, out_ptx);
+}
+
+bool emit_ptx_to_temp_metallib(const std::string& ptx, std::string* out_path) {
+    if (ptx.empty() || out_path == nullptr) {
+        return false;
+    }
+
+    const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(ptx);
+    if (!lowered.ok || lowered.llvm_ir.empty()) {
+        return false;
+    }
+
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path ll_path =
+        std::filesystem::temp_directory_path() / ("cumetal-driver-" + std::to_string(stamp) + ".ll");
+    const std::filesystem::path metallib_path =
+        std::filesystem::temp_directory_path() / ("cumetal-driver-" + std::to_string(stamp) + ".metallib");
+
+    std::string io_error;
+    const std::vector<std::uint8_t> ll_bytes(lowered.llvm_ir.begin(), lowered.llvm_ir.end());
+    if (!cumetal::common::write_file_bytes(ll_path, ll_bytes, &io_error)) {
+        return false;
+    }
+
+    cumetal::air_emitter::EmitOptions emit_options;
+    emit_options.input = ll_path;
+    emit_options.output = metallib_path;
+    emit_options.mode = cumetal::air_emitter::EmitMode::kXcrun;
+    emit_options.overwrite = true;
+    emit_options.validate_output = false;
+    emit_options.fallback_to_experimental = true;
+    emit_options.kernel_name = lowered.entry_name.empty() ? "vector_add" : lowered.entry_name;
+
+    const auto emitted = cumetal::air_emitter::emit_metallib(emit_options);
+    std::error_code ec;
+    std::filesystem::remove(ll_path, ec);
+    if (!emitted.ok || emitted.output.empty()) {
+        std::filesystem::remove(metallib_path, ec);
+        return false;
+    }
+
+    *out_path = emitted.output.string();
     return true;
 }
 
@@ -750,6 +899,20 @@ CUresult cuModuleLoadData(CUmodule* module, const void* image) {
         }
         if (!has_current_context_locked(state)) {
             return CUDA_ERROR_INVALID_CONTEXT;
+        }
+    }
+
+    std::string ptx_text;
+    if (parse_ptx_image(image, &ptx_text)) {
+        std::string compiled_metallib_path;
+        if (emit_ptx_to_temp_metallib(ptx_text, &compiled_metallib_path)) {
+            const CUresult load_status =
+                create_module_from_path(compiled_metallib_path, /*owns_path=*/true, module);
+            if (load_status != CUDA_SUCCESS) {
+                std::error_code ec;
+                std::filesystem::remove(compiled_metallib_path, ec);
+            }
+            return load_status;
         }
     }
 

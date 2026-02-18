@@ -79,6 +79,7 @@ Supported driver API subset:
 - `cuStreamCreate`, `cuStreamDestroy`, `cuStreamSynchronize`, `cuStreamQuery`, `cuStreamAddCallback`, `cuStreamWaitEvent`
 - `cuEventCreate`, `cuEventDestroy`, `cuEventRecord`, `cuEventQuery`, `cuEventSynchronize`, `cuEventElapsedTime`
 - `cuModuleLoad`, `cuModuleLoadData`, `cuModuleLoadDataEx`, `cuModuleUnload`, `cuModuleGetFunction`
+- `cuModuleLoadData` accepts metallib bytes/paths and PTX text images (including basic CUDA fatbin wrapper PTX blobs)
 - `cuLaunchKernel` (kernel params path and `extra` packed-argument path)
 - `cuMemAlloc`, `cuMemAllocManaged`, `cuMemFree`
 - `cuMemGetInfo`
@@ -229,6 +230,7 @@ ctest --test-dir build -R functional_driver_mem_alloc_managed --output-on-failur
 ctest --test-dir build -R functional_driver_host_alloc --output-on-failure
 ctest --test-dir build -R functional_driver_host_pointer_api --output-on-failure
 ctest --test-dir build -R functional_driver_module_load_data --output-on-failure
+ctest --test-dir build -R functional_driver_module_load_data_ptx --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra --output-on-failure
 ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-failure
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure

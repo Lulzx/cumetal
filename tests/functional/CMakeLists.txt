@@ -183,6 +183,10 @@ add_executable(cumetal_driver_module_load_data_test
     driver_module_load_data_test.cpp
 )
 
+add_executable(cumetal_driver_module_load_data_ptx_test
+    driver_module_load_data_ptx_test.cpp
+)
+
 add_executable(cumetal_driver_launch_extra_test
     driver_launch_extra_test.cpp
 )
@@ -428,6 +432,11 @@ target_link_libraries(cumetal_driver_host_pointer_api_test
 )
 
 target_link_libraries(cumetal_driver_module_load_data_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_module_load_data_ptx_test
     PRIVATE
         cumetal_runtime
 )
@@ -771,6 +780,13 @@ target_compile_options(cumetal_driver_host_pointer_api_test
 )
 
 target_compile_options(cumetal_driver_module_load_data_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_module_load_data_ptx_test
     PRIVATE
         -Wall
         -Wextra
@@ -1170,6 +1186,16 @@ add_test(
 )
 
 set_tests_properties(functional_driver_module_load_data PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_driver_module_load_data_ptx
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_driver_module_load_data_ptx.sh
+            $<TARGET_FILE:cumetal_driver_module_load_data_ptx_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/vector_add.ptx
+)
+
+set_tests_properties(functional_driver_module_load_data_ptx PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_driver_launch_extra

@@ -1,0 +1,208 @@
+#include "cuda.h"
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+
+namespace {
+
+constexpr std::size_t kElementCount = 1u << 13;
+constexpr std::size_t kThreadsPerBlock = 256;
+constexpr std::uint32_t kFatbinWrapperMagic = 0x466243b1u;
+constexpr std::uint32_t kFatbinBlobMagic = 0xBA55ED50u;
+
+struct FatbinWrapper {
+    std::uint32_t magic = kFatbinWrapperMagic;
+    std::uint32_t version = 1;
+    const void* data = nullptr;
+    const void* unknown = nullptr;
+};
+
+struct FatbinBlobHeader {
+    std::uint32_t magic = kFatbinBlobMagic;
+    std::uint16_t version = 1;
+    std::uint16_t header_size = 16;
+    std::uint64_t fat_size = 0;
+};
+
+bool nearly_equal(float a, float b) {
+    return std::fabs(a - b) < 1e-5f;
+}
+
+bool run_vector_add(CUmodule module) {
+    CUfunction vector_add = nullptr;
+    if (cuModuleGetFunction(&vector_add, module, "vector_add") != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleGetFunction failed\n");
+        return false;
+    }
+
+    std::vector<float> host_a(kElementCount);
+    std::vector<float> host_b(kElementCount);
+    std::vector<float> host_c(kElementCount, 0.0f);
+    for (std::size_t i = 0; i < kElementCount; ++i) {
+        host_a[i] = static_cast<float>((i * 7) % 31) * 0.5f;
+        host_b[i] = static_cast<float>((i * 5) % 29) * 1.25f;
+    }
+
+    CUdeviceptr dev_a = 0;
+    CUdeviceptr dev_b = 0;
+    CUdeviceptr dev_c = 0;
+    if (cuMemAlloc(&dev_a, kElementCount * sizeof(float)) != CUDA_SUCCESS ||
+        cuMemAlloc(&dev_b, kElementCount * sizeof(float)) != CUDA_SUCCESS ||
+        cuMemAlloc(&dev_c, kElementCount * sizeof(float)) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuMemAlloc failed\n");
+        return false;
+    }
+
+    if (cuMemcpyHtoD(dev_a, host_a.data(), kElementCount * sizeof(float)) != CUDA_SUCCESS ||
+        cuMemcpyHtoD(dev_b, host_b.data(), kElementCount * sizeof(float)) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuMemcpyHtoD failed\n");
+        return false;
+    }
+
+    CUdeviceptr arg_a = dev_a;
+    CUdeviceptr arg_b = dev_b;
+    CUdeviceptr arg_c = dev_c;
+    void* params[] = {&arg_a, &arg_b, &arg_c, nullptr};
+
+    const unsigned int grid_x =
+        static_cast<unsigned int>((kElementCount + kThreadsPerBlock - 1) / kThreadsPerBlock);
+
+    if (cuLaunchKernel(vector_add,
+                       grid_x,
+                       1,
+                       1,
+                       static_cast<unsigned int>(kThreadsPerBlock),
+                       1,
+                       1,
+                       0,
+                       nullptr,
+                       params,
+                       nullptr) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuLaunchKernel failed\n");
+        return false;
+    }
+
+    if (cuCtxSynchronize() != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxSynchronize failed\n");
+        return false;
+    }
+
+    if (cuMemcpyDtoH(host_c.data(), dev_c, kElementCount * sizeof(float)) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuMemcpyDtoH failed\n");
+        return false;
+    }
+
+    for (std::size_t i = 0; i < kElementCount; ++i) {
+        const float expected = host_a[i] + host_b[i];
+        if (!nearly_equal(host_c[i], expected)) {
+            std::fprintf(stderr,
+                         "FAIL: mismatch at %zu (got=%f expected=%f)\n",
+                         i,
+                         static_cast<double>(host_c[i]),
+                         static_cast<double>(expected));
+            return false;
+        }
+    }
+
+    if (cuMemFree(dev_a) != CUDA_SUCCESS || cuMemFree(dev_b) != CUDA_SUCCESS ||
+        cuMemFree(dev_c) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuMemFree failed\n");
+        return false;
+    }
+
+    return true;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::fprintf(stderr, "usage: %s <path-to-ptx>\n", argv[0]);
+        return 64;
+    }
+
+    const std::string ptx_path = argv[1];
+    if (!std::filesystem::exists(ptx_path)) {
+        std::fprintf(stderr, "SKIP: PTX not found at %s\n", ptx_path.c_str());
+        return 77;
+    }
+
+    std::ifstream in(ptx_path, std::ios::binary);
+    std::vector<char> ptx_bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (ptx_bytes.empty()) {
+        std::fprintf(stderr, "FAIL: failed to read PTX bytes\n");
+        return 1;
+    }
+    ptx_bytes.push_back('\0');
+
+    if (cuInit(0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuInit failed\n");
+        return 1;
+    }
+
+    CUdevice device = 0;
+    if (cuDeviceGet(&device, 0) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuDeviceGet failed\n");
+        return 1;
+    }
+
+    CUcontext context = nullptr;
+    if (cuCtxCreate(&context, 0, device) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxCreate failed\n");
+        return 1;
+    }
+
+    CUmodule module = nullptr;
+    if (cuModuleLoadData(&module, ptx_bytes.data()) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(PTX text) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after PTX text load failed\n");
+        return 1;
+    }
+
+    std::vector<std::uint8_t> fatbin_blob(sizeof(FatbinBlobHeader) + ptx_bytes.size(), 0);
+    FatbinBlobHeader header{};
+    header.fat_size = ptx_bytes.size();
+    std::memcpy(fatbin_blob.data(), &header, sizeof(header));
+    std::memcpy(fatbin_blob.data() + sizeof(header), ptx_bytes.data(), ptx_bytes.size());
+
+    FatbinWrapper wrapper{};
+    wrapper.data = fatbin_blob.data();
+
+    if (cuModuleLoadData(&module, &wrapper) != CUDA_SUCCESS || module == nullptr) {
+        std::fprintf(stderr, "FAIL: cuModuleLoadData(fatbin wrapper) failed\n");
+        return 1;
+    }
+
+    if (!run_vector_add(module)) {
+        return 1;
+    }
+
+    if (cuModuleUnload(module) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuModuleUnload after fatbin wrapper load failed\n");
+        return 1;
+    }
+
+    if (cuCtxDestroy(context) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
+        return 1;
+    }
+
+    std::printf("PASS: cuModuleLoadData supports PTX text and fatbin-wrapper PTX\n");
+    return 0;
+}
