@@ -34,6 +34,23 @@ int main() {
         return 1;
     }
 
-    std::printf("PASS: cudaStreamCreateWithFlags validates supported flags\n");
+    if (cudaStreamSynchronize(cudaStreamPerThread) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamSynchronize(cudaStreamPerThread) failed\n");
+        return 1;
+    }
+    if (cudaStreamQuery(cudaStreamLegacy) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: cudaStreamQuery(cudaStreamLegacy) failed\n");
+        return 1;
+    }
+    if (cudaStreamDestroy(cudaStreamLegacy) != cudaErrorInvalidValue) {
+        std::fprintf(stderr, "FAIL: destroying cudaStreamLegacy should be invalid\n");
+        return 1;
+    }
+    if (cudaStreamDestroy(cudaStreamPerThread) != cudaErrorInvalidValue) {
+        std::fprintf(stderr, "FAIL: destroying cudaStreamPerThread should be invalid\n");
+        return 1;
+    }
+
+    std::printf("PASS: stream flag validation and special stream handles\n");
     return 0;
 }

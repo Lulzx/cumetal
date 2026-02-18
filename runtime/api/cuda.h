@@ -16,6 +16,9 @@ typedef struct CUfunc_st* CUfunction;
 typedef struct cudaStream_st* CUstream;
 typedef struct cudaEvent_st* CUevent;
 
+#define CU_STREAM_LEGACY ((CUstream)0x1)
+#define CU_STREAM_PER_THREAD ((CUstream)0x2)
+
 enum {
     CU_STREAM_DEFAULT = 0x0,
     CU_STREAM_NON_BLOCKING = 0x1,

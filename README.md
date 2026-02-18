@@ -160,6 +160,7 @@ ctest --test-dir build -R functional_driver_profiler_api --output-on-failure
 ctest --test-dir build -R functional_driver_device_query --output-on-failure
 ctest --test-dir build -R functional_driver_device_attribute --output-on-failure
 ctest --test-dir build -R functional_driver_stream_flags --output-on-failure
+ctest --test-dir build -R functional_driver_stream_per_thread --output-on-failure
 ctest --test-dir build -R functional_driver_stream_callback --output-on-failure
 ctest --test-dir build -R functional_driver_context_switch --output-on-failure
 ctest --test-dir build -R functional_driver_context_requirements --output-on-failure

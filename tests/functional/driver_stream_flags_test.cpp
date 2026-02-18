@@ -46,11 +46,28 @@ int main() {
         return 1;
     }
 
+    if (cuStreamSynchronize(CU_STREAM_PER_THREAD) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuStreamSynchronize(CU_STREAM_PER_THREAD) failed\n");
+        return 1;
+    }
+    if (cuStreamQuery(CU_STREAM_LEGACY) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuStreamQuery(CU_STREAM_LEGACY) failed\n");
+        return 1;
+    }
+    if (cuStreamDestroy(CU_STREAM_LEGACY) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: destroying CU_STREAM_LEGACY should be invalid\n");
+        return 1;
+    }
+    if (cuStreamDestroy(CU_STREAM_PER_THREAD) != CUDA_ERROR_INVALID_VALUE) {
+        std::fprintf(stderr, "FAIL: destroying CU_STREAM_PER_THREAD should be invalid\n");
+        return 1;
+    }
+
     if (cuCtxDestroy(context) != CUDA_SUCCESS) {
         std::fprintf(stderr, "FAIL: cuCtxDestroy failed\n");
         return 1;
     }
 
-    std::printf("PASS: cuStreamCreate validates supported flags\n");
+    std::printf("PASS: stream flag validation and special stream handles\n");
     return 0;
 }
