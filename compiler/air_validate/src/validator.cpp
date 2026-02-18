@@ -1,8 +1,11 @@
 #include "cumetal/air_validate/validator.h"
 
+#include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <sstream>
 #include <sys/wait.h>
+#include <unistd.h>
 
 namespace cumetal::air_validate {
 namespace {
@@ -52,6 +55,14 @@ CommandResult run_command_capture(const std::string& command) {
     return result;
 }
 
+bool command_exists(const std::string& name) {
+    const CommandResult result = run_command_capture("command -v " + name + " >/dev/null 2>&1; echo $?");
+    if (!result.started || result.exit_code != 0 || result.output.empty()) {
+        return false;
+    }
+    return result.output[0] == '0';
+}
+
 bool has_error(const std::vector<Diagnostic>& diagnostics) {
     for (const auto& diagnostic : diagnostics) {
         if (diagnostic.severity == Severity::kError) {
@@ -71,6 +82,94 @@ const char* severity_to_string(Severity severity) {
             return "ERROR";
     }
     return "UNKNOWN";
+}
+
+bool kernel_has_metadata(const cumetal::common::KernelRecord& kernel, const std::string& key) {
+    for (const auto& field : kernel.metadata) {
+        if (field.key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::filesystem::path make_temp_dir() {
+    const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto pid = static_cast<long long>(::getpid());
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() /
+                                      ("cumetal-air-validate-" + std::to_string(pid) + "-" +
+                                       std::to_string(now));
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
+void validate_kernel_bitcode(const std::filesystem::path& input_path,
+                             const std::vector<std::uint8_t>& bytes,
+                             const cumetal::common::KernelRecord& kernel,
+                             const ValidationOptions& options,
+                             std::vector<Diagnostic>* diagnostics) {
+    if (diagnostics == nullptr) {
+        return;
+    }
+
+    if (kernel.bitcode_size == 0 || kernel.bitcode_offset + kernel.bitcode_size > bytes.size()) {
+        diagnostics->push_back({.severity = Severity::kError,
+                                .message = "kernel " + kernel.name + " has invalid bitcode bounds"});
+        return;
+    }
+
+    if (kernel.bitcode_signature_ok) {
+        diagnostics->push_back({.severity = Severity::kInfo,
+                                .message = "kernel " + kernel.name +
+                                           " bitcode has LLVM signature prefix"});
+        if (!options.verify_bitcode_with_llvm_dis) {
+            return;
+        }
+    }
+
+    if (!options.verify_bitcode_with_llvm_dis) {
+        diagnostics->push_back({.severity = Severity::kWarning,
+                                .message = "kernel " + kernel.name +
+                                           " bitcode does not have a recognized LLVM signature"});
+        return;
+    }
+
+    if (!command_exists("llvm-dis")) {
+        diagnostics->push_back({.severity = Severity::kWarning,
+                                .message = "llvm-dis not found; skipping deep bitcode check for " +
+                                           kernel.name});
+        return;
+    }
+
+    const std::filesystem::path temp_dir = make_temp_dir();
+    const std::filesystem::path bitcode_file = temp_dir / "kernel.bc";
+
+    const std::vector<std::uint8_t> slice(bytes.begin() + static_cast<std::ptrdiff_t>(kernel.bitcode_offset),
+                                          bytes.begin() + static_cast<std::ptrdiff_t>(kernel.bitcode_offset +
+                                                                                      kernel.bitcode_size));
+    std::string io_error;
+    if (!cumetal::common::write_file_bytes(bitcode_file, slice, &io_error)) {
+        diagnostics->push_back({.severity = Severity::kError,
+                                .message = "failed to write temporary bitcode for " + kernel.name +
+                                           ": " + io_error});
+        std::filesystem::remove_all(temp_dir);
+        return;
+    }
+
+    const std::string command =
+        "llvm-dis " + quote_shell(bitcode_file.string()) + " -o /dev/null 2>&1";
+    const CommandResult cmd = run_command_capture(command);
+    std::filesystem::remove_all(temp_dir);
+
+    if (!cmd.started || cmd.exit_code != 0) {
+        diagnostics->push_back({.severity = Severity::kError,
+                                .message = "llvm-dis rejected kernel " + kernel.name + " from " +
+                                           input_path.string()});
+        return;
+    }
+
+    diagnostics->push_back({.severity = Severity::kInfo,
+                            .message = "llvm-dis accepted kernel " + kernel.name + " bitcode"});
 }
 
 }  // namespace
@@ -113,6 +212,75 @@ ValidationResult validate_file(const std::filesystem::path& path, const Validati
                         " candidate embedded bitcode section(s)"});
     }
 
+    if (result.summary.function_list_parsed) {
+        result.diagnostics.push_back(
+            {.severity = Severity::kInfo, .message = "parsed function list via " +
+                                                     result.summary.function_list_parser});
+
+        if (options.require_function_list && result.summary.kernels.empty()) {
+            result.diagnostics.push_back(
+                {.severity = Severity::kError,
+                 .message = "function list is empty in parsed container"});
+        }
+
+        for (const auto& kernel : result.summary.kernels) {
+            if (options.require_bitcode) {
+                validate_kernel_bitcode(path, bytes, kernel, options, &result.diagnostics);
+            }
+
+            if (options.require_kernel_metadata) {
+                const bool has_air_kernel = kernel_has_metadata(kernel, "air.kernel");
+                const bool has_air_version = kernel_has_metadata(kernel, "air.version");
+                if (!has_air_kernel || !has_air_version) {
+                    result.diagnostics.push_back(
+                        {.severity = Severity::kError,
+                         .message = "kernel " + kernel.name +
+                                    " is missing required metadata (air.kernel/air.version)"});
+                } else {
+                    result.diagnostics.push_back(
+                        {.severity = Severity::kInfo,
+                         .message = "kernel " + kernel.name +
+                                    " includes required metadata fields"});
+                }
+            }
+        }
+    } else if (options.require_function_list || options.require_kernel_metadata) {
+        result.diagnostics.push_back({
+            .severity = Severity::kWarning,
+            .message =
+                "container function table is not parsed by built-in parser (expected for Apple metallib); "
+                "enable MetalLibraryArchive validation for function/metadata checks"});
+    }
+
+    if (options.run_metal_library_archive) {
+        std::string command = options.metal_library_archive_command;
+        if (command.empty()) {
+            command = "swift run --package-path tools/metal_library_archive_bridge cumetal-mla-validate " +
+                      quote_shell(path.string()) + " 2>&1";
+        } else {
+            command += " " + quote_shell(path.string()) + " 2>&1";
+        }
+
+        const CommandResult command_result = run_command_capture(command);
+        result.metal_library_archive_exit_code = command_result.exit_code;
+        result.metal_library_archive_output = command_result.output;
+
+        if (!command_result.started) {
+            result.diagnostics.push_back(
+                {.severity = Severity::kError,
+                 .message = "failed to invoke MetalLibraryArchive validation command"});
+        } else if (command_result.exit_code != 0) {
+            result.diagnostics.push_back(
+                {.severity = Severity::kError,
+                 .message = "MetalLibraryArchive validation command returned non-zero exit code " +
+                            std::to_string(command_result.exit_code)});
+        } else {
+            result.diagnostics.push_back(
+                {.severity = Severity::kInfo,
+                 .message = "MetalLibraryArchive validation command accepted the container"});
+        }
+    }
+
     if (options.run_xcrun_validate) {
         const std::string command =
             "xcrun metal -validate " + quote_shell(path.string()) + " 2>&1";
@@ -148,9 +316,21 @@ std::string format_report(const ValidationResult& result) {
     out << "Size: " << result.summary.file_size << " bytes\n";
     out << "Magic: " << result.summary.magic_ascii << "\n";
     out << "Bitcode sections: " << result.summary.bitcode_sections.size() << "\n";
+    if (result.summary.function_list_parsed) {
+        out << "Function parser: " << result.summary.function_list_parser << "\n";
+        out << "Kernel count: " << result.summary.kernels.size() << "\n";
+    }
 
     for (const auto& diagnostic : result.diagnostics) {
         out << "[" << severity_to_string(diagnostic.severity) << "] " << diagnostic.message << "\n";
+    }
+
+    if (!result.metal_library_archive_output.empty()) {
+        out << "\n--- MetalLibraryArchive output ---\n";
+        out << result.metal_library_archive_output;
+        if (result.metal_library_archive_output.back() != '\n') {
+            out << "\n";
+        }
     }
 
     if (!result.xcrun_output.empty()) {

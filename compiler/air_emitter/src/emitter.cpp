@@ -9,6 +9,9 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <map>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -17,10 +20,18 @@
 namespace cumetal::air_emitter {
 namespace {
 
+constexpr std::size_t kHeaderSize = 40;
+constexpr std::size_t kFunctionEntrySize = 32;
+
 struct CommandResult {
     bool started = false;
     int exit_code = -1;
     std::string output;
+};
+
+struct KernelInput {
+    std::string name;
+    std::vector<cumetal::common::KernelMetadataField> metadata;
 };
 
 std::string quote_shell(const std::string& value) {
@@ -59,6 +70,14 @@ CommandResult run_command_capture(const std::string& command) {
     return result;
 }
 
+bool command_exists(const std::string& name) {
+    const CommandResult result = run_command_capture("command -v " + name + " >/dev/null 2>&1; echo $?");
+    if (!result.started || result.exit_code != 0 || result.output.empty()) {
+        return false;
+    }
+    return result.output[0] == '0';
+}
+
 std::filesystem::path make_temp_dir() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto pid = static_cast<long long>(::getpid());
@@ -84,60 +103,319 @@ void append_u32_le(std::vector<std::uint8_t>& out, std::uint32_t value) {
     out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
 }
 
+void write_u32_le(std::vector<std::uint8_t>& out, std::size_t offset, std::uint32_t value) {
+    if (offset + 4 > out.size()) {
+        return;
+    }
+    out[offset + 0] = static_cast<std::uint8_t>(value & 0xFF);
+    out[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+    out[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+    out[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+}
+
+std::string to_text(const std::vector<std::uint8_t>& bytes) {
+    return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
+std::vector<cumetal::common::KernelMetadataField> dedupe_metadata(
+    const std::vector<cumetal::common::KernelMetadataField>& input) {
+    std::map<std::string, std::string> keyed;
+    for (const auto& field : input) {
+        if (!field.key.empty()) {
+            keyed[field.key] = field.value;
+        }
+    }
+
+    std::vector<cumetal::common::KernelMetadataField> output;
+    output.reserve(keyed.size());
+    for (const auto& [key, value] : keyed) {
+        output.push_back({.key = key, .value = value});
+    }
+    return output;
+}
+
+std::vector<KernelInput> parse_kernels_from_llvm_ir(const std::vector<std::uint8_t>& bytes,
+                                                     const std::string& fallback_name,
+                                                     std::vector<std::string>* logs) {
+    const std::string text = to_text(bytes);
+    std::istringstream stream(text);
+    std::string line;
+
+    struct FunctionDecl {
+        std::string name;
+        int attr_id = -1;
+    };
+
+    std::vector<FunctionDecl> decls;
+    std::map<int, std::vector<cumetal::common::KernelMetadataField>> attr_metadata;
+    bool saw_air_kernel_module_node = false;
+    bool saw_air_compile_options = false;
+    bool saw_air_language_version = false;
+
+    const std::regex define_re(
+        R"(^\s*define\b.*@([A-Za-z_.$][A-Za-z0-9_.$]*)\(.*\)\s*(?:#([0-9]+))?)");
+    const std::regex attr_re(R"(^\s*attributes\s+#([0-9]+)\s*=\s*\{(.*)\}\s*$)");
+    const std::regex quoted_key_re(R"re("([^"]+)"(?:="([^"]*)")?)re");
+
+    while (std::getline(stream, line)) {
+        if (line.find("!air.kernel") != std::string::npos) {
+            saw_air_kernel_module_node = true;
+        }
+        if (line.find("!air.compile_options") != std::string::npos) {
+            saw_air_compile_options = true;
+        }
+        if (line.find("!air.language_version") != std::string::npos) {
+            saw_air_language_version = true;
+        }
+
+        std::smatch define_match;
+        if (std::regex_search(line, define_match, define_re)) {
+            FunctionDecl decl;
+            decl.name = define_match[1].str();
+            if (define_match[2].matched) {
+                decl.attr_id = std::stoi(define_match[2].str());
+            }
+            decls.push_back(std::move(decl));
+            continue;
+        }
+
+        std::smatch attr_match;
+        if (std::regex_search(line, attr_match, attr_re)) {
+            const int attr_id = std::stoi(attr_match[1].str());
+            const std::string body = attr_match[2].str();
+            std::vector<cumetal::common::KernelMetadataField> fields;
+
+            for (auto it = std::sregex_iterator(body.begin(), body.end(), quoted_key_re);
+                 it != std::sregex_iterator(); ++it) {
+                const std::smatch token = *it;
+                const std::string key = token[1].str();
+                const std::string value = token[2].matched ? token[2].str() : "true";
+                if (key.rfind("air.", 0) == 0) {
+                    fields.push_back({.key = key, .value = value});
+                }
+            }
+            attr_metadata[attr_id] = dedupe_metadata(fields);
+        }
+    }
+
+    std::vector<KernelInput> kernels;
+    kernels.reserve(std::max<std::size_t>(1, decls.size()));
+
+    if (decls.empty()) {
+        kernels.push_back({.name = fallback_name,
+                           .metadata = {{.key = "air.kernel", .value = "true"},
+                                        {.key = "air.version", .value = "2.6"}}});
+    } else {
+        for (const auto& decl : decls) {
+            KernelInput kernel;
+            kernel.name = decl.name;
+
+            if (decl.attr_id >= 0) {
+                const auto found = attr_metadata.find(decl.attr_id);
+                if (found != attr_metadata.end()) {
+                    kernel.metadata = found->second;
+                }
+            }
+
+            bool has_air_kernel = false;
+            bool has_air_version = false;
+            for (const auto& field : kernel.metadata) {
+                has_air_kernel = has_air_kernel || field.key == "air.kernel";
+                has_air_version = has_air_version || field.key == "air.version";
+            }
+            if (!has_air_kernel) {
+                kernel.metadata.push_back({.key = "air.kernel", .value = "true"});
+                if (logs != nullptr) {
+                    logs->push_back("LLVM IR missing explicit air.kernel on " + kernel.name +
+                                    "; defaulting to true for experimental container");
+                }
+            }
+            if (!has_air_version) {
+                kernel.metadata.push_back({.key = "air.version", .value = "2.6"});
+                if (logs != nullptr) {
+                    logs->push_back("LLVM IR missing explicit air.version on " + kernel.name +
+                                    "; defaulting to 2.6 for experimental container");
+                }
+            }
+
+            if (saw_air_kernel_module_node) {
+                kernel.metadata.push_back({.key = "module.air.kernel", .value = "present"});
+            }
+            if (saw_air_compile_options) {
+                kernel.metadata.push_back({.key = "module.air.compile_options", .value = "present"});
+            }
+            if (saw_air_language_version) {
+                kernel.metadata.push_back({.key = "module.air.language_version", .value = "present"});
+            }
+
+            kernel.metadata = dedupe_metadata(kernel.metadata);
+            kernels.push_back(std::move(kernel));
+        }
+    }
+
+    return kernels;
+}
+
+std::string serialize_metadata(const std::vector<cumetal::common::KernelMetadataField>& fields) {
+    std::string out;
+    for (const auto& field : fields) {
+        if (field.key.empty()) {
+            continue;
+        }
+        out += field.key;
+        out.push_back('=');
+        out += field.value;
+        out.push_back('\n');
+    }
+    return out;
+}
+
+bool convert_llvm_ir_to_bitcode(const std::filesystem::path& input,
+                                std::vector<std::uint8_t>* bitcode,
+                                std::vector<std::string>* logs) {
+    if (bitcode == nullptr) {
+        return false;
+    }
+
+    if (!command_exists("llvm-as")) {
+        if (logs != nullptr) {
+            logs->push_back("llvm-as not found; embedding textual LLVM IR in experimental container");
+        }
+        return false;
+    }
+
+    const std::filesystem::path temp_dir = make_temp_dir();
+    const std::filesystem::path temp_bc = temp_dir / "module.bc";
+
+    const std::string command =
+        "llvm-as " + quote_shell(input.string()) + " -o " + quote_shell(temp_bc.string()) + " 2>&1";
+    const CommandResult result = run_command_capture(command);
+
+    if (logs != nullptr) {
+        logs->push_back("$ " + command);
+        if (!result.output.empty()) {
+            logs->push_back(result.output);
+        }
+    }
+
+    if (!result.started || result.exit_code != 0) {
+        std::filesystem::remove_all(temp_dir);
+        return false;
+    }
+
+    std::string io_error;
+    *bitcode = cumetal::common::read_file_bytes(temp_bc, &io_error);
+    std::filesystem::remove_all(temp_dir);
+
+    if (bitcode->empty()) {
+        if (logs != nullptr) {
+            logs->push_back("failed to read assembled bitcode: " + io_error);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 EmitResult emit_experimental(const EmitOptions& options) {
     EmitResult result;
     result.mode_used = EmitMode::kExperimentalContainer;
 
     std::string io_error;
-    const std::vector<std::uint8_t> payload =
+    const std::vector<std::uint8_t> input_payload =
         cumetal::common::read_file_bytes(options.input, &io_error);
-    if (payload.empty()) {
+    if (input_payload.empty()) {
         result.error = io_error.empty() ? "input payload is empty" : io_error;
         return result;
     }
 
-    std::vector<std::uint8_t> container;
-    container.reserve(64 + options.kernel_name.size() + payload.size());
+    const std::string ext = lower_ext(options.input);
+    std::vector<KernelInput> kernels;
+    std::vector<std::uint8_t> bitcode_payload = input_payload;
 
-    // Provisional developer-only container format used when xcrun tools are unavailable.
-    // Header (little-endian):
-    //   magic[4] = "MTLB"
-    //   version  = 1
-    //   total_size
-    //   name_offset
-    //   payload_offset
-    //   payload_size
-    //   flags
+    if (ext == ".ll" || ext == ".llvm") {
+        kernels = parse_kernels_from_llvm_ir(input_payload, options.kernel_name, &result.logs);
+        const bool assembled = convert_llvm_ir_to_bitcode(options.input, &bitcode_payload, &result.logs);
+        if (!assembled) {
+            for (auto& kernel : kernels) {
+                kernel.metadata.push_back({.key = "bitcode.encoding", .value = "text-llvm"});
+                kernel.metadata = dedupe_metadata(kernel.metadata);
+            }
+        }
+    } else {
+        kernels.push_back({.name = options.kernel_name,
+                           .metadata = {{.key = "air.kernel", .value = "true"},
+                                        {.key = "air.version", .value = "2.6"},
+                                        {.key = "bitcode.encoding", .value = ext.empty() ? "raw" : ext}}});
+    }
+
+    if (kernels.empty()) {
+        result.error = "no kernel records could be derived from input";
+        return result;
+    }
+
+    std::vector<std::uint8_t> function_table;
+    function_table.reserve(kernels.size() * kFunctionEntrySize);
+
+    std::vector<std::uint8_t> string_table;
+    std::vector<std::uint8_t> payload;
+
+    for (const auto& kernel : kernels) {
+        const std::uint32_t name_rel = static_cast<std::uint32_t>(string_table.size());
+        string_table.insert(string_table.end(), kernel.name.begin(), kernel.name.end());
+        string_table.push_back(0);
+
+        const std::uint32_t bitcode_rel = static_cast<std::uint32_t>(payload.size());
+        payload.insert(payload.end(), bitcode_payload.begin(), bitcode_payload.end());
+        const std::uint32_t bitcode_size = static_cast<std::uint32_t>(bitcode_payload.size());
+
+        const std::string metadata_blob = serialize_metadata(kernel.metadata);
+        const std::uint32_t metadata_rel = static_cast<std::uint32_t>(payload.size());
+        payload.insert(payload.end(), metadata_blob.begin(), metadata_blob.end());
+        const std::uint32_t metadata_size = static_cast<std::uint32_t>(metadata_blob.size());
+
+        append_u32_le(function_table, name_rel);
+        append_u32_le(function_table, bitcode_rel);
+        append_u32_le(function_table, bitcode_size);
+        append_u32_le(function_table, metadata_rel);
+        append_u32_le(function_table, metadata_size);
+        append_u32_le(function_table, 0);
+        append_u32_le(function_table, 0);
+        append_u32_le(function_table, 0);
+    }
+
+    const std::uint32_t function_table_offset = static_cast<std::uint32_t>(kHeaderSize);
+    const std::uint32_t function_count = static_cast<std::uint32_t>(kernels.size());
+    const std::uint32_t string_table_offset =
+        function_table_offset + static_cast<std::uint32_t>(function_table.size());
+    const std::uint32_t string_table_size = static_cast<std::uint32_t>(string_table.size());
+    const std::uint32_t payload_offset = string_table_offset + string_table_size;
+    const std::uint32_t payload_size = static_cast<std::uint32_t>(payload.size());
+    const std::uint32_t total_size = payload_offset + payload_size;
+    const std::uint32_t flags = 0x00000001U;
+
+    std::vector<std::uint8_t> container;
+    container.reserve(total_size);
+
     container.push_back('M');
     container.push_back('T');
     container.push_back('L');
     container.push_back('B');
-    append_u32_le(container, 1);
-    append_u32_le(container, 0);  // total size (patched below)
-
-    constexpr std::uint32_t header_size = 4 + 4 + 4 + 4 + 4 + 4 + 4;
-    const std::uint32_t name_offset = header_size;
-    const std::uint32_t payload_offset =
-        name_offset + static_cast<std::uint32_t>(options.kernel_name.size()) + 1;
-
-    append_u32_le(container, name_offset);
+    append_u32_le(container, 2);
+    append_u32_le(container, total_size);
+    append_u32_le(container, function_table_offset);
+    append_u32_le(container, function_count);
+    append_u32_le(container, string_table_offset);
+    append_u32_le(container, string_table_size);
     append_u32_le(container, payload_offset);
-    append_u32_le(container, static_cast<std::uint32_t>(payload.size()));
-    append_u32_le(container, 0x434d544c);  // "CMTL"
+    append_u32_le(container, payload_size);
+    append_u32_le(container, flags);
 
-    container.insert(container.end(), options.kernel_name.begin(), options.kernel_name.end());
-    container.push_back(0);
-
-    if (container.size() < payload_offset) {
-        container.resize(payload_offset, 0);
-    }
+    container.insert(container.end(), function_table.begin(), function_table.end());
+    container.insert(container.end(), string_table.begin(), string_table.end());
     container.insert(container.end(), payload.begin(), payload.end());
 
-    const std::uint32_t total_size = static_cast<std::uint32_t>(container.size());
-    container[8] = static_cast<std::uint8_t>(total_size & 0xFF);
-    container[9] = static_cast<std::uint8_t>((total_size >> 8) & 0xFF);
-    container[10] = static_cast<std::uint8_t>((total_size >> 16) & 0xFF);
-    container[11] = static_cast<std::uint8_t>((total_size >> 24) & 0xFF);
+    write_u32_le(container, 8, static_cast<std::uint32_t>(container.size()));
 
     if (!cumetal::common::write_file_bytes(options.output, container, &io_error)) {
         result.error = io_error;
@@ -145,8 +423,8 @@ EmitResult emit_experimental(const EmitOptions& options) {
     }
 
     result.output = options.output;
-    result.logs.push_back("wrote experimental container with " + std::to_string(payload.size()) +
-                          " bytes of payload");
+    result.logs.push_back("wrote experimental container v2 with " + std::to_string(function_count) +
+                          " kernel record(s)");
     result.ok = true;
     return result;
 }
@@ -184,6 +462,12 @@ EmitResult emit_with_xcrun(const EmitOptions& options) {
         }
         prepared_air = true;
     } else if (extension == ".ll" || extension == ".llvm") {
+        if (!command_exists("llvm-as")) {
+            result.error = "llvm-as is required for xcrun mode with LLVM IR input";
+            std::filesystem::remove_all(temp_dir);
+            return result;
+        }
+
         const std::string command = "llvm-as " + quote_shell(options.input.string()) + " -o " +
                                     quote_shell(temp_air.string()) + " 2>&1";
         const CommandResult cmd = run_command_capture(command);
@@ -239,6 +523,8 @@ EmitResult validate_if_requested(const EmitOptions& options, EmitResult result) 
     validation_options.require_bitcode = (result.mode_used == EmitMode::kXcrun);
     validation_options.strict_magic = true;
     validation_options.run_xcrun_validate = options.run_xcrun_validate;
+    validation_options.require_function_list = true;
+    validation_options.require_kernel_metadata = true;
 
     const auto validation = cumetal::air_validate::validate_file(options.output, validation_options);
     result.logs.push_back(cumetal::air_validate::format_report(validation));
@@ -276,8 +562,9 @@ EmitResult emit_metallib(const EmitOptions& options) {
             EmitResult fallback_result = emit_experimental(options);
             fallback_result.logs.insert(fallback_result.logs.begin(),
                                         "xcrun mode failed: " + xcrun_result.error);
-            fallback_result.logs.insert(fallback_result.logs.begin(),
-                                        "xcrun mode failed, falling back to experimental container mode");
+            fallback_result.logs.insert(
+                fallback_result.logs.begin(),
+                "xcrun mode failed, falling back to experimental container mode");
             fallback_result.logs.insert(fallback_result.logs.begin(), xcrun_result.logs.begin(),
                                         xcrun_result.logs.end());
             result = std::move(fallback_result);

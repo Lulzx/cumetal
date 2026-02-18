@@ -8,7 +8,9 @@ namespace {
 
 void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0
-              << " <file.metallib> [--xcrun] [--no-bitcode-required] [--relaxed-magic]\n";
+              << " <file.metallib> [--xcrun] [--mla] [--mla-cmd <cmd>]"
+                 " [--require-function-list] [--require-metadata]"
+                 " [--llvm-dis] [--no-bitcode-required] [--relaxed-magic]\n";
 }
 
 std::string json_escape(const std::string& value) {
@@ -61,6 +63,21 @@ int main(int argc, char** argv) {
         const std::string arg = argv[i];
         if (arg == "--xcrun") {
             options.run_xcrun_validate = true;
+        } else if (arg == "--mla") {
+            options.run_metal_library_archive = true;
+        } else if (arg == "--mla-cmd") {
+            if (i + 1 >= argc) {
+                std::cerr << "--mla-cmd expects a command prefix\n";
+                return 2;
+            }
+            options.metal_library_archive_command = argv[++i];
+            options.run_metal_library_archive = true;
+        } else if (arg == "--require-function-list") {
+            options.require_function_list = true;
+        } else if (arg == "--require-metadata") {
+            options.require_kernel_metadata = true;
+        } else if (arg == "--llvm-dis") {
+            options.verify_bitcode_with_llvm_dis = true;
         } else if (arg == "--no-bitcode-required") {
             options.require_bitcode = false;
         } else if (arg == "--relaxed-magic") {
@@ -92,6 +109,11 @@ int main(int argc, char** argv) {
         std::cout << "  \"size\": " << result.summary.file_size << ",\n";
         std::cout << "  \"magic\": \"" << json_escape(result.summary.magic_ascii) << "\",\n";
         std::cout << "  \"bitcode_sections\": " << result.summary.bitcode_sections.size() << ",\n";
+        std::cout << "  \"function_list_parsed\": "
+                  << (result.summary.function_list_parsed ? "true" : "false") << ",\n";
+        std::cout << "  \"function_list_parser\": \""
+                  << json_escape(result.summary.function_list_parser) << "\",\n";
+        std::cout << "  \"kernel_count\": " << result.summary.kernels.size() << ",\n";
         std::cout << "  \"diagnostics\": [\n";
         for (std::size_t i = 0; i < result.diagnostics.size(); ++i) {
             const auto& diagnostic = result.diagnostics[i];

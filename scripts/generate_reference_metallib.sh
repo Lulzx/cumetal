@@ -6,8 +6,10 @@ REF_DIR="$ROOT_DIR/tests/air_abi/reference"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 
 METAL_FILE="$REF_DIR/vector_add.metal"
+LLVM_IR_FILE="$REF_DIR/vector_add_air.ll"
 AIR_FILE="$REF_DIR/reference.air"
 METALLIB_FILE="$REF_DIR/reference.metallib"
+EXPERIMENTAL_METALLIB_FILE="$REF_DIR/reference.experimental.metallib"
 
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "xcrun not found" >&2
@@ -15,12 +17,32 @@ if ! command -v xcrun >/dev/null 2>&1; then
 fi
 
 if ! xcrun --find metal >/dev/null 2>&1; then
-  echo "xcrun metal is unavailable. Install full Xcode to generate reference metallib." >&2
+  echo "xcrun metal is unavailable. Generating experimental reference metallib instead." >&2
+  if [[ -x "$BUILD_DIR/cumetal-air-emitter" ]]; then
+    "$BUILD_DIR/cumetal-air-emitter" \
+      --mode experimental \
+      --input "$LLVM_IR_FILE" \
+      --output "$EXPERIMENTAL_METALLIB_FILE" \
+      --overwrite
+    echo "Generated: $EXPERIMENTAL_METALLIB_FILE"
+    exit 0
+  fi
+  echo "Build cumetal-air-emitter first or install full Xcode." >&2
   exit 1
 fi
 
 if ! xcrun --find metallib >/dev/null 2>&1; then
-  echo "xcrun metallib is unavailable. Install full Xcode to generate reference metallib." >&2
+  echo "xcrun metallib is unavailable. Generating experimental reference metallib instead." >&2
+  if [[ -x "$BUILD_DIR/cumetal-air-emitter" ]]; then
+    "$BUILD_DIR/cumetal-air-emitter" \
+      --mode experimental \
+      --input "$LLVM_IR_FILE" \
+      --output "$EXPERIMENTAL_METALLIB_FILE" \
+      --overwrite
+    echo "Generated: $EXPERIMENTAL_METALLIB_FILE"
+    exit 0
+  fi
+  echo "Build cumetal-air-emitter first or install full Xcode." >&2
   exit 1
 fi
 

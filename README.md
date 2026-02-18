@@ -29,6 +29,7 @@ Generate and validate a reference metallib (requires full Xcode)
 ./build/air_inspect tests/air_abi/reference/reference.metallib
 ./build/air_validate tests/air_abi/reference/reference.metallib --xcrun
 ctest --test-dir build -R air_abi_metal_load --output-on-failure
+ctest --test-dir build -R air_abi_emit_validate_experimental --output-on-failure
 ```
 
 If `xcrun metal`/`xcrun metallib` are unavailable
@@ -36,10 +37,13 @@ If `xcrun metal`/`xcrun metallib` are unavailable
 
 ```bash
 ./build/cumetal-air-emitter \
-  --input tests/air_abi/reference/vector_add.metal \
+  --input tests/air_abi/reference/vector_add_air.ll \
   --output /tmp/vector_add.experimental.metallib \
   --mode experimental \
   --overwrite
+
+./build/air_validate /tmp/vector_add.experimental.metallib \
+  --require-function-list --require-metadata
 ```
 
 License

@@ -1,0 +1,24 @@
+{
+  "originHash" : "83903857142b44d86135c797ef2dea514d94a97b0137b6b24043bf79ef4c6ebe",
+  "pins" : [
+    {
+      "identity" : "metallibraryarchive",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/YuAo/MetalLibraryArchive.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "de573ba4a7b986bbecb3e4ce2464945d266a28e9"
+      }
+    },
+    {
+      "identity" : "swift-crypto",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-crypto.git",
+      "state" : {
+        "revision" : "60f13f60c4d093691934dc6cfdf5f508ada1f894",
+        "version" : "2.6.0"
+      }
+    }
+  ],
+  "version" : 3
+}

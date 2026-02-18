@@ -26,3 +26,12 @@ add_test(
 )
 
 set_tests_properties(air_abi_metal_load PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME air_abi_emit_validate_experimental
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_experimental_validation.sh
+            $<TARGET_FILE:cumetal-air-emitter>
+            $<TARGET_FILE:air_validate>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/vector_add_air.ll
+            ${CMAKE_CURRENT_BINARY_DIR}/vector_add.experimental.metallib
+)
