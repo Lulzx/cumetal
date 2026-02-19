@@ -389,8 +389,15 @@ endif()
 install(FILES
     runtime/api/cublas_v2.h
     runtime/api/cuda.h
+    runtime/api/cuda_fp16.h
     runtime/api/cuda_runtime.h
     runtime/api/cufft.h
     runtime/api/curand.h
+    runtime/api/cooperative_groups.h
     DESTINATION include
+)
+
+install(FILES
+    runtime/api/cooperative_groups/reduce.h
+    DESTINATION include/cooperative_groups
 )

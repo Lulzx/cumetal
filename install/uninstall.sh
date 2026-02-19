@@ -16,10 +16,14 @@ rm -f "$PREFIX/lib/libcublas.dylib"
 rm -f "$PREFIX/lib/libcufft.dylib"
 rm -f "$PREFIX/lib/libcurand.dylib"
 rm -f "$PREFIX/include/cuda.h"
+rm -f "$PREFIX/include/cuda_fp16.h"
 rm -f "$PREFIX/include/cuda_runtime.h"
 rm -f "$PREFIX/include/cufft.h"
 rm -f "$PREFIX/include/cublas_v2.h"
 rm -f "$PREFIX/include/curand.h"
+rm -f "$PREFIX/include/cooperative_groups.h"
+rm -f "$PREFIX/include/cooperative_groups/reduce.h"
+rmdir "$PREFIX/include/cooperative_groups" 2>/dev/null || true
 rm -f "$PREFIX/uninstall.sh"
 
 if [[ -f "$SHELL_RC" ]] && grep -qF "$MARKER_BEGIN" "$SHELL_RC"; then
