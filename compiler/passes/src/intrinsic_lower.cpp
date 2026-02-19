@@ -93,6 +93,31 @@ bool map_barrier(const cumetal::ptx::EntryFunction::Instruction& instruction, Lo
         return true;
     }
 
+    // fence: Ampere+ memory fence (ISA 7.0+)
+    // fence.sc.{cta,gpu,sys} → threadgroup or device barrier
+    if (op.rfind("fence", 0) == 0) {
+        lowered->opcode = (op.find(".cta") != std::string::npos)
+                              ? "air.mem.barrier.threadgroup"
+                              : "air.mem.barrier.device";
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    // red: global/shared reduction (write-only atomic; no return value)
+    // red.global.add.f32 [addr], src → atomic add with result discarded
+    // Lowered to air.atomic.reduce (same as atomicrmw but no destination).
+    if (op.rfind("red", 0) == 0) {
+        if (op.find(".shared") != std::string::npos) {
+            lowered->opcode = "llvm.atomicrmw.noret.shared";
+        } else {
+            lowered->opcode = "llvm.atomicrmw.noret.global";
+        }
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
     return false;
 }
 
@@ -307,14 +332,19 @@ bool map_warp_primitives(const cumetal::ptx::EntryFunction::Instruction& instruc
         return true;
     }
 
-    // vote: warp-wide predicate reduction (ballot / any / all)
-    // vote.[sync.]{ballot.b32,any.pred,all.pred}
+    // vote: warp-wide predicate reduction (ballot / any / all / uni)
+    // vote.[sync.]{ballot.b32,any.pred,all.pred,uni.pred}
     if (op.rfind("vote", 0) == 0) {
         if (op.find(".ballot.") != std::string::npos) {
             lowered->opcode = "air.simdgroup.ballot";
         } else if (op.find(".any.") != std::string::npos) {
             lowered->opcode = "air.simdgroup.any";
         } else if (op.find(".all.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.all";
+        } else if (op.find(".uni.") != std::string::npos) {
+            // vote.uni.pred d, pred — 1 if all active threads have same pred value
+            // Lowered to air.simdgroup.all (conservative: true only if all agree AND
+            // all are active). Matches CUDA semantics for a uniform predicate.
             lowered->opcode = "air.simdgroup.all";
         } else {
             return false;

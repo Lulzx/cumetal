@@ -63,6 +63,16 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
         out->opcode = instruction.opcode;
         out->address_space = 0;
         out->rewritten = false;
+    } else if (starts_with(instruction.opcode, "red.global")) {
+        // red.global.*: write-only atomic reduction (no return value)
+        // intrinsic_lower handles the actual lowering; passthrough here.
+        out->opcode = instruction.opcode;
+        out->address_space = 1;
+        out->rewritten = false;
+    } else if (starts_with(instruction.opcode, "red.shared")) {
+        out->opcode = instruction.opcode;
+        out->address_space = 3;
+        out->rewritten = false;
     } else {
         return false;
     }

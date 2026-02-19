@@ -338,6 +338,19 @@ run_case "sweep_trap"               "trap;"
 # exit: terminate thread (same as ret in our model)
 run_case "sweep_exit"               "exit;"
 
+# vote.uni: predicate uniformity test → air.simdgroup.all (conservative)
+run_case "sweep_vote_uni_pred"      "vote.uni.pred %p1, %p2;"
+
+# red: write-only global/shared atomic reduction (no return value)
+run_case "sweep_red_global_add_f32" "red.global.add.f32 [%rd1], %f1;"
+run_case "sweep_red_global_add_u32" "red.global.add.u32 [%rd1], %r1;"
+run_case "sweep_red_shared_add_u32" "red.shared.add.u32 [%rd1], %r1;"
+
+# fence: Ampere+ fine-grained memory fence (ISA 7.0+) → air.mem.barrier
+run_case "sweep_fence_sc_cta"       "fence.sc.cta;"
+run_case "sweep_fence_sc_gpu"       "fence.sc.gpu;"
+run_case "sweep_fence_sc_sys"       "fence.sc.sys;"
+
 # activemask: bitmask of active threads in current warp (ISA 6.0+)
 # Lowered to constant 0xFFFFFFFF (all lanes active; no SIMD divergence in our model).
 run_case "sweep_activemask_b32"     "activemask.b32 %r1;"

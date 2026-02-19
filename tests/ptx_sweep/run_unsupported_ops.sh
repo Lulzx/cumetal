@@ -47,4 +47,9 @@ run_case_expect_fail "unsupported_tma_bulk_1d" \
 # FP8 / Transformer Engine (spec §5.1.1: per-instruction compile-time error)
 run_case_expect_fail "unsupported_fp8_cvt" "cvt.rn.f8x2.e4m3x2.rn.satfinite.f32 %r1, %f1, %f2;"
 
+# Tensor core ops (wmma/mma/ldmatrix: no Metal equivalent; use MPSMatrixMultiplication)
+run_case_expect_fail "unsupported_wmma_load"   "wmma.load.a.sync.aligned.row.m16n16k16.f16 {%r1,%r2,%r3,%r4}, [%rd1], 16;"
+run_case_expect_fail "unsupported_mma_sync"    "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%f1,%f2,%f3,%f4}, {%r1,%r2}, {%r3}, {%f1,%f2,%f3,%f4};"
+run_case_expect_fail "unsupported_ldmatrix"    "ldmatrix.sync.aligned.m8n8.x1.b16 {%r1}, [%rd1];"
+
 echo "PASS: PTX sweep unsupported-op strict rejection completed"
