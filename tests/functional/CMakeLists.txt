@@ -19,6 +19,10 @@ add_executable(cumetal_runtime_printf_test
     runtime_printf_test.cpp
 )
 
+add_executable(cumetal_runtime_dynamic_shared_test
+    runtime_dynamic_shared_test.cpp
+)
+
 add_executable(cumetal_runtime_stream_vector_add_test
     runtime_stream_vector_add_test.cpp
 )
@@ -289,6 +293,11 @@ target_link_libraries(cumetal_runtime_matrix_mul_tiled_test
 )
 
 target_link_libraries(cumetal_runtime_printf_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_dynamic_shared_test
     PRIVATE
         cumetal_runtime
 )
@@ -632,6 +641,13 @@ target_compile_options(cumetal_runtime_matrix_mul_tiled_test
 )
 
 target_compile_options(cumetal_runtime_printf_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_dynamic_shared_test
     PRIVATE
         -Wall
         -Wextra
@@ -1162,6 +1178,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_printf PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_dynamic_shared
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_dynamic_shared_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/dynamic_shared_reduce.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/dynamic_shared_reduce.metallib
+)
+
+set_tests_properties(functional_runtime_dynamic_shared PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_stream_vector_add
