@@ -550,6 +550,14 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     result.llvm_ir = ir.str();
     result.warnings = pipeline.warnings;
 
+    // --fp64=emulate: Dekker's algorithm decomposition is not yet implemented.
+    // Emit a warning and fall through to native FP64 (kNative) behavior.
+    if (options.fp64_mode == Fp64Mode::kEmulate) {
+        result.warnings.push_back(
+            "--fp64=emulate: Dekker's algorithm FP32-pair decomposition is not yet implemented; "
+            "using native FP64 (full IEEE 754 double, but low throughput on Apple Silicon)");
+    }
+
     // --fp64=warn: scan PTX source for any .f64 instructions and emit per-line warnings.
     if (options.fp64_mode == Fp64Mode::kWarn) {
         const std::string ptx_str(ptx);

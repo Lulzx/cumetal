@@ -28,3 +28,15 @@
   (`add`, `sub`, `mul`, `div`, `rem`, `shl`, `shr`, `and`, `or`, `xor`, `not`, `selp`), `fma`/`mad`,
   `neg`/`abs`/`rcp`, `max`/`min`, and the unary math intrinsics `sqrt`, `rsqrt`, `ex2`→`exp2`,
   `lg2`→`log2`, `sin`, `cos`. Kernels with unsupported patterns fall back to PTX→LLVM lowering.
+- `--fp64=emulate` mode (Dekker's algorithm FP32-pair decomposition, spec §8.1) is not yet
+  implemented. The flag is accepted and parsed, but currently falls through to native FP64 behavior
+  (`--fp64=native`). A diagnostic warning is emitted to alert the user. Implementing Dekker's
+  decomposition requires a dedicated LLVM pass that is deferred to a future milestone.
+- Null stream synchronization (spec §6.3.1) is implemented via command-buffer sequencing on the
+  default `MTLCommandQueue` rather than the spec's described `MTLSharedEvent`-based approach.
+  The observable CUDA semantics (null-stream serialization) are correct for the common single-context
+  use case, but the explicit multi-stream "all user streams wait for null stream" guarantee is not
+  fully enforced via events. `MTLSharedEvent` integration is deferred to a future milestone.
+- Device printf (spec §5.3): the `printf_lower` compiler pass extracts format strings and emits
+  metadata, but the runtime buffer allocation, binding, and post-kernel drain (spec §6.5 step 10)
+  are not yet implemented. Device `printf` calls in kernels will be silently dropped at runtime.

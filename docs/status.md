@@ -81,6 +81,19 @@ Implemented today:
   - direct Metal lowering for all 17 llm.c GPT-2 training kernels
     (`compiler/ptx/src/lower_to_metal.cpp`); `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` now passes
     (`OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, `overall okay: 1`) without any emulation fallback
+  - PTX sweep extended with 30+ new test cases: `shfl.sync.{idx,down,up,bfly}`,
+    `vote.sync.{ballot,any,all}`, `bar.warp.sync`, `membar.{gl,cta,sys}`,
+    `cp.async.{ca,commit_group,wait_all}`, `redux.sync.{add,and,or,xor,min,max}`,
+    and math intrinsics `sqrt`, `rsqrt`, `ex2`, `lg2`, `sin`, `cos`, `fma`, `abs`, `min`, `max`
+  - Unsupported-op sweep extended with targeted diagnostic cases for Hopper cluster ops
+    (`cluster.sync.aligned`, `mbarrier.init`, `mbarrier.arrive`), TMA
+    (`cp.async.bulk.tensor.1d.*`), and FP8 (`cvt.rn.f8x2.*`)
+  - `--fp64=native|emulate|warn` flag added to `cumetalc` (spec §8.1); `warn` mode emits
+    per-instruction warnings for `.f64` opcodes; `emulate` accepts the flag and warns that
+    Dekker decomposition is deferred (falls back to native FP64)
+  - functional tests added: `functional_runtime_warp_shuffle` (simd_shuffle broadcast, 64
+    threads, verifies simdgroup lane-0 broadcast) and `functional_runtime_fp16_ops`
+    (half-precision add, 256 elements, exact integer arithmetic check)
 
 Supported runtime API subset:
 
