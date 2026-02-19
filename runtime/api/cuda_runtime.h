@@ -382,6 +382,25 @@ static __device__ __forceinline__ T __ldcs(const T* ptr) {
     return *ptr;
 }
 
+// __ldg: load via read-only (texture) cache. On UMA Apple Silicon there is no
+// dedicated read-only cache, so this is a plain load — identical semantics,
+// no performance difference (spec §8).
+template <typename T>
+static __device__ __forceinline__ T __ldg(const T* ptr) {
+    return *ptr;
+}
+
+// __ldlu/__ldcv: non-coherent/volatile load hints — plain loads on UMA.
+template <typename T>
+static __device__ __forceinline__ T __ldlu(const T* ptr) {
+    return *ptr;
+}
+
+template <typename T>
+static __device__ __forceinline__ T __ldcv(const T* ptr) {
+    return *ptr;
+}
+
 template <typename T>
 static __device__ __forceinline__ void __stcs(T* ptr, T value) {
     *ptr = value;

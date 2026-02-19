@@ -179,6 +179,8 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 |------------|----------|-------|
 | `ld.param.*` | Param load — handled structurally | Mapped to kernel argument index |
 | `ld.global.f32 dst, [addr]` | `device float* ptr; dst = ptr[gid]` | Direct Metal buffer access |
+| `ld.global.nc.* dst, [addr]` | plain load (same as `ld.global.*`) | `.nc` (non-coherent/read-only cache) hint; no-op on UMA — same as plain load (spec §8 `__ldg` policy) |
+| `ld.const.* dst, [addr]` | plain load (AIR AS 2) | CUDA constant memory; no read-only cache benefit on UMA |
 | `st.global.f32 [addr], src` | `device float* ptr; ptr[gid] = src` | Direct Metal buffer store |
 | `atom.global.add.f32 dst, [addr], src` | `atomic_fetch_add_explicit(...)` | Global atomic add |
 | `atom.global.add.f64` | `llvm.atomic.add.f64` | FP64 atomics via LLVM IR |

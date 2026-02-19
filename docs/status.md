@@ -170,6 +170,11 @@ Supported driver API subset:
 - `cuProfilerStart`, `cuProfilerStop`
 - `cuOccupancyMaxActiveBlocksPerMultiprocessor`, `cuOccupancyMaxPotentialBlockSize`
 - `cuFuncGetAttribute`, `cuFuncSetCacheConfig`
+- `cuStreamCreateWithPriority` (priority ignored; creates regular stream)
+- `cuLaunchCooperativeKernel` (forwards to `cuLaunchKernel`; threadgroup CG works)
+- `cuMemsetD16`, `cuMemsetD32`, `cuMemsetD16Async`, `cuMemsetD32Async`
+- `cuDeviceComputeCapability` (returns 8.0 — synthetic Ampere-equivalent)
+- `cuDeviceCanAccessPeer` (returns 0; single GPU on Apple Silicon)
 
 Supported library shim subset:
 

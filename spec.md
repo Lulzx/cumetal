@@ -1048,8 +1048,8 @@ The highest-value contributions, in priority order:
 3. **Functional test cases** — any CUDA kernel with a known correct output.
 4. **FP64 characterization** — document which FP64 operations are natively supported on each
    chip family and their precision characteristics.
-5. **GPU core count validation** — report `device.name` strings and actual core counts for
-   chip variants not yet in the §6.8 table.
+5. **GPU core count validation** — the §6.8 table now covers all M1–M4 variants including
+   Ultra tiers. Community hardware reports for unreleased M5+ chips are welcome.
 6. **Performance measurement** — baseline benchmarks of translated vs. native Metal kernels.
 7. **cuBLAS/cuRAND shim** — thin wrappers over MPS/Accelerate (Phase 4.5).
 
@@ -1129,8 +1129,10 @@ The highest-value contributions, in priority order:
 | §6.2.1 | Added `MTLHeap` note for future large-allocation optimization |
 | §6.8 | Replaced "hardcoded per-chip family" with actual per-chip GPU core count table |
 | §6.8 | Added `maxBufferArguments` (31) to device properties |
+| §6.8 | Added M3 Ultra (60 GPU cores) and M4 Ultra (60 GPU cores) to chip table |
 | §9.4 | Split build targets: `libcumetal.dylib` (primary) vs `libcuda.dylib` (opt-in shim) |
 | §8.1 | Added AMX recommendation for FP64-dominated workloads |
+| §5.3 / §6.5 step 10 | Device printf fully implemented end-to-end: compiler ring-buffer injection, runtime buffer allocation/drain; both `cumetalKernel_t` and `__cudaRegisterFunction` paths covered by functional tests |
 
 ---
 

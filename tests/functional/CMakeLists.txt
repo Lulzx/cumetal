@@ -139,6 +139,18 @@ add_executable(cumetal_cufft_c2c_test
     cufft_c2c_test.cpp
 )
 
+add_executable(cumetal_runtime_occupancy_test
+    runtime_occupancy_test.cpp
+)
+
+add_executable(cumetal_runtime_device_limits_test
+    runtime_device_limits_test.cpp
+)
+
+add_executable(cumetal_driver_extended_api_test
+    driver_extended_api_test.cpp
+)
+
 add_executable(cumetal_driver_vector_add_test
     driver_vector_add_test.cpp
 )
@@ -471,6 +483,21 @@ target_link_libraries(cumetal_cublas_api_test
 )
 
 target_link_libraries(cumetal_cufft_c2c_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_occupancy_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_device_limits_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_extended_api_test
     PRIVATE
         cumetal_runtime
 )
@@ -914,6 +941,27 @@ target_compile_options(cumetal_cublas_api_test
 )
 
 target_compile_options(cumetal_cufft_c2c_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_occupancy_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_device_limits_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_driver_extended_api_test
     PRIVATE
         -Wall
         -Wextra
@@ -1509,6 +1557,21 @@ add_test(
 add_test(
     NAME functional_cufft_c2c
     COMMAND cumetal_cufft_c2c_test
+)
+
+add_test(
+    NAME functional_runtime_occupancy
+    COMMAND cumetal_runtime_occupancy_test
+)
+
+add_test(
+    NAME functional_runtime_device_limits
+    COMMAND cumetal_runtime_device_limits_test
+)
+
+add_test(
+    NAME functional_driver_extended_api
+    COMMAND cumetal_driver_extended_api_test
 )
 
 add_test(

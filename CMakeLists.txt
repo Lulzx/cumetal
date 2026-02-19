@@ -310,9 +310,7 @@ add_executable(ptx_diff
 
 target_link_libraries(ptx_diff
     PRIVATE
-        cumetal_passes
         cumetal_ptx_codegen
-        cumetal_ptx
 )
 
 target_compile_options(ptx_diff
