@@ -36,9 +36,21 @@ Complete CUDA/PTX → AIR intrinsic mapping table for the CuMetal intrinsic lowe
 |------------|---------------------|-------|
 | `bar.sync N` | `air.threadgroup_barrier` | `__syncthreads()` — threadgroup scope |
 | `bar.warp.sync mask` | `air.simdgroup.barrier` | `__syncwarp(mask)` — simdgroup scope; non-0xFFFFFFFF masks conservatively emit full-group barrier |
+| `bar.arrive N, count` | `air.threadgroup_barrier` | Cooperative-groups barrier arrive (conservative: full threadgroup barrier) |
+| `bar.red.and.pred d, bar, cnt, pred` | `air.simdgroup.all` | Barrier predicate AND-reduction (conservative simdgroup lowering) |
+| `bar.red.or.pred d, bar, cnt, pred` | `air.simdgroup.any` | Barrier predicate OR-reduction |
+| `bar.red.popc.u32 d, bar, cnt, pred` | `air.simdgroup.reduce_add` | Barrier population-count reduction |
 | `membar.gl` | `air.mem.barrier.device` | `__threadfence()` — device-wide memory fence |
 | `membar.sys` | `air.mem.barrier.device` | `__threadfence_system()` — system-wide fence (lowered to device scope) |
 | `membar.cta` | `air.mem.barrier.threadgroup` | `__threadfence_block()` — threadgroup memory fence |
+| `fence.sc.cta` | `air.mem.barrier.threadgroup` | Ampere+ fine-grained CTA fence (ISA 7.0+) |
+| `fence.sc.gpu` | `air.mem.barrier.device` | Ampere+ fine-grained GPU-scope fence |
+| `fence.sc.sys` | `air.mem.barrier.device` | Ampere+ fine-grained system-scope fence |
+| `nanosleep.u32 ns` | `air.nanosleep` | Thread sleep hint — no-op on Apple Silicon (UMA/scheduler handles it) |
+| `trap` | `llvm.trap` | Abnormal kernel termination |
+| `exit` | `air.exit` | Normal kernel thread exit |
+| `prefetch.global.{L1,L2} [addr]` | `air.prefetch.noop` | Cache prefetch hint — no-op on UMA (prefetch is automatic) |
+| `prefetchu.L1 [addr]` | `air.prefetch.noop` | Unified-address prefetch — no-op on UMA |
 
 ## Async Copy
 
@@ -81,6 +93,11 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `vote.ballot.b32 dst, pred` | `air.simdgroup.ballot` | Non-sync form |
 | `vote.any.pred dst, pred` | `air.simdgroup.any` | Non-sync form |
 | `vote.all.pred dst, pred` | `air.simdgroup.all` | Non-sync form |
+| `vote.uni.pred dst, pred` | `air.simdgroup.all` | Uniformity test (conservative: same as all) |
+| `activemask.b32 dst` | `air.activemask` | Returns bitmask of active lanes; conservative constant 0xFFFFFFFF |
+| `fns.b32 dst, mask, base, offset` | `air.fns` | Find Nth set bit in mask |
+| `match.any.sync.b32 dst, src, mask` | `air.match.any.sync` | Warp-wide value match (any lane) |
+| `match.all.sync.b32 dst, pred, src, mask` | `air.match.all.sync` | Warp-wide value match (all lanes) |
 
 **Mask semantics note**: AIR simdgroup operations are implicitly full-group. When `mask != 0xFFFFFFFF`, lanes not in the mask read their own value (identity) rather than being truly inactive. This is a conservative, safe divergence from CUDA semantics. Kernels using partial masks should be tested carefully.
 
@@ -133,6 +150,13 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `bfe.s32 d, a, b, c` | `air.bfe.signed` | Bit field extract (signed, sign-extended) |
 | `bfi.b32 d, a, b, c, f` | `air.bfi` | Bit field insert |
 | `prmt.b32 d, a, b, c` | `air.prmt` | Byte permutation from two 32-bit words |
+| `testp.finite.{f32,f64} pred, src` | `air.testp.finite` | Floating-point property test: `isfinite(src)` |
+| `testp.infinite.{f32,f64} pred, src` | `air.testp.infinite` | `isinf(src)` |
+| `testp.nan.{f32,f64} pred, src` | `air.testp.nan` | `isnan(src)` |
+| `testp.number.{f32,f64} pred, src` | `air.testp.number` | `!isnan(src)` |
+| `testp.normal.{f32,f64} pred, src` | `air.testp.normal` | `isnormal(src)` |
+| `testp.subnormal.{f32,f64} pred, src` | `air.testp.subnormal` | `fpclassify(src) == FP_SUBNORMAL` |
+| `testp.notfinite.{f32,f64} pred, src` | `air.testp.notfinite` | `!isfinite(src)` |
 
 ---
 
@@ -158,6 +182,10 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `st.global.f32 [addr], src` | `device float* ptr; ptr[gid] = src` | Direct Metal buffer store |
 | `atom.global.add.f32 dst, [addr], src` | `atomic_fetch_add_explicit(...)` | Global atomic add |
 | `atom.global.add.f64` | `llvm.atomic.add.f64` | FP64 atomics via LLVM IR |
+| `red.global.add.f32 [addr], src` | `llvm.atomicrmw.noret.global` | Write-only global atomic add (no return value) |
+| `red.global.add.u32 [addr], src` | `llvm.atomicrmw.noret.global` | Write-only global atomic add (unsigned) |
+| `red.shared.add.u32 [addr], src` | `llvm.atomicrmw.noret.shared` | Write-only shared-memory atomic add |
+| `ld.const.* dst, [addr]` | `llvm.load` (AS 2) | Load from `__constant__` memory (CUDA AS 4 → AIR AS 2) |
 
 ---
 
@@ -173,7 +201,8 @@ The following PTX opcodes are passed through to subsequent pipeline stages uncha
 
 | PTX Feature | Status |
 |-------------|--------|
-| `cluster.*`, `mbarrier.*` | Per-instruction compile-time error |
+| `cluster.*`, `mbarrier.*` | Per-instruction compile-time error (Hopper distributed shared memory) |
 | `cp.async.bulk.tensor.*` (TMA) | Per-instruction compile-time error |
 | `cvt.rn.f8x2.*` (FP8) | Per-instruction compile-time error |
+| `wmma.*`, `mma.sync.*`, `ldmatrix.*` | Per-instruction compile-time error (tensor cores — no Metal equivalent) |
 | Dynamic parallelism (`launch_cooperative_kernel`) | Compile-time error |

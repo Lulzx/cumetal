@@ -337,6 +337,29 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // sad.{u32,s32} d, a, b, c  — sum of absolute differences: d = |a-b| + c
         // Lowered to air.sad; downstream stages emit abs(sub(a,b))+c sequence.
         lowered->opcode = "air.sad";
+    } else if (instruction.opcode.rfind("testp", 0) == 0) {
+        // testp.{finite,infinite,number,notanumber,normal,subnormal,notfinite}.{f32,f64} pred, src
+        // Tests floating-point properties (equivalent to C isfinite/isinf/isnan/etc.).
+        // Lowered to air.testp.*; downstream stages emit llvm.is_fpclass calls.
+        const std::string& op = instruction.opcode;
+        if (op.find(".finite") != std::string::npos) {
+            lowered->opcode = "air.testp.finite";
+        } else if (op.find(".infinite") != std::string::npos) {
+            lowered->opcode = "air.testp.infinite";
+        } else if (op.find(".notanumber") != std::string::npos ||
+                   op.find(".snan") != std::string::npos) {
+            lowered->opcode = "air.testp.nan";
+        } else if (op.find(".number") != std::string::npos) {
+            lowered->opcode = "air.testp.number";
+        } else if (op.find(".subnormal") != std::string::npos) {
+            lowered->opcode = "air.testp.subnormal";
+        } else if (op.find(".normal") != std::string::npos) {
+            lowered->opcode = "air.testp.normal";
+        } else if (op.find(".notfinite") != std::string::npos) {
+            lowered->opcode = "air.testp.notfinite";
+        } else {
+            lowered->opcode = "air.testp";
+        }
     } else {
         return false;
     }

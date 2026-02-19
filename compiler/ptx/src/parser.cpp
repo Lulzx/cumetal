@@ -134,7 +134,7 @@ bool is_supported_opcode(const std::string& opcode) {
         "mov",       "mul",        "nanosleep", "neg",   "not",   "or",       "popc",  "prmt",
         "rcp",       "redux",      "rem",       "ret",   "rsqrt", "sad",      "selp",  "set",
         "setp",      "shl",        "shr",       "shfl",  "sin",   "sqrt",     "st",    "sub",
-        "fence",     "prefetch",   "prefetchu", "red",        "trap",      "vote",       "xor",
+        "fence",     "prefetch",   "prefetchu", "red",   "testp",  "trap",      "vote",  "xor",
     };
     return kSupportedRoots.contains(root);
 }

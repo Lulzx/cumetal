@@ -407,4 +407,12 @@ run_case "sweep_bfe_s32"          "bfe.s32 %r1, %r2, %r3, %r4;"
 # bfi: bit field insert (ISA 6.0+)
 run_case "sweep_bfi_b32"          "bfi.b32 %r1, %r2, %r3, %r4, %r5;"
 
+# testp: floating-point property test (ISA 6.0+) → llvm.is_fpclass
+run_case "sweep_testp_finite_f32"    "testp.finite.f32 %p1, %f1;"
+run_case "sweep_testp_infinite_f32"  "testp.infinite.f32 %p1, %f1;"
+run_case "sweep_testp_nan_f32"       "testp.nan.f32 %p1, %f1;"
+run_case "sweep_testp_normal_f32"    "testp.normal.f32 %p1, %f1;"
+run_case "sweep_testp_number_f32"    "testp.number.f32 %p1, %f1;"
+run_case "sweep_testp_subnormal_f32" "testp.subnormal.f32 %p1, %f1;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
