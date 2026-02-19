@@ -1531,4 +1531,74 @@ CUresult cuProfilerStop(void) {
     return CUDA_SUCCESS;
 }
 
+// Occupancy API — conservative estimates (spec §8, driver-API counterparts).
+CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
+                                                     CUfunction /*func*/,
+                                                     int /*blockSize*/,
+                                                     size_t /*dynamicSMemSize*/) {
+    if (numBlocks == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    *numBlocks = 2;
+    return CUDA_SUCCESS;
+}
+
+CUresult cuOccupancyMaxPotentialBlockSize(int* minGridSize,
+                                          int* blockSize,
+                                          CUfunction /*func*/,
+                                          size_t /*dynamicSMemSize*/,
+                                          int blockSizeLimit) {
+    if (minGridSize == nullptr || blockSize == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    const int chosen = (blockSizeLimit > 0 && blockSizeLimit < 256) ? blockSizeLimit : 256;
+    *blockSize = chosen;
+    cudaDeviceProp prop{};
+    if (cudaGetDeviceProperties(&prop, 0) == cudaSuccess && prop.multiProcessorCount > 0) {
+        *minGridSize = prop.multiProcessorCount * 2;
+    } else {
+        *minGridSize = 16;
+    }
+    return CUDA_SUCCESS;
+}
+
+// Function attribute query — returns zeroed/default values (spec §8).
+CUresult cuFuncGetAttribute(int* pi, CUfunc_attribute attrib, CUfunction /*hfunc*/) {
+    if (pi == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    switch (attrib) {
+        case CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK:
+            *pi = 1024;
+            break;
+        case CU_FUNC_ATTRIBUTE_PTX_VERSION:
+            *pi = 80;
+            break;
+        case CU_FUNC_ATTRIBUTE_BINARY_VERSION:
+            *pi = 80;
+            break;
+        default:
+            *pi = 0;
+            break;
+    }
+    return CUDA_SUCCESS;
+}
+
+// No-op — Metal has no L1/shared-memory cache configuration.
+CUresult cuFuncSetCacheConfig(CUfunction /*hfunc*/, CUfunc_cache /*config*/) {
+    return CUDA_SUCCESS;
+}
+
 }  // extern "C"

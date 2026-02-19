@@ -170,6 +170,38 @@ CUresult cuGetErrorString(CUresult error, const char** pStr);
 CUresult cuProfilerStart(void);
 CUresult cuProfilerStop(void);
 
+typedef enum CUfunc_attribute {
+    CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 0,
+    CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES = 1,
+    CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES = 2,
+    CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES = 3,
+    CU_FUNC_ATTRIBUTE_NUM_REGS = 4,
+    CU_FUNC_ATTRIBUTE_PTX_VERSION = 5,
+    CU_FUNC_ATTRIBUTE_BINARY_VERSION = 6,
+    CU_FUNC_ATTRIBUTE_CACHE_MODE_CA = 7,
+    CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES = 8,
+    CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT = 9,
+} CUfunc_attribute;
+
+typedef enum CUfunc_cache {
+    CU_FUNC_CACHE_PREFER_NONE = 0,
+    CU_FUNC_CACHE_PREFER_SHARED = 1,
+    CU_FUNC_CACHE_PREFER_L1 = 2,
+    CU_FUNC_CACHE_PREFER_EQUAL = 3,
+} CUfunc_cache;
+
+CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
+                                                     CUfunction func,
+                                                     int blockSize,
+                                                     size_t dynamicSMemSize);
+CUresult cuOccupancyMaxPotentialBlockSize(int* minGridSize,
+                                          int* blockSize,
+                                          CUfunction func,
+                                          size_t dynamicSMemSize,
+                                          int blockSizeLimit);
+CUresult cuFuncGetAttribute(int* pi, CUfunc_attribute attrib, CUfunction hfunc);
+CUresult cuFuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config);
+
 #ifdef __cplusplus
 }
 #endif

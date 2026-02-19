@@ -165,6 +165,8 @@ Supported driver API subset:
 - `cuMemsetD8`, `cuMemsetD8Async`
 - `cuGetErrorName`, `cuGetErrorString`
 - `cuProfilerStart`, `cuProfilerStop`
+- `cuOccupancyMaxActiveBlocksPerMultiprocessor`, `cuOccupancyMaxPotentialBlockSize`
+- `cuFuncGetAttribute`, `cuFuncSetCacheConfig`
 
 Supported library shim subset:
 
