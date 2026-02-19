@@ -156,6 +156,114 @@ L_done:
         return 1;
     }
 
+    // Test: .u64 parameter used in mul.lo.u64 is inferred as scalar (non-pointer)
+    const std::string scalar_mul_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry step_mul_test(
+    .param .u64 data_ptr,
+    .param .u64 step_num
+)
+{
+    ld.param.u64 %rd0, [data_ptr];
+    ld.param.u64 %rd1, [step_num];
+    ld.global.f32 %f0, [%rd0];
+    mul.lo.u64 %rd2, %rd1, 4;
+    ret;
+}
+)PTX";
+
+    const auto scalar_mul = cumetal::ptx::parse_ptx(scalar_mul_ptx);
+    if (!expect(scalar_mul.ok, "parse scalar_mul_test")) {
+        return 1;
+    }
+    if (!expect(scalar_mul.module.entries.size() == 1, "scalar_mul_test entry count")) {
+        return 1;
+    }
+    if (!expect(scalar_mul.module.entries[0].params.size() == 2,
+                "scalar_mul_test param count")) {
+        return 1;
+    }
+    if (!expect(scalar_mul.module.entries[0].params[0].is_pointer,
+                "data_ptr inferred as pointer")) {
+        return 1;
+    }
+    if (!expect(!scalar_mul.module.entries[0].params[1].is_pointer,
+                "step_num inferred as scalar (not pointer) via mul.lo.u64")) {
+        return 1;
+    }
+
+    // Test: .u64 parameter used in div.u64 is inferred as scalar (non-pointer)
+    const std::string scalar_div_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry step_div_test(
+    .param .u64 buf_ptr,
+    .param .u64 divisor
+)
+{
+    ld.param.u64 %rd0, [buf_ptr];
+    ld.param.u64 %rd1, [divisor];
+    ld.global.u32 %r0, [%rd0];
+    div.u64 %rd2, %rd1, 2;
+    ret;
+}
+)PTX";
+
+    const auto scalar_div = cumetal::ptx::parse_ptx(scalar_div_ptx);
+    if (!expect(scalar_div.ok, "parse scalar_div_test")) {
+        return 1;
+    }
+    if (!expect(scalar_div.module.entries[0].params[0].is_pointer,
+                "buf_ptr inferred as pointer in div test")) {
+        return 1;
+    }
+    if (!expect(!scalar_div.module.entries[0].params[1].is_pointer,
+                "divisor inferred as scalar (not pointer) via div.u64")) {
+        return 1;
+    }
+
+    // Test: mixed .u64 params — one pointer, one scalar (models the adamw step_num case)
+    const std::string mixed_u64_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry mixed_u64_test(
+    .param .u64 weights,
+    .param .u64 gradients,
+    .param .u64 step_count
+)
+{
+    ld.param.u64 %rd0, [weights];
+    ld.param.u64 %rd1, [gradients];
+    ld.param.u64 %rd2, [step_count];
+    ld.global.f32 %f0, [%rd0];
+    ld.global.f32 %f1, [%rd1];
+    mul.lo.u64 %rd3, %rd2, %rd2;
+    ret;
+}
+)PTX";
+
+    const auto mixed_u64 = cumetal::ptx::parse_ptx(mixed_u64_ptx);
+    if (!expect(mixed_u64.ok, "parse mixed_u64_test")) {
+        return 1;
+    }
+    if (!expect(mixed_u64.module.entries[0].params.size() == 3,
+                "mixed_u64_test param count")) {
+        return 1;
+    }
+    if (!expect(mixed_u64.module.entries[0].params[0].is_pointer,
+                "weights inferred as pointer")) {
+        return 1;
+    }
+    if (!expect(mixed_u64.module.entries[0].params[1].is_pointer,
+                "gradients inferred as pointer")) {
+        return 1;
+    }
+    if (!expect(!mixed_u64.module.entries[0].params[2].is_pointer,
+                "step_count inferred as scalar via mul.lo.u64 self-multiply")) {
+        return 1;
+    }
+
     std::printf("PASS: ptx parser unit tests\n");
     return 0;
 }

@@ -65,6 +65,9 @@ Implemented today:
     gradient-check tolerance applied to the generated test translation unit
   - llm.c runtime emulation fallback is now explicitly traceable (`CUMETAL_TRACE_LLMC_EMULATION=1`)
     and can be disabled (`CUMETAL_DISABLE_LLMC_EMULATION=1`) to validate pure PTX-lowered execution
+  - direct Metal lowering for all 17 llm.c GPT-2 training kernels
+    (`compiler/ptx/src/lower_to_metal.cpp`); `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` now passes
+    (`OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, `overall okay: 1`) without any emulation fallback
 
 Supported runtime API subset:
 

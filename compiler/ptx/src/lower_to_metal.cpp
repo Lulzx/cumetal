@@ -1,9 +1,14 @@
 #include "cumetal/ptx/lower_to_metal.h"
 
 #include "cumetal/passes/phase1_pipeline.h"
+#include "cumetal/ptx/parser.h"
 
+#include <cctype>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace cumetal::ptx {
 namespace {
@@ -656,6 +661,686 @@ kernel_template = R"METAL(kernel void __KERNEL_NAME__(
     return source;
 }
 
+// Generic PTX → Metal emitter for kernels not matched by name.
+//
+// Handles simple 1-D elementwise kernels: detects the standard global-thread-ID
+// computation pattern (mad.lo.u32 gid, ctaid, ntid, tid), resolves gid-indexed
+// pointer accesses (base_ptr + gid*element_size), and translates common float/int
+// arithmetic instructions to their Metal equivalents.  Returns empty string for
+// any instruction or address pattern it cannot translate confidently; the caller
+// then falls through to the PTX→LLVM path.
+std::string emit_metal_source_generic(const std::string& entry_name, std::string_view ptx) {
+    ParseOptions parse_opts;
+    parse_opts.strict = false;
+    const ParseResult parsed = parse_ptx(ptx, parse_opts);
+    if (!parsed.ok) {
+        return {};
+    }
+
+    const EntryFunction* entry = nullptr;
+    for (const auto& e : parsed.module.entries) {
+        if (e.name == entry_name) {
+            entry = &e;
+            break;
+        }
+    }
+    if (entry == nullptr || entry->params.empty()) {
+        return {};
+    }
+
+    // Only attempt translation when every instruction is in the supported opcode set.
+    for (const auto& instr : entry->instructions) {
+        if (!instr.supported) {
+            return {};
+        }
+    }
+
+    // Require at least one global memory operation.  Skeleton PTX (e.g. just
+    // a thread-index mov and ret) is meant for LLVM-based body synthesis, not
+    // for literal instruction translation.
+    {
+        bool has_global_mem = false;
+        for (const auto& instr : entry->instructions) {
+            if (instr.opcode.find("ld.global") == 0 ||
+                instr.opcode.find("st.global") == 0 ||
+                instr.opcode.find("atom.global") == 0) {
+                has_global_mem = true;
+                break;
+            }
+        }
+        if (!has_global_mem) {
+            return {};
+        }
+    }
+
+    // ── Pass 1: register provenance analysis ──────────────────────────────────
+
+    enum class RegKind {
+        Unknown,
+        ParamPtr,     // loaded from a pointer (.is_pointer) param
+        ParamScalar,  // loaded from a scalar param
+        ThreadTid,    // %tid.x
+        ThreadNtid,   // %ntid.x
+        ThreadCtaid,  // %ctaid.x
+        ThreadGid,    // mad(ctaid, ntid, tid) → global 1-D thread ID
+        ThreadGid64,  // (u64)ThreadGid
+        ByteOffset,   // ThreadGid64 * byte_per_elem  (from shl / mul)
+        DerivedPtr,   // ParamPtr + ByteOffset  → param[gid]
+    };
+    struct RegInfo {
+        RegKind kind = RegKind::Unknown;
+        std::string param_name;  // ParamPtr / ParamScalar
+        std::string base_param;  // DerivedPtr: which pointer param
+        int byte_per_elem = 4;   // ByteOffset / DerivedPtr: element byte width
+    };
+    std::unordered_map<std::string, RegInfo> reg;
+
+    // Extract the first %register from an operand string (handles "[%rd0]", "[%rd0+4]").
+    auto get_reg = [](const std::string& op) -> std::string {
+        const std::size_t pct = op.find('%');
+        if (pct == std::string::npos) {
+            return {};
+        }
+        std::size_t end = pct + 1;
+        while (end < op.size() &&
+               (std::isalnum(static_cast<unsigned char>(op[end])) ||
+                op[end] == '_' || op[end] == '.')) {
+            ++end;
+        }
+        return (end > pct + 1) ? op.substr(pct, end - pct) : std::string{};
+    };
+
+    // Return a non-negative integer if the operand is a plain decimal immediate.
+    auto get_imm = [](const std::string& op) -> int {
+        if (op.empty() || op[0] == '%') {
+            return -1;
+        }
+        int val = 0;
+        for (const char c : op) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) {
+                return -1;
+            }
+            val = val * 10 + (c - '0');
+        }
+        return val;
+    };
+
+    std::unordered_map<std::string, bool> param_is_ptr;
+    for (const auto& p : entry->params) {
+        param_is_ptr[p.name] = p.is_pointer;
+    }
+
+    for (const auto& instr : entry->instructions) {
+        const auto& op = instr.opcode;
+        const auto& ops = instr.operands;
+        if (ops.empty()) {
+            continue;
+        }
+
+        if (op.size() >= 8 && op.substr(0, 8) == "ld.param" && ops.size() >= 2) {
+            const std::string dest = get_reg(ops[0]);
+            std::string pname;
+            if (!ops[1].empty() && ops[1].front() == '[') {
+                pname = ops[1].substr(1);
+                const auto plus = pname.find('+');
+                if (plus != std::string::npos) {
+                    pname = pname.substr(0, plus);
+                }
+                const auto br = pname.find(']');
+                if (br != std::string::npos) {
+                    pname = pname.substr(0, br);
+                }
+                while (!pname.empty() &&
+                       std::isspace(static_cast<unsigned char>(pname.back()))) {
+                    pname.pop_back();
+                }
+            }
+            if (!dest.empty() && !pname.empty()) {
+                const auto it = param_is_ptr.find(pname);
+                if (it != param_is_ptr.end()) {
+                    reg[dest] = {it->second ? RegKind::ParamPtr : RegKind::ParamScalar,
+                                 pname, {}, 4};
+                }
+            }
+            continue;
+        }
+
+        if ((op == "mov.u32" || op == "mov.s32") && ops.size() == 2) {
+            const std::string dest = get_reg(ops[0]);
+            if (!dest.empty()) {
+                if (ops[1] == "%tid.x") {
+                    reg[dest] = {RegKind::ThreadTid};
+                } else if (ops[1] == "%ntid.x") {
+                    reg[dest] = {RegKind::ThreadNtid};
+                } else if (ops[1] == "%ctaid.x") {
+                    reg[dest] = {RegKind::ThreadCtaid};
+                }
+            }
+            continue;
+        }
+
+        // mad.lo.u32 gid, ctaid, ntid, tid  (or ntid, ctaid, tid)
+        if ((op == "mad.lo.u32" || op == "mad.lo.s32") && ops.size() == 4) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string s1 = get_reg(ops[1]);
+            const std::string s2 = get_reg(ops[2]);
+            const std::string s3 = get_reg(ops[3]);
+            if (!dest.empty() && !s1.empty() && !s2.empty() && !s3.empty()) {
+                const auto k1 = reg.count(s1) ? reg.at(s1).kind : RegKind::Unknown;
+                const auto k2 = reg.count(s2) ? reg.at(s2).kind : RegKind::Unknown;
+                const auto k3 = reg.count(s3) ? reg.at(s3).kind : RegKind::Unknown;
+                const bool gid_pattern =
+                    ((k1 == RegKind::ThreadCtaid && k2 == RegKind::ThreadNtid) ||
+                     (k1 == RegKind::ThreadNtid && k2 == RegKind::ThreadCtaid)) &&
+                    k3 == RegKind::ThreadTid;
+                if (gid_pattern) {
+                    reg[dest] = {RegKind::ThreadGid};
+                }
+            }
+            continue;
+        }
+
+        // cvt.*.u64.{u32,s32} — promote 32-bit gid to 64-bit
+        if (op.find("cvt") == 0 && op.find(".u64.") != std::string::npos && ops.size() == 2) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string src = get_reg(ops[1]);
+            if (!dest.empty() && !src.empty() && reg.count(src) &&
+                reg.at(src).kind == RegKind::ThreadGid) {
+                reg[dest] = {RegKind::ThreadGid64};
+            }
+            continue;
+        }
+
+        // shl.b64 rdN, rdGID64, imm  →  byte_offset = gid * 2^imm
+        if (op == "shl.b64" && ops.size() == 3) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string src = get_reg(ops[1]);
+            const int imm = get_imm(ops[2]);
+            if (!dest.empty() && !src.empty() && imm >= 0 && reg.count(src) &&
+                reg.at(src).kind == RegKind::ThreadGid64) {
+                reg[dest] = {RegKind::ByteOffset, {}, {}, 1 << imm};
+            }
+            continue;
+        }
+
+        // mul.lo.u64 rdN, rdGID64, imm  →  byte_offset = gid * imm
+        if ((op == "mul.lo.u64" || op == "mul.wide.u32") && ops.size() == 3) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string src = get_reg(ops[1]);
+            const int imm = get_imm(ops[2]);
+            if (!dest.empty() && !src.empty() && imm > 0 && reg.count(src) &&
+                reg.at(src).kind == RegKind::ThreadGid64) {
+                reg[dest] = {RegKind::ByteOffset, {}, {}, imm};
+            }
+            continue;
+        }
+
+        // add.u64 rdP, rdBase, rdOffset  →  derived pointer: param[gid]
+        if ((op == "add.u64" || op == "add.s64") && ops.size() == 3) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string s1 = get_reg(ops[1]);
+            const std::string s2 = get_reg(ops[2]);
+            if (!dest.empty() && !s1.empty() && !s2.empty()) {
+                const auto k1 = reg.count(s1) ? reg.at(s1).kind : RegKind::Unknown;
+                const auto k2 = reg.count(s2) ? reg.at(s2).kind : RegKind::Unknown;
+                const RegInfo* base_r = nullptr;
+                const RegInfo* off_r = nullptr;
+                if (k1 == RegKind::ParamPtr && k2 == RegKind::ByteOffset) {
+                    base_r = &reg.at(s1);
+                    off_r = &reg.at(s2);
+                } else if (k2 == RegKind::ParamPtr && k1 == RegKind::ByteOffset) {
+                    base_r = &reg.at(s2);
+                    off_r = &reg.at(s1);
+                }
+                if (base_r != nullptr && off_r != nullptr) {
+                    reg[dest] = {RegKind::DerivedPtr, base_r->param_name, {}, off_r->byte_per_elem};
+                }
+            }
+            continue;
+        }
+    }
+
+    // ── Validate: every global load/store must have a resolved address ─────────
+
+    bool has_global = false;
+    for (const auto& instr : entry->instructions) {
+        if (instr.opcode.find("ld.global") == 0 || instr.opcode.find("st.global") == 0) {
+            has_global = true;
+            const bool is_load = (instr.opcode[0] == 'l');
+            const std::string& addr_op =
+                is_load ? instr.operands[1] : instr.operands[0];
+            if (addr_op.empty() || addr_op.front() != '[') {
+                return {};
+            }
+            const std::string mreg = get_reg(addr_op);
+            if (mreg.empty()) {
+                return {};
+            }
+            const auto it = reg.find(mreg);
+            if (it == reg.end() ||
+                (it->second.kind != RegKind::DerivedPtr &&
+                 it->second.kind != RegKind::ParamPtr)) {
+                return {};
+            }
+        }
+    }
+
+    bool has_gid = false;
+    for (const auto& kv : reg) {
+        if (kv.second.kind == RegKind::ThreadGid) {
+            has_gid = true;
+            break;
+        }
+    }
+    if (has_global && !has_gid) {
+        return {};
+    }
+
+    // ── Determine element type for each pointer param ─────────────────────────
+
+    std::unordered_map<std::string, std::string> param_etype;
+    for (const auto& instr : entry->instructions) {
+        const auto& op = instr.opcode;
+        if (op.find("ld.global") != 0 && op.find("st.global") != 0) {
+            continue;
+        }
+        const bool is_load = (op[0] == 'l');
+        const std::string mreg = get_reg(is_load ? instr.operands[1] : instr.operands[0]);
+        if (mreg.empty()) {
+            continue;
+        }
+        const auto it = reg.find(mreg);
+        if (it == reg.end()) {
+            continue;
+        }
+        const std::string& pname = (it->second.kind == RegKind::DerivedPtr)
+                                       ? it->second.base_param
+                                       : it->second.param_name;
+        std::string etype;
+        if (op.find(".f32") != std::string::npos) {
+            etype = "float";
+        } else if (op.find(".f64") != std::string::npos) {
+            etype = "double";
+        } else if (op.find(".u32") != std::string::npos) {
+            etype = "uint";
+        } else if (op.find(".s32") != std::string::npos) {
+            etype = "int";
+        } else if (op.find(".u64") != std::string::npos) {
+            etype = "ulong";
+        } else {
+            etype = "float";
+        }
+        if (!pname.empty()) {
+            param_etype[pname] = etype;
+        }
+    }
+
+    // ── Detect bounds-check setp pattern ─────────────────────────────────────
+    // setp.ge/gt %p, %rGID, %rN  where rGID=ThreadGid and rN=ParamScalar →
+    // emit `if (gid >= (uint)N) return;` in place of the setp + branch pair.
+
+    std::unordered_map<std::string, std::string> pred_guard;  // pred_reg → Metal expr
+    for (const auto& instr : entry->instructions) {
+        const auto& op = instr.opcode;
+        const auto& ops = instr.operands;
+        if (op.find("setp") != 0 || ops.size() < 3) {
+            continue;
+        }
+        const std::string dp = get_reg(ops[0]);
+        const std::string s1 = get_reg(ops[1]);
+        const std::string s2 = get_reg(ops[2]);
+        const bool s1_gid = reg.count(s1) && reg.at(s1).kind == RegKind::ThreadGid;
+        const bool s2_scalar = reg.count(s2) && reg.at(s2).kind == RegKind::ParamScalar;
+        if (!s1_gid || !s2_scalar) {
+            continue;
+        }
+        std::string cmp;
+        if (op.find(".ge") != std::string::npos) {
+            cmp = ">=";
+        } else if (op.find(".gt") != std::string::npos) {
+            cmp = ">";
+        } else if (op.find(".lt") != std::string::npos) {
+            cmp = "<";
+        } else if (op.find(".le") != std::string::npos) {
+            cmp = "<=";
+        }
+        if (!dp.empty() && !cmp.empty()) {
+            pred_guard[dp] = "gid " + cmp + " (uint)" + reg.at(s2).param_name;
+        }
+    }
+
+    // ── Pass 2: emit Metal source ─────────────────────────────────────────────
+
+    std::ostringstream metal;
+    metal << "#include <metal_stdlib>\n#include <metal_atomic>\n\nusing namespace metal;\n\n";
+    metal << "kernel void " << entry_name << "(\n";
+
+    int buf_idx = 0;
+    bool first_arg = true;
+    for (const auto& p : entry->params) {
+        if (!first_arg) {
+            metal << ",\n";
+        }
+        first_arg = false;
+        if (p.is_pointer) {
+            const std::string etype =
+                param_etype.count(p.name) ? param_etype.at(p.name) : "float";
+            metal << "    device " << etype << "* " << p.name
+                  << " [[buffer(" << buf_idx << ")]]";
+        } else {
+            std::string mtype = "uint";
+            if (p.type == ".u64" || p.type == ".s64" || p.type == ".b64") {
+                mtype = "ulong";
+            } else if (p.type == ".f32") {
+                mtype = "float";
+            } else if (p.type == ".f64") {
+                mtype = "double";
+            } else if (p.type == ".u16" || p.type == ".s16" || p.type == ".b16") {
+                mtype = "ushort";
+            }
+            metal << "    constant " << mtype << "& " << p.name
+                  << " [[buffer(" << buf_idx << ")]]";
+        }
+        ++buf_idx;
+    }
+    metal << ",\n    uint gid [[thread_position_in_grid]]) {\n";
+
+    // Metal variable name for a PTX register: %rd0 → vrd0, %f1 → vf1
+    auto mvar = [](const std::string& r) -> std::string {
+        return (r.size() > 1 && r[0] == '%') ? "v" + r.substr(1) : r;
+    };
+
+    // Resolve an operand to a Metal expression (reg or immediate)
+    auto resolve = [&](const std::string& operand) -> std::string {
+        const std::string r = get_reg(operand);
+        if (r.empty()) {
+            return operand;  // immediate
+        }
+        const auto it = reg.find(r);
+        if (it != reg.end() && it->second.kind == RegKind::ThreadGid) {
+            return "gid";
+        }
+        if (it != reg.end() && it->second.kind == RegKind::ParamScalar) {
+            return it->second.param_name;
+        }
+        return mvar(r);
+    };
+
+    // Metal type inferred from PTX register name prefix
+    auto reg_type = [](const std::string& r) -> std::string {
+        if (r.size() > 2 && r[0] == '%' && r[1] == 'r' && r[2] == 'd') return "ulong";
+        if (r.size() > 2 && r[0] == '%' && r[1] == 'f' && r[2] == 'd') return "double";
+        if (r.size() > 1 && r[0] == '%' && r[1] == 'f') return "float";
+        if (r.size() > 1 && r[0] == '%' && r[1] == 'p') return "bool";
+        if (r.size() > 1 && r[0] == '%' && r[1] == 'h') return "ushort";
+        return "uint";
+    };
+
+    std::unordered_set<std::string> consumed_guards;
+
+    // Track registers that have been defined so far in the emitted Metal body.
+    // Source operands that refer to undefined registers indicate the PTX body
+    // is not self-contained (e.g. it relies on LLVM-synthesised setup) — bail.
+    std::unordered_set<std::string> defined_regs;
+    // Registers that are structural (resolved via parameter bindings or gid)
+    // are always "defined" from the Metal kernel's perspective.
+    for (const auto& kv : reg) {
+        defined_regs.insert(kv.first);
+    }
+
+    // Helper: return false if any source register in `src_ops` (starting at
+    // `first_src_index`) is an unrecognised undefined register.
+    auto all_sources_defined = [&](const std::vector<std::string>& ops,
+                                   std::size_t first_src_index) -> bool {
+        for (std::size_t i = first_src_index; i < ops.size(); ++i) {
+            const std::string r = get_reg(ops[i]);
+            if (r.empty()) continue;  // immediate — fine
+            if (defined_regs.count(r)) continue;
+            return false;
+        }
+        return true;
+    };
+
+    for (const auto& instr : entry->instructions) {
+        const auto& op = instr.opcode;
+        const auto& ops = instr.operands;
+
+        // ── Structural: parameter loads, ret ────────────────────────────────
+        if (op.size() >= 8 && op.substr(0, 8) == "ld.param") continue;
+        if (op == "ret") continue;
+
+        // mov %r, %tid/ntid/ctaid.x → structural
+        if ((op == "mov.u32" || op == "mov.s32") && ops.size() == 2 &&
+            (ops[1] == "%tid.x" || ops[1] == "%ntid.x" || ops[1] == "%ctaid.x")) {
+            continue;
+        }
+
+        // Skip instructions whose destination is a structural register
+        if (!ops.empty()) {
+            const std::string dest = get_reg(ops[0]);
+            if (!dest.empty() && reg.count(dest)) {
+                switch (reg.at(dest).kind) {
+                    case RegKind::ThreadGid:
+                    case RegKind::ThreadGid64:
+                    case RegKind::ByteOffset:
+                    case RegKind::DerivedPtr:
+                    case RegKind::ParamPtr:
+                    case RegKind::ParamScalar:
+                        continue;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        // ── Global memory load ───────────────────────────────────────────────
+        if (op.find("ld.global") == 0 && ops.size() >= 2) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string mreg = get_reg(ops[1]);
+            const auto it = reg.find(mreg);
+            if (it == reg.end()) return {};
+            const std::string& pname = (it->second.kind == RegKind::DerivedPtr)
+                                           ? it->second.base_param
+                                           : it->second.param_name;
+            const std::string etype =
+                param_etype.count(pname) ? param_etype.at(pname) : "float";
+            metal << "    " << etype << " " << mvar(dest) << " = " << pname << "[gid];\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // ── Global memory store ──────────────────────────────────────────────
+        if (op.find("st.global") == 0 && ops.size() >= 2) {
+            const std::string mreg = get_reg(ops[0]);
+            const auto it = reg.find(mreg);
+            if (it == reg.end()) return {};
+            const std::string& pname = (it->second.kind == RegKind::DerivedPtr)
+                                           ? it->second.base_param
+                                           : it->second.param_name;
+            metal << "    " << pname << "[gid] = " << resolve(ops[1]) << ";\n";
+            continue;
+        }
+
+        // ── setp: bounds guard or generic comparison ─────────────────────────
+        if (op.find("setp") == 0 && ops.size() >= 3) {
+            const std::string dp = get_reg(ops[0]);
+            if (pred_guard.count(dp)) {
+                metal << "    if (" << pred_guard.at(dp) << ") return;\n";
+                consumed_guards.insert(dp);
+                defined_regs.insert(dp);
+                continue;
+            }
+            if (!all_sources_defined(ops, 1)) return {};
+            // Generic comparison
+            std::string cmp;
+            if (op.find(".ge") != std::string::npos) cmp = ">=";
+            else if (op.find(".gt") != std::string::npos) cmp = ">";
+            else if (op.find(".lt") != std::string::npos) cmp = "<";
+            else if (op.find(".le") != std::string::npos) cmp = "<=";
+            else if (op.find(".eq") != std::string::npos) cmp = "==";
+            else if (op.find(".ne") != std::string::npos) cmp = "!=";
+            else return {};
+            metal << "    bool " << mvar(dp) << " = "
+                  << resolve(ops[1]) << " " << cmp << " " << resolve(ops[2]) << ";\n";
+            defined_regs.insert(dp);
+            continue;
+        }
+
+        // ── Conditional branch ───────────────────────────────────────────────
+        if (op == "bra" && !instr.predicate.empty()) {
+            bool negated = false;
+            std::string pred_str = instr.predicate;
+            if (pred_str.size() > 1 && pred_str[1] == '!') {
+                negated = true;
+                pred_str = pred_str[0] + pred_str.substr(2);
+            }
+            const std::string pr = get_reg(pred_str);
+            if (consumed_guards.count(pr)) {
+                continue;  // already emitted as early return
+            }
+            // Cannot safely translate generic forward/backward branches to MSL.
+            return {};
+        }
+
+        // ── Unconditional branch → unsupported ──────────────────────────────
+        if (op == "bra") return {};
+
+        // ── bar.sync → no-op (single wave assumption) ────────────────────────
+        if (op.size() >= 3 && op.substr(0, 3) == "bar") continue;
+
+        // ── Type conversion ──────────────────────────────────────────────────
+        if (op.find("cvt") == 0 && ops.size() == 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            const std::string src = resolve(ops[1]);
+            const std::string dtype = reg_type(dest);
+            metal << "    " << dtype << " " << mvar(dest) << " = (" << dtype << ")" << src << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // ── Arithmetic (binary) ──────────────────────────────────────────────
+        const std::string root = [&]() {
+            const auto dot = op.find('.');
+            return dot != std::string::npos ? op.substr(0, dot) : op;
+        }();
+
+        auto emit_binary_op = [&](const std::string& metal_op) -> bool {
+            if (ops.size() < 3) return false;
+            if (!all_sources_defined(ops, 1)) return false;
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest)
+                  << " = " << resolve(ops[1]) << " " << metal_op << " " << resolve(ops[2]) << ";\n";
+            defined_regs.insert(dest);
+            return true;
+        };
+
+        if (root == "add") { if (!emit_binary_op("+")) return {}; continue; }
+        if (root == "sub") { if (!emit_binary_op("-")) return {}; continue; }
+        if (root == "mul") { if (!emit_binary_op("*")) return {}; continue; }
+        if (root == "div") { if (!emit_binary_op("/")) return {}; continue; }
+        if (root == "rem") { if (!emit_binary_op("%")) return {}; continue; }
+        if (root == "and") { if (!emit_binary_op("&")) return {}; continue; }
+        if (root == "or")  { if (!emit_binary_op("|")) return {}; continue; }
+        if (root == "xor") { if (!emit_binary_op("^")) return {}; continue; }
+        if (root == "shl") { if (!emit_binary_op("<<")) return {}; continue; }
+        if (root == "shr") { if (!emit_binary_op(">>")) return {}; continue; }
+
+        if (root == "mad" && ops.size() >= 4) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = "
+                  << resolve(ops[1]) << " * " << resolve(ops[2]) << " + " << resolve(ops[3]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "fma" && ops.size() >= 4) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = fma("
+                  << resolve(ops[1]) << ", " << resolve(ops[2]) << ", " << resolve(ops[3]) << ");\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "neg" && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = -" << resolve(ops[1]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "rcp" && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = 1.0f / " << resolve(ops[1]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "abs" && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = abs(" << resolve(ops[1]) << ");\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if ((root == "max" || root == "min") && ops.size() >= 3) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = "
+                  << root << "(" << resolve(ops[1]) << ", " << resolve(ops[2]) << ");\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "not" && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = ~" << resolve(ops[1]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "selp" && ops.size() >= 4) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = "
+                  << resolve(ops[3]) << " ? " << resolve(ops[1]) << " : " << resolve(ops[2]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+        if (root == "mov" && ops.size() == 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            metal << "    " << reg_type(dest) << " " << mvar(dest) << " = " << resolve(ops[1]) << ";\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // ── atom.global.add.f32 ─────────────────────────────────────────────
+        if (op.find("atom.global.add.f32") == 0 && ops.size() >= 3) {
+            if (!all_sources_defined(ops, 2)) return {};
+            const std::string dest = get_reg(ops[0]);
+            const std::string mreg = get_reg(ops[1]);
+            const auto it = reg.find(mreg);
+            if (it == reg.end()) return {};
+            const std::string& pname = (it->second.kind == RegKind::DerivedPtr)
+                                           ? it->second.base_param
+                                           : it->second.param_name;
+            const std::string atm = "atm_" + mvar(dest);
+            metal << "    device atomic_float* " << atm
+                  << " = reinterpret_cast<device atomic_float*>(" << pname << " + gid);\n";
+            metal << "    float " << mvar(dest) << " = atomic_fetch_add_explicit("
+                  << atm << ", " << resolve(ops[2]) << ", memory_order_relaxed);\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // Unrecognised instruction — fall back to PTX→LLVM path.
+        return {};
+    }
+
+    metal << "}\n";
+    return metal.str();
+}
+
 }  // namespace
 
 LowerToMetalResult lower_ptx_to_metal_source(std::string_view ptx, const LowerToMetalOptions& options) {
@@ -673,7 +1358,14 @@ LowerToMetalResult lower_ptx_to_metal_source(std::string_view ptx, const LowerTo
     result.entry_name = pipeline.entry_name;
     result.warnings = pipeline.warnings;
 
-    const std::string metal_source = emit_metal_source_for_entry(pipeline.entry_name);
+    // First: try the hardcoded name-based lookup for known llm.c kernels.
+    std::string metal_source = emit_metal_source_for_entry(pipeline.entry_name);
+
+    // Second: if no hardcoded match, attempt generic PTX → Metal translation.
+    if (metal_source.empty()) {
+        metal_source = emit_metal_source_generic(pipeline.entry_name, ptx);
+    }
+
     if (metal_source.empty()) {
         result.ok = true;
         result.matched = false;

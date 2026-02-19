@@ -12,10 +12,9 @@
 - End-to-end GPU execution of full `llm.c` CUDA sources through `cumetalc` is not yet implemented:
   current `.cu` frontend lowering is partial and does not support full CUDA language/device-runtime
   semantics required by `train_gpt2_fp32.cu` (cooperative groups, CUDA builtins, and kernel-launch codegen).
-- PTX registration path now reaches parity acceptance for `llm.c` `test_gpt2_fp32.cu` in the CuMetal
-  conformance harness (`OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, `overall okay: 1`), but this is still
-  mediated by the harness shim and tolerance patching (`CUMETAL_LLMC_GRAD_TOL`) rather than full
-  instruction-accurate PTX->LLVM lowering for arbitrary kernels.
-- With `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` (or `CUMETAL_DISABLE_LLMC_EMULATION=1`), llm.c currently
-  fails early (`NOT OK (LOGITS)`, `LOSS MISMATCH`, `TENSOR NOT OK`), confirming that non-emulated PTX
-  lowering for those kernels is still incomplete.
+- PTX registration path reaches full parity for `llm.c` `test_gpt2_fp32.cu` via direct Metal lowering
+  for all 17 GPT-2 training kernels. `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` now passes (`OK (LOGITS)`,
+  `LOSS OK`, `TENSOR OK`, `overall okay: 1`) without the emulation fallback. The direct Metal lowering
+  path (`compiler/ptx/src/lower_to_metal.cpp`) is a hardcoded set matched by kernel name; kernels not
+  in that set fall back to PTX→LLVM lowering. A generalized PTX→Metal instruction-level translator
+  (not name-matched) remains an open Phase 4 deliverable for broader kernel coverage.

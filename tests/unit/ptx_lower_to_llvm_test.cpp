@@ -230,6 +230,44 @@ int main() {
         return 1;
     }
 
+    // Test: .u64 parameter used in arithmetic is inferred as non-pointer scalar,
+    // lowered to i64 in LLVM IR rather than float addrspace(1)*.
+    // This exercises the ld.param erase-bug fix end-to-end: without the fix,
+    // the register-to-param mapping for %rd1 would be immediately erased by the
+    // propagation block processing the ld.param instruction itself, causing
+    // scale_step_param_1 to default to is_pointer=true → float addrspace(1)*.
+    const std::string scale_step_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry scale_step(
+    .param .u64 scale_step_param_0,
+    .param .u64 scale_step_param_1
+)
+{
+    ld.param.u64 %rd0, [scale_step_param_0];
+    ld.param.u64 %rd1, [scale_step_param_1];
+    ld.global.f32 %f0, [%rd0];
+    mul.lo.u64 %rd2, %rd1, 4;
+    ret;
+}
+)PTX";
+
+    cumetal::ptx::LowerToLlvmOptions scale_step_options;
+    scale_step_options.entry_name = "scale_step";
+    const auto scale_step_lowered = cumetal::ptx::lower_ptx_to_llvm_ir(scale_step_ptx, scale_step_options);
+    if (!expect(scale_step_lowered.ok, "scale_step lowering succeeds")) {
+        return 1;
+    }
+    if (!expect(contains(scale_step_lowered.llvm_ir,
+                         "float addrspace(1)* %scale_step_param_0"),
+                "scale_step pointer param lowered as device buffer pointer")) {
+        return 1;
+    }
+    if (!expect(contains(scale_step_lowered.llvm_ir, "i64 %scale_step_param_1"),
+                "scale_step scalar .u64 param lowered as i64 (not pointer)")) {
+        return 1;
+    }
+
     std::printf("PASS: ptx lower-to-llvm unit tests\n");
     return 0;
 }
