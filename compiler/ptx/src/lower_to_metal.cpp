@@ -717,15 +717,16 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
 
     enum class RegKind {
         Unknown,
-        ParamPtr,     // loaded from a pointer (.is_pointer) param
-        ParamScalar,  // loaded from a scalar param
-        ThreadTid,    // %tid.x
-        ThreadNtid,   // %ntid.x
-        ThreadCtaid,  // %ctaid.x
-        ThreadGid,    // mad(ctaid, ntid, tid) → global 1-D thread ID
-        ThreadGid64,  // (u64)ThreadGid
-        ByteOffset,   // ThreadGid64 * byte_per_elem  (from shl / mul)
-        DerivedPtr,   // ParamPtr + ByteOffset  → param[gid]
+        ParamPtr,      // loaded from a pointer (.is_pointer) param
+        ParamScalar,   // loaded from a scalar param
+        ThreadTid,     // %tid.x
+        ThreadNtid,    // %ntid.x
+        ThreadCtaid,   // %ctaid.x
+        ThreadPartial, // mul.lo.u32(ctaid, ntid) — intermediate before adding tid
+        ThreadGid,     // mad(ctaid, ntid, tid) or add(PartialGid, tid) → global 1-D thread ID
+        ThreadGid64,   // (u64)ThreadGid
+        ByteOffset,    // ThreadGid64 * byte_per_elem  (from shl / mul)
+        DerivedPtr,    // ParamPtr + ByteOffset  → param[gid]
     };
     struct RegInfo {
         RegKind kind = RegKind::Unknown;
@@ -798,8 +799,8 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             if (!dest.empty() && !pname.empty()) {
                 const auto it = param_is_ptr.find(pname);
                 if (it != param_is_ptr.end()) {
-                    reg[dest] = {it->second ? RegKind::ParamPtr : RegKind::ParamScalar,
-                                 pname, {}, 4};
+                    reg[dest] = {.kind = it->second ? RegKind::ParamPtr : RegKind::ParamScalar,
+                                 .param_name = pname};
                 }
             }
             continue;
@@ -809,11 +810,11 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             const std::string dest = get_reg(ops[0]);
             if (!dest.empty()) {
                 if (ops[1] == "%tid.x") {
-                    reg[dest] = {RegKind::ThreadTid};
+                    reg[dest] = {.kind = RegKind::ThreadTid};
                 } else if (ops[1] == "%ntid.x") {
-                    reg[dest] = {RegKind::ThreadNtid};
+                    reg[dest] = {.kind = RegKind::ThreadNtid};
                 } else if (ops[1] == "%ctaid.x") {
-                    reg[dest] = {RegKind::ThreadCtaid};
+                    reg[dest] = {.kind = RegKind::ThreadCtaid};
                 }
             }
             continue;
@@ -834,7 +835,43 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
                      (k1 == RegKind::ThreadNtid && k2 == RegKind::ThreadCtaid)) &&
                     k3 == RegKind::ThreadTid;
                 if (gid_pattern) {
-                    reg[dest] = {RegKind::ThreadGid};
+                    reg[dest] = {.kind = RegKind::ThreadGid};
+                }
+            }
+            continue;
+        }
+
+        // mul.lo.u32 partial, ctaid, ntid  (first half of two-instruction gid pattern)
+        if ((op == "mul.lo.u32" || op == "mul.lo.s32") && ops.size() == 3) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string s1 = get_reg(ops[1]);
+            const std::string s2 = get_reg(ops[2]);
+            if (!dest.empty() && !s1.empty() && !s2.empty()) {
+                const auto k1 = reg.count(s1) ? reg.at(s1).kind : RegKind::Unknown;
+                const auto k2 = reg.count(s2) ? reg.at(s2).kind : RegKind::Unknown;
+                const bool partial_pattern =
+                    (k1 == RegKind::ThreadCtaid && k2 == RegKind::ThreadNtid) ||
+                    (k1 == RegKind::ThreadNtid && k2 == RegKind::ThreadCtaid);
+                if (partial_pattern) {
+                    reg[dest] = {.kind = RegKind::ThreadPartial};
+                }
+            }
+            continue;
+        }
+
+        // add.u32 gid, partial, tid  (second half of two-instruction gid pattern)
+        if ((op == "add.u32" || op == "add.s32") && ops.size() == 3) {
+            const std::string dest = get_reg(ops[0]);
+            const std::string s1 = get_reg(ops[1]);
+            const std::string s2 = get_reg(ops[2]);
+            if (!dest.empty() && !s1.empty() && !s2.empty()) {
+                const auto k1 = reg.count(s1) ? reg.at(s1).kind : RegKind::Unknown;
+                const auto k2 = reg.count(s2) ? reg.at(s2).kind : RegKind::Unknown;
+                const bool gid_pattern =
+                    (k1 == RegKind::ThreadPartial && k2 == RegKind::ThreadTid) ||
+                    (k1 == RegKind::ThreadTid && k2 == RegKind::ThreadPartial);
+                if (gid_pattern) {
+                    reg[dest] = {.kind = RegKind::ThreadGid};
                 }
             }
             continue;
@@ -846,7 +883,7 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             const std::string src = get_reg(ops[1]);
             if (!dest.empty() && !src.empty() && reg.count(src) &&
                 reg.at(src).kind == RegKind::ThreadGid) {
-                reg[dest] = {RegKind::ThreadGid64};
+                reg[dest] = {.kind = RegKind::ThreadGid64};
             }
             continue;
         }
@@ -858,7 +895,7 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             const int imm = get_imm(ops[2]);
             if (!dest.empty() && !src.empty() && imm >= 0 && reg.count(src) &&
                 reg.at(src).kind == RegKind::ThreadGid64) {
-                reg[dest] = {RegKind::ByteOffset, {}, {}, 1 << imm};
+                reg[dest] = {.kind = RegKind::ByteOffset, .byte_per_elem = 1 << imm};
             }
             continue;
         }
@@ -870,7 +907,7 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             const int imm = get_imm(ops[2]);
             if (!dest.empty() && !src.empty() && imm > 0 && reg.count(src) &&
                 reg.at(src).kind == RegKind::ThreadGid64) {
-                reg[dest] = {RegKind::ByteOffset, {}, {}, imm};
+                reg[dest] = {.kind = RegKind::ByteOffset, .byte_per_elem = imm};
             }
             continue;
         }
@@ -893,7 +930,9 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
                     off_r = &reg.at(s1);
                 }
                 if (base_r != nullptr && off_r != nullptr) {
-                    reg[dest] = {RegKind::DerivedPtr, base_r->param_name, {}, off_r->byte_per_elem};
+                    reg[dest] = {.kind = RegKind::DerivedPtr,
+                                 .base_param = base_r->param_name,
+                                 .byte_per_elem = off_r->byte_per_elem};
                 }
             }
             continue;
@@ -1115,11 +1154,14 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             continue;
         }
 
-        // Skip instructions whose destination is a structural register
-        if (!ops.empty()) {
+        // Skip instructions whose destination is a structural register.
+        // Only applies when ops[0] is a plain register (not a bracket-addressed
+        // memory operand like "[%rd3]" used by store instructions).
+        if (!ops.empty() && (ops[0].empty() || ops[0][0] != '[')) {
             const std::string dest = get_reg(ops[0]);
             if (!dest.empty() && reg.count(dest)) {
                 switch (reg.at(dest).kind) {
+                    case RegKind::ThreadPartial:
                     case RegKind::ThreadGid:
                     case RegKind::ThreadGid64:
                     case RegKind::ByteOffset:
@@ -1188,10 +1230,8 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
 
         // ── Conditional branch ───────────────────────────────────────────────
         if (op == "bra" && !instr.predicate.empty()) {
-            bool negated = false;
             std::string pred_str = instr.predicate;
             if (pred_str.size() > 1 && pred_str[1] == '!') {
-                negated = true;
                 pred_str = pred_str[0] + pred_str.substr(2);
             }
             const std::string pr = get_reg(pred_str);
@@ -1321,12 +1361,19 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             const std::string mreg = get_reg(ops[1]);
             const auto it = reg.find(mreg);
             if (it == reg.end()) return {};
-            const std::string& pname = (it->second.kind == RegKind::DerivedPtr)
-                                           ? it->second.base_param
-                                           : it->second.param_name;
+            const bool is_derived = (it->second.kind == RegKind::DerivedPtr);
+            const std::string& pname = is_derived ? it->second.base_param
+                                                   : it->second.param_name;
             const std::string atm = "atm_" + mvar(dest);
-            metal << "    device atomic_float* " << atm
-                  << " = reinterpret_cast<device atomic_float*>(" << pname << " + gid);\n";
+            // DerivedPtr: each thread has its own slot (param[gid]).
+            // Raw ParamPtr: global accumulation to a fixed base address (param[0]).
+            if (is_derived) {
+                metal << "    device atomic_float* " << atm
+                      << " = reinterpret_cast<device atomic_float*>(" << pname << " + gid);\n";
+            } else {
+                metal << "    device atomic_float* " << atm
+                      << " = reinterpret_cast<device atomic_float*>(" << pname << ");\n";
+            }
             metal << "    float " << mvar(dest) << " = atomic_fetch_add_explicit("
                   << atm << ", " << resolve(ops[2]) << ", memory_order_relaxed);\n";
             defined_regs.insert(dest);

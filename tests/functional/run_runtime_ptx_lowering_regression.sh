@@ -78,10 +78,56 @@ DONE:
 }
 PTX
 
+cat > "${WORK_DIR}/clamp_relu.ptx" <<'PTX'
+.version 8.0
+.target sm_90
+.address_size 64
+
+.visible .entry clamp_relu(
+    .param .u64 clamp_relu_param_0,
+    .param .u64 clamp_relu_param_1,
+    .param .u32 clamp_relu_param_2
+) {
+    .reg .u64  %rd<4>;
+    .reg .f32  %f<3>;
+    .reg .u32  %r<8>;
+    .reg .pred %p<2>;
+
+    ld.param.u64 %rd0, [clamp_relu_param_0];
+    ld.param.u64 %rd1, [clamp_relu_param_1];
+    ld.param.u32 %r0,  [clamp_relu_param_2];
+
+    mov.u32 %r1, %ctaid.x;
+    mov.u32 %r2, %ntid.x;
+    mov.u32 %r3, %tid.x;
+    mad.lo.u32 %r4, %r1, %r2, %r3;
+
+    setp.ge.u32 %p0, %r4, %r0;
+    @%p0 bra DONE;
+
+    cvt.u64.u32 %rd2, %r4;
+    shl.b64     %rd2, %rd2, 2;
+    add.u64     %rd2, %rd0, %rd2;
+    ld.global.f32 %f0, [%rd2];
+
+    max.f32 %f1, %f0, 0.0;
+
+    cvt.u64.u32 %rd3, %r4;
+    shl.b64     %rd3, %rd3, 2;
+    add.u64     %rd3, %rd1, %rd3;
+    st.global.f32 [%rd3], %f1;
+
+DONE:
+    ret;
+}
+PTX
+
 "${CUMETALC_BIN}" --mode xcrun --input "${WORK_DIR}/negate.ptx" \
   --output "${WORK_DIR}/negate.metallib" --overwrite >/dev/null
 "${CUMETALC_BIN}" --mode xcrun --input "${WORK_DIR}/reduce_sum.ptx" \
   --output "${WORK_DIR}/reduce_sum.metallib" --overwrite >/dev/null
+"${CUMETALC_BIN}" --mode xcrun --input "${WORK_DIR}/clamp_relu.ptx" \
+  --output "${WORK_DIR}/clamp_relu.metallib" --overwrite >/dev/null
 
 cat > "${WORK_DIR}/ptx_lowering_regression.cpp" <<'CPP'
 #include "cuda_runtime.h"
@@ -216,11 +262,76 @@ int run_reduce_sum(const char* metallib_path) {
     return 0;
 }
 
+int run_clamp_relu(const char* metallib_path) {
+    constexpr int kN = 512;
+    std::vector<float> input(kN);
+    std::vector<float> output(kN, -99.0f);
+    for (int i = 0; i < kN; ++i) {
+        input[static_cast<std::size_t>(i)] = static_cast<float>(i - kN / 2);
+    }
+
+    void* d_input = nullptr;
+    void* d_output = nullptr;
+    if (cudaMalloc(&d_input, sizeof(float) * kN) != cudaSuccess ||
+        cudaMalloc(&d_output, sizeof(float) * kN) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: clamp_relu cudaMalloc failed\n");
+        return 1;
+    }
+
+    if (cudaMemcpy(d_input, input.data(), sizeof(float) * kN, cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: clamp_relu cudaMemcpy HtoD failed\n");
+        return 1;
+    }
+
+    const int count = kN;
+    static const cumetalKernelArgInfo_t kArgInfo[] = {
+        {CUMETAL_ARG_BUFFER, 0},
+        {CUMETAL_ARG_BUFFER, 0},
+        {CUMETAL_ARG_BYTES, sizeof(int)},
+    };
+    const cumetalKernel_t kernel{
+        .metallib_path = metallib_path,
+        .kernel_name = "clamp_relu",
+        .arg_count = 3,
+        .arg_info = kArgInfo,
+    };
+
+    void* in_arg = d_input;
+    void* out_arg = d_output;
+    const void* count_arg = &count;
+    void* args[] = {&in_arg, &out_arg, const_cast<void*>(count_arg)};
+    if (cudaLaunchKernel(&kernel, dim3((kN + 255) / 256), dim3(256), args, 0, nullptr) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: clamp_relu cudaLaunchKernel failed\n");
+        return 1;
+    }
+    if (cudaDeviceSynchronize() != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: clamp_relu cudaDeviceSynchronize failed\n");
+        return 1;
+    }
+    if (cudaMemcpy(output.data(), d_output, sizeof(float) * kN, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "FAIL: clamp_relu cudaMemcpy DtoH failed\n");
+        return 1;
+    }
+
+    for (int i = 0; i < kN; ++i) {
+        const float expected = fmaxf(input[static_cast<std::size_t>(i)], 0.0f);
+        if (fabsf(output[static_cast<std::size_t>(i)] - expected) > 1.0e-5f) {
+            std::fprintf(stderr, "FAIL: clamp_relu mismatch at %d (got=%f expected=%f)\n",
+                         i, static_cast<double>(output[static_cast<std::size_t>(i)]),
+                         static_cast<double>(expected));
+            return 1;
+        }
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::fprintf(stderr, "usage: %s <negate.metallib> <reduce_sum.metallib>\n", argv[0]);
+    if (argc != 4) {
+        std::fprintf(stderr,
+                     "usage: %s <negate.metallib> <reduce_sum.metallib> <clamp_relu.metallib>\n",
+                     argv[0]);
         return 2;
     }
     if (run_negate(argv[1]) != 0) {
@@ -229,7 +340,10 @@ int main(int argc, char** argv) {
     if (run_reduce_sum(argv[2]) != 0) {
         return 1;
     }
-    std::printf("PASS: PTX lowering regression kernels succeeded (negate + reduce_sum)\n");
+    if (run_clamp_relu(argv[3]) != 0) {
+        return 1;
+    }
+    std::printf("PASS: PTX lowering regression kernels succeeded (negate + reduce_sum + clamp_relu)\n");
     return 0;
 }
 CPP
@@ -241,4 +355,4 @@ xcrun clang++ -std=c++20 "${WORK_DIR}/ptx_lowering_regression.cpp" \
   -lcumetal \
   -o "${WORK_DIR}/ptx_lowering_regression"
 
-"${WORK_DIR}/ptx_lowering_regression" "${WORK_DIR}/negate.metallib" "${WORK_DIR}/reduce_sum.metallib"
+"${WORK_DIR}/ptx_lowering_regression" "${WORK_DIR}/negate.metallib" "${WORK_DIR}/reduce_sum.metallib" "${WORK_DIR}/clamp_relu.metallib"
