@@ -1,7 +1,7 @@
 CuMetal
 =======
 
-CuMetal is a CUDA compiler/runtime for Apple Silicon GPUs.
+CuMetal is an experimental CUDA compiler/runtime for Apple Silicon GPUs.
 
 Target:
 - macOS 14+
