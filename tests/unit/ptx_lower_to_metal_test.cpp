@@ -209,6 +209,64 @@ DONE:
     if (!expect(r_unsup.ok, "unsupported instruction lowering returns ok=true")) return 1;
     if (!expect(!r_unsup.matched, "unsupported instruction not matched by generic emitter")) return 1;
 
+    // ── Test 5: unary math intrinsics (sqrt, ex2, lg2, rsqrt) in generic emitter ──
+    const std::string math_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.address_size 64
+.visible .entry math_kernel(
+    .param .u64 math_kernel_param_0,
+    .param .u64 math_kernel_param_1,
+    .param .u32 math_kernel_param_2
+) {
+    .reg .u64  %rd<4>;
+    .reg .f32  %f<4>;
+    .reg .u32  %r<8>;
+    .reg .pred %p<2>;
+
+    ld.param.u64 %rd0, [math_kernel_param_0];
+    ld.param.u64 %rd1, [math_kernel_param_1];
+    ld.param.u32 %r0,  [math_kernel_param_2];
+
+    mov.u32 %r1, %ctaid.x;
+    mov.u32 %r2, %ntid.x;
+    mov.u32 %r3, %tid.x;
+    mad.lo.u32 %r4, %r1, %r2, %r3;
+
+    setp.ge.u32 %p0, %r4, %r0;
+    @%p0 bra DONE;
+
+    cvt.u64.u32 %rd2, %r4;
+    shl.b64     %rd2, %rd2, 2;
+    add.u64     %rd2, %rd0, %rd2;
+    ld.global.f32 %f0, [%rd2];
+
+    sqrt.rn.f32      %f1, %f0;
+    rsqrt.approx.f32 %f2, %f1;
+    ex2.approx.f32   %f3, %f0;
+
+    cvt.u64.u32 %rd3, %r4;
+    shl.b64     %rd3, %rd3, 2;
+    add.u64     %rd3, %rd1, %rd3;
+    st.global.f32 [%rd3], %f3;
+
+DONE:
+    ret;
+}
+)PTX";
+
+    cumetal::ptx::LowerToMetalOptions opts_math;
+    opts_math.entry_name = "math_kernel";
+    const auto r_math = cumetal::ptx::lower_ptx_to_metal_source(math_ptx, opts_math);
+    if (!expect(r_math.ok, "math_kernel lowering ok")) return 1;
+    if (!expect(r_math.matched, "math_kernel matched by generic emitter")) return 1;
+    if (!expect(contains(r_math.metal_source, "sqrt(vf0)"), "sqrt emitted")) return 1;
+    if (!expect(contains(r_math.metal_source, "rsqrt(vf1)"), "rsqrt emitted")) return 1;
+    if (!expect(contains(r_math.metal_source, "exp2(vf0)"), "ex2 → exp2 emitted")) return 1;
+    if (!expect(contains(r_math.metal_source, "math_kernel_param_1[gid]"),
+                "math_kernel global store to param_1"))
+        return 1;
+
     std::printf("PASS: ptx lower-to-metal unit tests\n");
     return 0;
 }

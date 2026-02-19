@@ -147,6 +147,71 @@ int main() {
         return 1;
     }
 
+    // ── Test 2: math intrinsics (max, min, abs, fma, sqrt, rsqrt, ex2, lg2, sin, cos) ──
+    const std::string ptx2 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k2(
+    .param .u64 p0,
+    .param .u64 p1
+)
+{
+    max.f32    %f0, %f1, %f2;
+    min.f32    %f0, %f1, %f2;
+    abs.f32    %f0, %f1;
+    fma.rn.f32 %f0, %f1, %f2, %f3;
+    sqrt.rn.f32      %f0, %f1;
+    rsqrt.approx.f32 %f0, %f1;
+    ex2.approx.f32   %f0, %f1;
+    lg2.approx.f32   %f0, %f1;
+    sin.approx.f32   %f0, %f1;
+    cos.approx.f32   %f0, %f1;
+    ret;
+}
+)PTX";
+
+    const auto parsed2 = cumetal::ptx::parse_ptx(ptx2);
+    if (!expect(parsed2.ok, "parse PTX2 for math intrinsics")) return 1;
+    if (!expect(parsed2.module.entries.size() == 1, "single PTX2 entry")) return 1;
+    if (!expect(parsed2.module.entries[0].instructions.size() == 11,
+                "PTX2 instruction count (10 math + ret)"))
+        return 1;
+
+    const auto m = cumetal::passes::lower_intrinsics(parsed2.module.entries[0]);
+    if (!expect(m.ok, "math intrinsics lower ok")) return 1;
+    if (!expect(m.warnings.empty(), "no warnings for supported math intrinsics")) return 1;
+
+    if (!expect(m.instructions[0].translated && m.instructions[0].opcode == "llvm.fmax",
+                "max.f32 → llvm.fmax"))
+        return 1;
+    if (!expect(m.instructions[1].translated && m.instructions[1].opcode == "llvm.fmin",
+                "min.f32 → llvm.fmin"))
+        return 1;
+    if (!expect(m.instructions[2].translated && m.instructions[2].opcode == "llvm.fabs",
+                "abs.f32 → llvm.fabs"))
+        return 1;
+    if (!expect(m.instructions[3].translated && m.instructions[3].opcode == "llvm.fma",
+                "fma.rn.f32 → llvm.fma"))
+        return 1;
+    if (!expect(m.instructions[4].translated && m.instructions[4].opcode == "llvm.sqrt",
+                "sqrt.rn.f32 → llvm.sqrt"))
+        return 1;
+    if (!expect(m.instructions[5].translated && m.instructions[5].opcode == "llvm.rsqrt",
+                "rsqrt.approx.f32 → llvm.rsqrt"))
+        return 1;
+    if (!expect(m.instructions[6].translated && m.instructions[6].opcode == "llvm.exp2",
+                "ex2.approx.f32 → llvm.exp2"))
+        return 1;
+    if (!expect(m.instructions[7].translated && m.instructions[7].opcode == "llvm.log2",
+                "lg2.approx.f32 → llvm.log2"))
+        return 1;
+    if (!expect(m.instructions[8].translated && m.instructions[8].opcode == "llvm.sin",
+                "sin.approx.f32 → llvm.sin"))
+        return 1;
+    if (!expect(m.instructions[9].translated && m.instructions[9].opcode == "llvm.cos",
+                "cos.approx.f32 → llvm.cos"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }

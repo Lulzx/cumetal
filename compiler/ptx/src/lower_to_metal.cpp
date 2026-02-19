@@ -1338,6 +1338,25 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             defined_regs.insert(dest);
             continue;
         }
+
+        // ── Unary math intrinsics ────────────────────────────────────────────
+        {
+            auto emit_unary_fn = [&](const std::string& fn) -> bool {
+                if (ops.size() < 2) return false;
+                if (!all_sources_defined(ops, 1)) return false;
+                const std::string dest = get_reg(ops[0]);
+                metal << "    " << reg_type(dest) << " " << mvar(dest)
+                      << " = " << fn << "(" << resolve(ops[1]) << ");\n";
+                defined_regs.insert(dest);
+                return true;
+            };
+            if (root == "sqrt")  { if (!emit_unary_fn("sqrt"))  return {}; continue; }
+            if (root == "rsqrt") { if (!emit_unary_fn("rsqrt")) return {}; continue; }
+            if (root == "ex2")   { if (!emit_unary_fn("exp2"))  return {}; continue; }
+            if (root == "lg2")   { if (!emit_unary_fn("log2"))  return {}; continue; }
+            if (root == "sin")   { if (!emit_unary_fn("sin"))   return {}; continue; }
+            if (root == "cos")   { if (!emit_unary_fn("cos"))   return {}; continue; }
+        }
         if (root == "selp" && ops.size() >= 4) {
             if (!all_sources_defined(ops, 1)) return {};
             const std::string dest = get_reg(ops[0]);

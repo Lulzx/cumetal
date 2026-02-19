@@ -92,10 +92,36 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
                               instruction.opcode.find(".f64") != std::string::npos;
         lowered->opcode = is_float ? "llvm.fneg" : "llvm.neg";
+    } else if (instruction.opcode.rfind("fma", 0) == 0) {
+        lowered->opcode = "llvm.fma";
     } else if (instruction.opcode.rfind("mad", 0) == 0) {
         const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
                               instruction.opcode.find(".f64") != std::string::npos;
         lowered->opcode = is_float ? "llvm.fma" : "llvm.mad";
+    } else if (instruction.opcode.rfind("max", 0) == 0) {
+        const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
+                              instruction.opcode.find(".f64") != std::string::npos;
+        lowered->opcode = is_float ? "llvm.fmax" : "llvm.max";
+    } else if (instruction.opcode.rfind("min", 0) == 0) {
+        const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
+                              instruction.opcode.find(".f64") != std::string::npos;
+        lowered->opcode = is_float ? "llvm.fmin" : "llvm.min";
+    } else if (instruction.opcode.rfind("abs", 0) == 0) {
+        const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
+                              instruction.opcode.find(".f64") != std::string::npos;
+        lowered->opcode = is_float ? "llvm.fabs" : "llvm.abs";
+    } else if (instruction.opcode.rfind("sqrt", 0) == 0) {
+        lowered->opcode = "llvm.sqrt";
+    } else if (instruction.opcode.rfind("rsqrt", 0) == 0) {
+        lowered->opcode = "llvm.rsqrt";
+    } else if (instruction.opcode.rfind("ex2", 0) == 0) {
+        lowered->opcode = "llvm.exp2";
+    } else if (instruction.opcode.rfind("lg2", 0) == 0) {
+        lowered->opcode = "llvm.log2";
+    } else if (instruction.opcode.rfind("sin", 0) == 0) {
+        lowered->opcode = "llvm.sin";
+    } else if (instruction.opcode.rfind("cos", 0) == 0) {
+        lowered->opcode = "llvm.cos";
     } else {
         return false;
     }

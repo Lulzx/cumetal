@@ -13,8 +13,12 @@
   current `.cu` frontend lowering is partial and does not support full CUDA language/device-runtime
   semantics required by `train_gpt2_fp32.cu` (cooperative groups, CUDA builtins, and kernel-launch codegen).
 - PTX registration path reaches full parity for `llm.c` `test_gpt2_fp32.cu` via direct Metal lowering
-  for all 17 GPT-2 training kernels. `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` now passes (`OK (LOGITS)`,
-  `LOSS OK`, `TENSOR OK`, `overall okay: 1`) without the emulation fallback. The direct Metal lowering
-  path (`compiler/ptx/src/lower_to_metal.cpp`) is a hardcoded set matched by kernel name; kernels not
-  in that set fall back to PTX→LLVM lowering. A generalized PTX→Metal instruction-level translator
-  (not name-matched) remains an open Phase 4 deliverable for broader kernel coverage.
+  for all 17 GPT-2 training kernels. `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` now passes without any
+  emulation fallback. The lowering path (`compiler/ptx/src/lower_to_metal.cpp`) has two tiers:
+  (1) hardcoded name-matched kernels for the 17 llm.c GPT-2 kernels, and (2) a generic
+  PTX→Metal instruction-level translator that handles arbitrary element-wise kernels via two-pass
+  register-provenance analysis. The generic emitter supports: `ld/st.global`, `atom.global.add.f32`,
+  `setp`-based bounds guards, `mad.lo.u32` and `mul.lo.u32`+`add.u32` GID patterns, arithmetic
+  (`add`, `sub`, `mul`, `div`, `rem`, `shl`, `shr`, `and`, `or`, `xor`, `not`, `selp`), `fma`/`mad`,
+  `neg`/`abs`/`rcp`, `max`/`min`, and the unary math intrinsics `sqrt`, `rsqrt`, `ex2`→`exp2`,
+  `lg2`→`log2`, `sin`, `cos`. Kernels with unsupported patterns fall back to PTX→LLVM lowering.
