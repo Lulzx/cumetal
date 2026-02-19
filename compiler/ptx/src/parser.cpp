@@ -127,12 +127,14 @@ bool is_supported_opcode(const std::string& opcode) {
     const std::string root = (dot == std::string::npos) ? opcode : opcode.substr(0, dot);
 
     static const std::unordered_set<std::string> kSupportedRoots = {
-        "abs",      "add",   "and",   "atom",  "bar",   "bfe",   "bfi",   "bfind", "bra",   "brev",
-        "call",     "clz",   "cos",   "cp",    "cvt",   "cvta",  "div",   "ex2",   "fma",   "isspacep",
-        "ld",       "lg2",   "lop3",  "mad",   "max",   "membar","min",   "mov",   "mul",   "neg",
-        "not",      "or",    "popc",  "prmt",  "rcp",   "redux", "rem",   "ret",   "rsqrt", "sad",
-        "selp",     "set",   "setp",  "shl",   "shr",   "shfl",  "sin",   "sqrt",  "st",    "sub",
-        "vote",     "xor",
+        "abs",       "activemask", "add",       "and",   "atom",  "bar",      "bfe",   "bfi",
+        "bfind",     "bra",        "brev",      "call",  "clz",   "cos",      "cp",    "cvt",
+        "cvta",      "div",        "ex2",       "exit",  "fma",   "fns",      "isspacep",
+        "ld",        "lg2",        "lop3",      "mad",   "match", "max",      "membar","min",
+        "mov",       "mul",        "nanosleep", "neg",   "not",   "or",       "popc",  "prmt",
+        "rcp",       "redux",      "rem",       "ret",   "rsqrt", "sad",      "selp",  "set",
+        "setp",      "shl",        "shr",       "shfl",  "sin",   "sqrt",     "st",    "sub",
+        "trap",      "vote",       "xor",
     };
     return kSupportedRoots.contains(root);
 }

@@ -324,6 +324,27 @@ run_case "sweep_lop3_b32"           "lop3.b32 %r1, %r2, %r3, %r4, 0xf0, 1;"
 run_case "sweep_sad_u32"            "sad.u32 %r1, %r2, %r3, %r4;"
 run_case "sweep_sad_s32"            "sad.s32 %r1, %r2, %r3, %r4;"
 
+# match.any.sync / match.all.sync (Ampere+, ISA 7.0+)
+# Conservative lowering: air.match.any.sync / air.match.all.sync
+run_case "sweep_match_any_sync_b32" "match.any.sync.b32 %r1, %r2, 0xffffffff;"
+run_case "sweep_match_all_sync_b32" "match.all.sync.b32 %r1, %p1, %r2, 0xffffffff;"
+
+# nanosleep: busy-wait (Pascal+, ISA 6.0+) → conservative no-op on Metal
+run_case "sweep_nanosleep_u32"      "nanosleep.u32 64;"
+
+# trap: raise hardware trap → llvm.trap()
+run_case "sweep_trap"               "trap;"
+
+# exit: terminate thread (same as ret in our model)
+run_case "sweep_exit"               "exit;"
+
+# activemask: bitmask of active threads in current warp (ISA 6.0+)
+# Lowered to constant 0xFFFFFFFF (all lanes active; no SIMD divergence in our model).
+run_case "sweep_activemask_b32"     "activemask.b32 %r1;"
+
+# fns: find Nth set bit in a warp mask (Volta+)
+run_case "sweep_fns_b32"            "fns.b32 %r1, %r2, %r3, %r4;"
+
 # bfind: find most significant non-sign bit (ISA 5.0+)
 run_case "sweep_bfind_u32"          "bfind.u32 %r1, %r2;"
 run_case "sweep_bfind_s32"          "bfind.s32 %r1, %r2;"

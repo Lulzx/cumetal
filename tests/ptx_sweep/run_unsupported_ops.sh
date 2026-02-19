@@ -32,7 +32,6 @@ EOF
 }
 
 run_case_expect_fail "unsupported_foo" "foo.bar %r1, %r2;"
-run_case_expect_fail "unsupported_trap" "trap;"
 run_case_expect_fail "unsupported_tex" "tex.2d.v4.f32.f32 {%f1,%f2,%f3,%f4}, [%rd1], %f5;"
 run_case_expect_fail "unsupported_suld" "suld.1d.v4.u32.trap [%rd1], {%r1,%r2,%r3,%r4};"
 

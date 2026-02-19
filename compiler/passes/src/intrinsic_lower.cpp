@@ -221,6 +221,39 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // prmt.b32 d, a, b, c  — byte permutation from two 32-bit sources
         // Lowered to air.prmt; downstream stages emit byte-select sequences.
         lowered->opcode = "air.prmt";
+    } else if (instruction.opcode.rfind("match", 0) == 0) {
+        // match.any.sync.b32 d, a, mask — for each bit in mask: 1 if that lane has same a
+        // match.all.sync.b32 d, p, a, mask — 1 if all masked lanes have same a
+        // Conservative lowering: full-group match via air.simdgroup comparison.
+        if (instruction.opcode.find(".any.") != std::string::npos) {
+            lowered->opcode = "air.match.any.sync";
+        } else if (instruction.opcode.find(".all.") != std::string::npos) {
+            lowered->opcode = "air.match.all.sync";
+        } else {
+            lowered->opcode = "air.match.sync";
+        }
+    } else if (instruction.opcode.rfind("nanosleep", 0) == 0) {
+        // nanosleep.u32 delay — busy-wait for ~delay nanoseconds (Pascal+)
+        // On Metal, lowered to a conservative no-op (Metal has no sleep primitive).
+        lowered->opcode = "air.nanosleep";
+    } else if (instruction.opcode.rfind("trap", 0) == 0) {
+        // trap — raise a hardware trap (abort the thread)
+        // Lowered to @llvm.trap() which emits an illegal instruction.
+        lowered->opcode = "llvm.trap";
+    } else if (instruction.opcode.rfind("exit", 0) == 0) {
+        // exit — terminate the current thread (same as ret in our model)
+        lowered->opcode = "air.exit";
+    } else if (instruction.opcode.rfind("activemask", 0) == 0) {
+        // activemask.b32 d  — bitmask of all currently active threads in the warp
+        // On Apple Silicon, SIMD-groups are always fully active (no divergence in our model).
+        // Lowered to air.activemask → constant 0xFFFFFFFF (all 32 lanes active).
+        lowered->opcode = "air.activemask";
+    } else if (instruction.opcode.rfind("fns", 0) == 0) {
+        // fns.b32 d, membermask, base, offset — find the Nth set bit in membermask
+        // counting from position 'base', stepping by 'offset'.
+        // Used in warp-convergence algorithms. Lowered to air.fns; downstream
+        // stages implement via popcount + partial mask operations.
+        lowered->opcode = "air.fns";
     } else if (instruction.opcode.rfind("bfind", 0) == 0) {
         // bfind.{u32,s32,u64} d, a  — find most significant non-sign bit
         // bfind.shiftamt.* returns 0 when d==0; plain bfind returns 0xffffffff.
