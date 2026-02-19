@@ -143,6 +143,9 @@ Supported runtime API subset:
 - `cudaDeviceSynchronize`
 - `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorName`, `cudaGetErrorString`
 - `cudaProfilerStart`, `cudaProfilerStop`
+- `cudaFuncGetAttributes`, `cudaFuncSetCacheConfig`, `cudaFuncSetSharedMemConfig`
+- `cudaOccupancyMaxActiveBlocksPerMultiprocessor`, `cudaOccupancyMaxPotentialBlockSize`
+- `cudaPointerGetAttributes`, `cudaChooseDevice`
 
 Supported driver API subset:
 

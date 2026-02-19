@@ -132,6 +132,46 @@ typedef enum cudaDeviceAttr {
     cudaDevAttrConcurrentManagedAccess = 89,
 } cudaDeviceAttr;
 
+typedef enum cudaFuncCache {
+    cudaFuncCachePreferNone = 0,
+    cudaFuncCachePreferShared = 1,
+    cudaFuncCachePreferL1 = 2,
+    cudaFuncCachePreferEqual = 3,
+} cudaFuncCache;
+
+typedef enum cudaSharedMemConfig {
+    cudaSharedMemBankSizeDefault = 0,
+    cudaSharedMemBankSizeFourByte = 1,
+    cudaSharedMemBankSizeEightByte = 2,
+} cudaSharedMemConfig;
+
+typedef struct cudaFuncAttributes {
+    size_t sharedSizeBytes;
+    size_t constSizeBytes;
+    size_t localSizeBytes;
+    int maxThreadsPerBlock;
+    int numRegs;
+    int ptxVersion;
+    int binaryVersion;
+    int cacheModeCA;
+    int maxDynamicSharedSizeBytes;
+    int preferredShmemCarveout;
+} cudaFuncAttributes;
+
+typedef enum cudaMemoryType {
+    cudaMemoryTypeUnregistered = 0,
+    cudaMemoryTypeHost = 1,
+    cudaMemoryTypeDevice = 2,
+    cudaMemoryTypeManaged = 3,
+} cudaMemoryType;
+
+typedef struct cudaPointerAttributes {
+    cudaMemoryType type;
+    int device;
+    void* devicePointer;
+    void* hostPointer;
+} cudaPointerAttributes;
+
 typedef struct cudaStream_st* cudaStream_t;
 typedef struct cudaEvent_st* cudaEvent_t;
 typedef void (*cudaStreamCallback_t)(cudaStream_t stream, cudaError_t status, void* user_data);
@@ -275,6 +315,20 @@ const char* cudaGetErrorName(cudaError_t error);
 const char* cudaGetErrorString(cudaError_t error);
 cudaError_t cudaProfilerStart(void);
 cudaError_t cudaProfilerStop(void);
+cudaError_t cudaFuncGetAttributes(cudaFuncAttributes* attr, const void* func);
+cudaError_t cudaFuncSetCacheConfig(const void* func, cudaFuncCache cacheConfig);
+cudaError_t cudaFuncSetSharedMemConfig(const void* func, cudaSharedMemConfig config);
+cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
+                                                          const void* func,
+                                                          int blockSize,
+                                                          size_t dynamicSMemSize);
+cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize,
+                                               int* blockSize,
+                                               const void* func,
+                                               size_t dynamicSMemSize,
+                                               int blockSizeLimit);
+cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr);
+cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* prop);
 
 #ifdef __cplusplus
 }

@@ -3015,4 +3015,109 @@ cudaError_t cudaProfilerStop(void) {
     return fail(cudaSuccess);
 }
 
+// Occupancy API — returns conservative estimates (spec §8).
+// Metal exposes no equivalent to SM occupancy; we return sensible defaults
+// that allow block-size auto-tuning code to proceed without crashing.
+cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
+                                                          const void* /*func*/,
+                                                          int /*blockSize*/,
+                                                          size_t /*dynamicSMemSize*/) {
+    if (numBlocks == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    *numBlocks = 2;  // conservative estimate
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize,
+                                               int* blockSize,
+                                               const void* /*func*/,
+                                               size_t /*dynamicSMemSize*/,
+                                               int blockSizeLimit) {
+    if (minGridSize == nullptr || blockSize == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    // Default to 256 threads/block unless the caller constrains it.
+    const int chosen_block = (blockSizeLimit > 0 && blockSizeLimit < 256) ? blockSizeLimit : 256;
+    *blockSize = chosen_block;
+    // minGridSize = multiProcessorCount * 2 blocks/SM, rounded to grid coverage.
+    cudaDeviceProp prop{};
+    if (cudaGetDeviceProperties(&prop, 0) == cudaSuccess && prop.multiProcessorCount > 0) {
+        *minGridSize = prop.multiProcessorCount * 2;
+    } else {
+        *minGridSize = 16;  // safe fallback
+    }
+    return fail(cudaSuccess);
+}
+
+// Function attribute query — returns zeroed/default attributes (spec §8).
+// Metal pipelines expose no per-function register or shared-memory counts.
+cudaError_t cudaFuncGetAttributes(cudaFuncAttributes* attr, const void* /*func*/) {
+    if (attr == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    *attr = {};
+    attr->maxThreadsPerBlock = 1024;
+    attr->ptxVersion = 80;   // report Ampere-equivalent PTX ISA
+    attr->binaryVersion = 80;
+    return fail(cudaSuccess);
+}
+
+// No-ops — Metal has no L1/shared-memory configuration knobs.
+cudaError_t cudaFuncSetCacheConfig(const void* /*func*/, cudaFuncCache /*cacheConfig*/) {
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaFuncSetSharedMemConfig(const void* /*func*/, cudaSharedMemConfig /*config*/) {
+    return fail(cudaSuccess);
+}
+
+// Pointer attribute query — classifies a pointer as host, device, or managed.
+cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr) {
+    if (attributes == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    *attributes = {};
+    attributes->device = 0;
+    // On UMA, every CuMetal allocation is simultaneously host- and device-accessible.
+    // Report the pointer as managed so callers handle it correctly.
+    cumetal::rt::AllocationTable::ResolvedAllocation resolved;
+    const bool is_device_ptr =
+        (ptr != nullptr) && runtime_state().allocations.resolve(ptr, &resolved);
+    if (is_device_ptr) {
+        attributes->type = cudaMemoryTypeManaged;
+        attributes->devicePointer = const_cast<void*>(ptr);
+        attributes->hostPointer = const_cast<void*>(ptr);
+    } else {
+        attributes->type = cudaMemoryTypeHost;
+        attributes->hostPointer = const_cast<void*>(ptr);
+    }
+    return fail(cudaSuccess);
+}
+
+// Device selection by property — always returns device 0 (single GPU on Apple Silicon).
+cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* /*prop*/) {
+    if (device == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    *device = 0;
+    return fail(cudaSuccess);
+}
+
 }  // extern "C"
