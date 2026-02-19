@@ -215,6 +215,10 @@ add_executable(cumetal_runtime_warp_shuffle_test
     runtime_warp_shuffle_test.cpp
 )
 
+add_executable(cumetal_runtime_warp_vote_test
+    runtime_warp_vote_test.cpp
+)
+
 add_executable(cumetal_runtime_fp16_ops_test
     runtime_fp16_ops_test.cpp
 )
@@ -522,6 +526,11 @@ target_link_libraries(cumetal_runtime_atomic_shared_test
 )
 
 target_link_libraries(cumetal_runtime_warp_shuffle_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_warp_vote_test
     PRIVATE
         cumetal_runtime
 )
@@ -948,6 +957,13 @@ target_compile_options(cumetal_runtime_atomic_shared_test
 )
 
 target_compile_options(cumetal_runtime_warp_shuffle_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_warp_vote_test
     PRIVATE
         -Wall
         -Wextra
@@ -1464,6 +1480,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_warp_shuffle PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_warp_vote
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_warp_vote_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/warp_vote.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/warp_vote.metallib
+)
+
+set_tests_properties(functional_runtime_warp_vote PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_fp16_ops
