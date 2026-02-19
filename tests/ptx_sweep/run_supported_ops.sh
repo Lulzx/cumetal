@@ -269,4 +269,23 @@ run_case "sweep_rem_s64"        "rem.s64 %rd1, %rd2, %rd3;"
 run_case "sweep_shfl_partial_mask"  "shfl.sync.idx.b32 %r1, %r2, %r3, 0x1f, 0x0000ffff;"
 run_case "sweep_vote_partial_mask"  "vote.sync.ballot.b32 %r1, %p1, 0x0000ffff;"
 
+# div additional types
+run_case "sweep_div_u32"            "div.u32 %r1, %r2, %r3;"
+run_case "sweep_div_s64"            "div.s64 %rd1, %rd2, %rd3;"
+run_case "sweep_div_u64"            "div.u64 %rd1, %rd2, %rd3;"
+run_case "sweep_div_f64"            "div.rn.f64 %fd1, %fd2, %fd3;"
+
+# selp for unsigned and f64 types
+run_case "sweep_selp_u32"           "selp.u32 %r1, %r2, %r3, %p1;"
+run_case "sweep_selp_u64"           "selp.u64 %rd1, %rd2, %rd3, %p1;"
+run_case "sweep_selp_f64"           "selp.f64 %fd1, %fd2, %fd3, %p1;"
+
+# setp f64 comparisons
+run_case "sweep_setp_lt_f64"        "setp.lt.f64 %p1, %fd1, %fd2;"
+run_case "sweep_setp_eq_f64"        "setp.eq.f64 %p1, %fd1, %fd2;"
+
+# additional cvt variants
+run_case "sweep_cvt_f32_f16"        "cvt.f32.f16 %f1, %r1;"
+run_case "sweep_cvt_rn_s32_f64"     "cvt.rzi.s32.f64 %r1, %fd1;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
