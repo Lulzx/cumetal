@@ -342,6 +342,12 @@ run_case "sweep_exit"               "exit;"
 # Conservative: full threadgroup barrier
 run_case "sweep_bar_arrive"         "bar.arrive 0, %r1;"
 
+# bar.red: barrier-level predicate reductions (sync + reduce at named barrier)
+# Conservative: map to simdgroup-level operations (spec §9.7, barrier instructions)
+run_case "sweep_bar_red_and"        "bar.red.and.pred %p1, 0, %r1, %p2;"
+run_case "sweep_bar_red_or"         "bar.red.or.pred  %p1, 0, %r1, %p2;"
+run_case "sweep_bar_red_popc"       "bar.red.popc.u32 %r1, 0, %r2, %p1;"
+
 # prefetch / prefetchu: cache prefetch hints → no-op on UMA (spec §8, __ldg() note)
 run_case "sweep_prefetch_global_L1" "prefetch.global.L1 [%rd1];"
 run_case "sweep_prefetch_local_L1"  "prefetch.local.L1 [%rd1];"

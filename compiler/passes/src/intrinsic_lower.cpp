@@ -90,6 +90,26 @@ bool map_barrier(const cumetal::ptx::EntryFunction::Instruction& instruction, Lo
         return true;
     }
 
+    // bar.red: barrier-level predicate reductions (sync + reduce at named barrier)
+    // bar.red.and.pred d, barrier, count, pred → sync and check all pred
+    // bar.red.or.pred  d, barrier, count, pred → sync and check any pred
+    // bar.red.popc.u32 d, barrier, count, pred → sync and count threads with pred
+    // Conservative: map to simdgroup-level operations (threadgroup barrier + reduce).
+    if (op.rfind("bar.red", 0) == 0) {
+        if (op.find(".and.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.all";
+        } else if (op.find(".or.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.any";
+        } else if (op.find(".popc.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.reduce_add";
+        } else {
+            lowered->opcode = "air.threadgroup_barrier";
+        }
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
     // prefetch / prefetchu — cache prefetch hints (memory latency optimization)
     // On Apple Silicon UMA, the memory subsystem handles caching automatically.
     // Lower to no-op (empty barrier-free hint marker).
@@ -126,7 +146,9 @@ bool map_barrier(const cumetal::ptx::EntryFunction::Instruction& instruction, Lo
     // red: global/shared reduction (write-only atomic; no return value)
     // red.global.add.f32 [addr], src → atomic add with result discarded
     // Lowered to air.atomic.reduce (same as atomicrmw but no destination).
-    if (op.rfind("red", 0) == 0) {
+    // Note: must check "red.global"/"red.shared" (not just "red") to avoid
+    // matching "redux.*" which starts with the same prefix.
+    if (op.rfind("red.global", 0) == 0 || op.rfind("red.shared", 0) == 0) {
         if (op.find(".shared") != std::string::npos) {
             lowered->opcode = "llvm.atomicrmw.noret.shared";
         } else {
