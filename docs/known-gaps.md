@@ -42,6 +42,9 @@
   The observable CUDA semantics (null-stream serialization) are correct for the common single-context
   use case, but the explicit multi-stream "all user streams wait for null stream" guarantee is not
   fully enforced via events. `MTLSharedEvent` integration is deferred to a future milestone.
-- Device printf (spec §5.3): the `printf_lower` compiler pass extracts format strings and emits
-  metadata, but the runtime buffer allocation, binding, and post-kernel drain (spec §6.5 step 10)
-  are not yet implemented. Device `printf` calls in kernels will be silently dropped at runtime.
+- Device printf (spec §5.3): fully implemented end-to-end for the PTX registration path.
+  The `printf_lower` compiler pass extracts format strings; the generic Metal emitter injects
+  ring-buffer write code; the runtime allocates a 1 MB ring buffer, binds it as hidden args,
+  and drains recorded printf records to stderr after kernel completion (spec §6.5 step 10).
+  Both the direct `cumetalKernel_t` path and the `__cudaRegisterFunction` registration path
+  are covered by functional tests.

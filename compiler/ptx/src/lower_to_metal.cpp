@@ -672,7 +672,67 @@ kernel_template = R"METAL(kernel void __KERNEL_NAME__(
 // arithmetic instructions to their Metal equivalents.  Returns empty string for
 // any instruction or address pattern it cannot translate confidently; the caller
 // then falls through to the PTX→LLVM path.
-std::string emit_metal_source_generic(const std::string& entry_name, std::string_view ptx) {
+// Returns true if the operands of a call instruction target printf/vprintf.
+bool is_printf_call(const std::vector<std::string>& operands) {
+    for (const auto& op : operands) {
+        const std::string lower = [&]() {
+            std::string s = op;
+            for (char& c : s) {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            return s;
+        }();
+        if (lower.find("vprintf") != std::string::npos || lower.find("printf") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Emit inline Metal code to write a printf record to the ring buffer.
+// args_and_types is a list of (resolved_metal_expr, metal_type) pairs.
+void emit_printf_record(std::ostringstream& metal,
+                        std::uint32_t fmt_id,
+                        const std::vector<std::pair<std::string, std::string>>& args_and_types,
+                        int call_index) {
+    const std::uint32_t n_args = static_cast<std::uint32_t>(args_and_types.size());
+    const std::string suffix = std::to_string(call_index);
+    metal << "    {\n";
+    metal << "        const uint __pfw" << suffix << " = " << (2 + n_args) << "u;\n";
+    metal << "        uint __ppos" << suffix << " = atomic_fetch_add_explicit(__printf_buf, "
+          << "__pfw" << suffix << ", memory_order_relaxed);\n";
+    metal << "        if (__ppos" << suffix << " + __pfw" << suffix << " < __printf_cap) {\n";
+    metal << "            device uint* __pw" << suffix << " = (device uint*)__printf_buf;\n";
+    metal << "            __pw" << suffix << "[__ppos" << suffix << " + 1] = "
+          << fmt_id << "u;\n";
+    metal << "            __pw" << suffix << "[__ppos" << suffix << " + 2] = "
+          << n_args << "u;\n";
+    for (std::uint32_t i = 0; i < n_args; ++i) {
+        const std::string& expr = args_and_types[i].first;
+        const std::string& type = args_and_types[i].second;
+        std::string cast_expr;
+        if (type == "float") {
+            cast_expr = "as_type<uint>(" + expr + ")";
+        } else if (type == "double") {
+            // Store low 32 bits only for now (sufficient for common FP32-width values)
+            cast_expr = "(uint)(as_type<ulong>(" + expr + ") & 0xFFFFFFFFu)";
+        } else if (type == "ulong") {
+            cast_expr = "(uint)(" + expr + " & 0xFFFFFFFFu)";
+        } else if (type == "ushort") {
+            cast_expr = "(uint)(" + expr + ")";
+        } else {
+            cast_expr = "(uint)(" + expr + ")";
+        }
+        metal << "            __pw" << suffix << "[__ppos" << suffix << " + " << (3 + i) << "] = "
+              << cast_expr << ";\n";
+    }
+    metal << "        }\n";
+    metal << "    }\n";
+}
+
+std::string emit_metal_source_generic(const std::string& entry_name,
+                                      std::string_view ptx,
+                                      const cumetal::passes::Phase1PipelineOutput* pipeline_hint) {
     ParseOptions parse_opts;
     parse_opts.strict = false;
     const ParseResult parsed = parse_ptx(ptx, parse_opts);
@@ -691,9 +751,25 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
         return {};
     }
 
+    // Build line-number → printf call map from the phase1 output (if available).
+    std::unordered_map<int, const cumetal::passes::PrintfLoweredCall*> line_to_printf;
+    if (pipeline_hint != nullptr) {
+        for (const auto& pc : pipeline_hint->printf_calls) {
+            line_to_printf[pc.source_line] = &pc;
+        }
+    }
+    const bool has_printf = !line_to_printf.empty();
+
     // Only attempt translation when every instruction is in the supported opcode set.
+    // Exception: call printf/vprintf is handled inline even if "call" falls through.
     for (const auto& instr : entry->instructions) {
         if (!instr.supported) {
+            return {};
+        }
+        // call instructions that are NOT printf calls (i.e. arbitrary function calls)
+        // are not supported by the generic emitter.
+        if (instr.opcode.rfind("call", 0) == 0 && !is_printf_call(instr.operands) &&
+            !line_to_printf.count(instr.line)) {
             return {};
         }
     }
@@ -1083,6 +1159,13 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             metal << "    constant " << mtype << "& " << p.name
                   << " [[buffer(" << buf_idx << ")]]";
         }
+        ++buf_idx;
+    }
+    // ── Hidden printf ring-buffer args (spec §5.3) ──────────────────────────
+    if (has_printf) {
+        metal << ",\n    device atomic_uint* __printf_buf [[buffer(" << buf_idx << ")]]";
+        ++buf_idx;
+        metal << ",\n    constant uint& __printf_cap [[buffer(" << buf_idx << ")]]";
         ++buf_idx;
     }
     metal << ",\n    uint gid [[thread_position_in_grid]]) {\n";
@@ -1505,6 +1588,41 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
             continue;
         }
 
+        // ── call printf/vprintf → inline ring-buffer write (spec §5.3) ──────
+        if (has_printf && instr.opcode.rfind("call", 0) == 0) {
+            const auto pc_it = line_to_printf.find(instr.line);
+            if (pc_it != line_to_printf.end()) {
+                const cumetal::passes::PrintfLoweredCall& pc = *pc_it->second;
+                // Build (expr, type) pairs for each argument register.
+                std::vector<std::pair<std::string, std::string>> args_and_types;
+                for (const auto& arg_token : pc.arguments) {
+                    const std::string r = get_reg(arg_token);
+                    const std::string expr = r.empty() ? arg_token : resolve(arg_token);
+                    const std::string type = r.empty() ? "uint" : reg_type(r);
+                    args_and_types.emplace_back(expr, type);
+                }
+                // Mark any destination register as defined (usually return value = 0).
+                if (!ops.empty()) {
+                    const std::string dest_raw = ops[0];
+                    // Destination might be "(  %r0  )" style; strip parens and spaces.
+                    std::string dest_clean;
+                    for (char c : dest_raw) {
+                        if (c != '(' && c != ')' && c != ' ') dest_clean += c;
+                    }
+                    const std::string dest = get_reg(dest_clean);
+                    if (!dest.empty() && !defined_regs.count(dest)) {
+                        metal << "    " << reg_type(dest) << " " << mvar(dest) << " = 0;\n";
+                        defined_regs.insert(dest);
+                    }
+                }
+                emit_printf_record(metal, pc.format_id, args_and_types,
+                                   static_cast<int>(std::distance(entry->instructions.data(), &instr)));
+                continue;
+            }
+            // call to non-printf function → unsupported
+            return {};
+        }
+
         // Unrecognised instruction — fall back to PTX→LLVM path.
         return {};
     }
@@ -1535,7 +1653,7 @@ LowerToMetalResult lower_ptx_to_metal_source(std::string_view ptx, const LowerTo
 
     // Second: if no hardcoded match, attempt generic PTX → Metal translation.
     if (metal_source.empty()) {
-        metal_source = emit_metal_source_generic(pipeline.entry_name, ptx);
+        metal_source = emit_metal_source_generic(pipeline.entry_name, ptx, &pipeline);
     }
 
     if (metal_source.empty()) {
@@ -1547,6 +1665,10 @@ LowerToMetalResult lower_ptx_to_metal_source(std::string_view ptx, const LowerTo
     result.ok = true;
     result.matched = true;
     result.metal_source = metal_source;
+    // Propagate printf format table for the runtime to use when draining the buffer.
+    for (const auto& fmt : pipeline.printf_formats) {
+        result.printf_formats.push_back(fmt.token);
+    }
     return result;
 }
 

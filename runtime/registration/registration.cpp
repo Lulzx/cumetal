@@ -56,6 +56,7 @@ struct RegistrationModule {
     std::string metallib_path;
     std::string ptx_source;
     std::unordered_map<std::string, std::string> emitted_kernel_metallibs;
+    std::unordered_map<std::string, std::vector<std::string>> emitted_kernel_printf_formats;
     std::vector<std::string> owned_metallibs;
 };
 
@@ -64,6 +65,7 @@ struct RegistrationRecord {
     std::string metallib_path;
     std::string kernel_name;
     std::vector<cumetalKernelArgInfo_t> arg_info;
+    std::vector<std::string> printf_formats;
 };
 
 struct RegistrationSymbolRecord {
@@ -324,7 +326,8 @@ std::vector<cumetalKernelArgInfo_t> infer_arg_info_from_ptx_entry(const std::str
 
 bool emit_ptx_entry_to_temp_metallib(const std::string& ptx_source,
                                      const std::string& kernel_name,
-                                     std::string* out_path) {
+                                     std::string* out_path,
+                                     std::vector<std::string>* out_printf_formats = nullptr) {
     if (ptx_source.empty() || kernel_name.empty() || out_path == nullptr) {
         return false;
     }
@@ -363,6 +366,9 @@ bool emit_ptx_entry_to_temp_metallib(const std::string& ptx_source,
         staged_input = metal_path;
         emit_options.kernel_name =
             lowered_metal.entry_name.empty() ? kernel_name : lowered_metal.entry_name;
+        if (out_printf_formats != nullptr) {
+            *out_printf_formats = lowered_metal.printf_formats;
+        }
     } else {
         cumetal::ptx::LowerToLlvmOptions lower_options;
         lower_options.entry_name = kernel_name;
@@ -390,7 +396,9 @@ bool emit_ptx_entry_to_temp_metallib(const std::string& ptx_source,
     return true;
 }
 
-std::string resolve_metallib_path_for_kernel(void* module_handle, const std::string& kernel_name) {
+std::string resolve_metallib_path_for_kernel(void* module_handle,
+                                              const std::string& kernel_name,
+                                              std::vector<std::string>* out_printf_formats) {
     if (module_handle == nullptr || kernel_name.empty()) {
         return fallback_metallib_path_from_env();
     }
@@ -411,6 +419,12 @@ std::string resolve_metallib_path_for_kernel(void* module_handle, const std::str
 
         const auto cached = module.emitted_kernel_metallibs.find(kernel_name);
         if (cached != module.emitted_kernel_metallibs.end()) {
+            if (out_printf_formats != nullptr) {
+                const auto pf_it = module.emitted_kernel_printf_formats.find(kernel_name);
+                if (pf_it != module.emitted_kernel_printf_formats.end()) {
+                    *out_printf_formats = pf_it->second;
+                }
+            }
             return cached->second;
         }
 
@@ -422,7 +436,9 @@ std::string resolve_metallib_path_for_kernel(void* module_handle, const std::str
     }
 
     std::string emitted_path;
-    if (!emit_ptx_entry_to_temp_metallib(ptx_source, kernel_name, &emitted_path)) {
+    std::vector<std::string> local_printf_formats;
+    if (!emit_ptx_entry_to_temp_metallib(ptx_source, kernel_name, &emitted_path,
+                                         &local_printf_formats)) {
         return fallback_metallib_path_from_env();
     }
 
@@ -443,9 +459,19 @@ std::string resolve_metallib_path_for_kernel(void* module_handle, const std::str
     const auto inserted = module.emitted_kernel_metallibs.emplace(kernel_name, emitted_path);
     if (!inserted.second) {
         remove_path_if_exists(emitted_path);
+        if (out_printf_formats != nullptr) {
+            const auto pf_it = module.emitted_kernel_printf_formats.find(kernel_name);
+            if (pf_it != module.emitted_kernel_printf_formats.end()) {
+                *out_printf_formats = pf_it->second;
+            }
+        }
         return inserted.first->second;
     }
 
+    module.emitted_kernel_printf_formats.emplace(kernel_name, local_printf_formats);
+    if (out_printf_formats != nullptr) {
+        *out_printf_formats = std::move(local_printf_formats);
+    }
     module.owned_metallibs.push_back(emitted_path);
     return emitted_path;
 }
@@ -482,6 +508,7 @@ bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out) 
     out->metallib_path = found->second.metallib_path;
     out->kernel_name = found->second.kernel_name;
     out->arg_info = found->second.arg_info;
+    out->printf_formats = found->second.printf_formats;
     return true;
 }
 
@@ -631,8 +658,9 @@ void __cudaRegisterFunction(void** fat_cubin_handle,
 
     void* handle = fat_cubin_handle == nullptr ? nullptr : reinterpret_cast<void*>(fat_cubin_handle);
 
+    std::vector<std::string> printf_formats;
     std::string metallib_path =
-        cumetal::registration::resolve_metallib_path_for_kernel(handle, chosen_name);
+        cumetal::registration::resolve_metallib_path_for_kernel(handle, chosen_name, &printf_formats);
     if (metallib_path.empty()) {
         metallib_path = cumetal::registration::fallback_metallib_path_from_env();
     }
@@ -656,6 +684,7 @@ void __cudaRegisterFunction(void** fat_cubin_handle,
         .metallib_path = std::move(metallib_path),
         .kernel_name = chosen_name,
         .arg_info = std::move(inferred_arg_info),
+        .printf_formats = std::move(printf_formats),
     };
 }
 

@@ -295,6 +295,10 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
     add_executable(cumetal_runtime_registration_var_symbol_test
         runtime_registration_var_symbol_test.cpp
     )
+
+    add_executable(cumetal_runtime_registration_printf_test
+        runtime_registration_printf_test.cpp
+    )
 endif()
 
 target_link_libraries(cumetal_runtime_vector_add_test
@@ -659,6 +663,11 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
     )
 
     target_link_libraries(cumetal_runtime_registration_var_symbol_test
+        PRIVATE
+            cumetal_runtime
+    )
+
+    target_link_libraries(cumetal_runtime_registration_printf_test
         PRIVATE
             cumetal_runtime
     )
@@ -1170,6 +1179,13 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
     )
 
     target_compile_options(cumetal_runtime_registration_var_symbol_test
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+    )
+
+    target_compile_options(cumetal_runtime_registration_printf_test
         PRIVATE
             -Wall
             -Wextra
@@ -1815,4 +1831,14 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
         NAME functional_runtime_registration_var_symbol
         COMMAND cumetal_runtime_registration_var_symbol_test
     )
+
+    add_test(
+        NAME functional_runtime_registration_printf
+        COMMAND bash
+                ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_registration_fatbin_ptx.sh
+                $<TARGET_FILE:cumetal_runtime_registration_printf_test>
+                ${CMAKE_CURRENT_SOURCE_DIR}/reference/printf_scale.ptx
+    )
+
+    set_tests_properties(functional_runtime_registration_printf PROPERTIES SKIP_RETURN_CODE 77)
 endif()

@@ -90,6 +90,106 @@ void set_last_error(cudaError_t error) {
     tls_last_error = error;
 }
 
+// ── Device printf drain (spec §5.3) ─────────────────────────────────────────
+// Ring-buffer layout (all words are uint32):
+//   buf[0]          = atomic write-word-count (total words written after index 0)
+//   buf[1..]        = packed records: [fmt_id, n_args, arg0, ..., argN-1]
+// Float args are stored as as_type<uint>(f); integers as uint casts.
+
+void drain_one_printf_record(const std::string& fmt,
+                             const std::uint32_t* args,
+                             std::uint32_t n_args) {
+    std::uint32_t arg_idx = 0;
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] != '%') {
+            std::fputc(fmt[i], stderr);
+            continue;
+        }
+        ++i;
+        if (i >= fmt.size()) { break; }
+        if (fmt[i] == '%') {
+            std::fputc('%', stderr);
+            continue;
+        }
+        // Reconstruct specifier string
+        std::string spec = "%";
+        // Flags
+        while (i < fmt.size() &&
+               (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' ||
+                fmt[i] == '#' || fmt[i] == '0')) {
+            spec += fmt[i++];
+        }
+        // Width
+        while (i < fmt.size() && std::isdigit(static_cast<unsigned char>(fmt[i]))) {
+            spec += fmt[i++];
+        }
+        // Precision
+        if (i < fmt.size() && fmt[i] == '.') {
+            spec += fmt[i++];
+            while (i < fmt.size() && std::isdigit(static_cast<unsigned char>(fmt[i]))) {
+                spec += fmt[i++];
+            }
+        }
+        // Skip length modifiers (all device args are stored as 32-bit)
+        while (i < fmt.size() &&
+               (fmt[i] == 'l' || fmt[i] == 'h' || fmt[i] == 'z' ||
+                fmt[i] == 'j' || fmt[i] == 't')) {
+            ++i;
+        }
+        if (i >= fmt.size()) { break; }
+        const char conv = fmt[i];
+        spec += conv;
+
+        if (arg_idx >= n_args) {
+            std::fputs(spec.c_str(), stderr);
+            continue;
+        }
+        const std::uint32_t raw = args[arg_idx++];
+        if (conv == 'f' || conv == 'e' || conv == 'g' ||
+            conv == 'F' || conv == 'E' || conv == 'G') {
+            float fval;
+            std::memcpy(&fval, &raw, sizeof(fval));
+            std::fprintf(stderr, spec.c_str(), fval);
+        } else if (conv == 'd' || conv == 'i') {
+            std::fprintf(stderr, spec.c_str(), static_cast<int>(raw));
+        } else if (conv == 'u' || conv == 'o' || conv == 'x' || conv == 'X') {
+            std::fprintf(stderr, spec.c_str(), raw);
+        } else if (conv == 'c') {
+            std::fprintf(stderr, spec.c_str(), static_cast<int>(raw));
+        } else if (conv == 's') {
+            std::fputs("[string]", stderr);
+        } else {
+            std::fputs(spec.c_str(), stderr);
+        }
+    }
+}
+
+void drain_printf_buffer(const void* buf_bytes,
+                         std::uint32_t cap_words,
+                         const std::vector<std::string>& formats) {
+    if (buf_bytes == nullptr || cap_words == 0 || formats.empty()) {
+        return;
+    }
+    const std::uint32_t* buf = static_cast<const std::uint32_t*>(buf_bytes);
+    const std::uint32_t total_words = buf[0];
+    if (total_words == 0 || total_words > cap_words - 1u) {
+        return;
+    }
+    // Walk records starting at index 1
+    std::uint32_t i = 1u;
+    while (i + 1u <= total_words) {
+        const std::uint32_t fmt_id = buf[i];
+        const std::uint32_t n_args = buf[i + 1u];
+        if (n_args > total_words || i + 2u + n_args > total_words + 1u) {
+            break;
+        }
+        if (fmt_id < static_cast<std::uint32_t>(formats.size())) {
+            drain_one_printf_record(formats[fmt_id], buf + i + 2u, n_args);
+        }
+        i += 2u + n_args;
+    }
+}
+
 cudaError_t ensure_initialized() {
     RuntimeState& state = runtime_state();
     std::call_once(state.init_once, [&state]() {
@@ -2595,8 +2695,11 @@ cudaError_t cudaLaunchKernel(const void* func,
         }
     }
 
+    constexpr std::uint32_t kPrintfCapWords = 256u * 1024u;  // 1 MB ring buffer
+    const bool needs_printf = use_registered_kernel && !registered_kernel.printf_formats.empty();
+
     std::vector<cumetal::metal_backend::KernelArg> launch_args;
-    launch_args.reserve(arg_count);
+    launch_args.reserve(static_cast<std::size_t>(arg_count) + (needs_printf ? 2u : 0u));
 
     RuntimeState& state = runtime_state();
 
@@ -2655,6 +2758,35 @@ cudaError_t cudaLaunchKernel(const void* func,
         }
     }
 
+    // Append hidden printf ring-buffer args if the kernel uses device printf (spec §5.3).
+    std::shared_ptr<cumetal::metal_backend::Buffer> printf_buffer;
+    if (needs_printf) {
+        constexpr std::size_t kBufBytes =
+            static_cast<std::size_t>(kPrintfCapWords) * sizeof(std::uint32_t);
+        std::string alloc_error;
+        const cudaError_t alloc_status =
+            cumetal::metal_backend::allocate_buffer(kBufBytes, &printf_buffer, &alloc_error);
+        if (alloc_status != cudaSuccess) {
+            return fail(alloc_status);
+        }
+        std::memset(printf_buffer->contents(), 0, kBufBytes);
+        {
+            cumetal::metal_backend::KernelArg buf_arg;
+            buf_arg.kind = cumetal::metal_backend::KernelArg::Kind::kBuffer;
+            buf_arg.buffer = printf_buffer;
+            buf_arg.offset = 0;
+            launch_args.push_back(std::move(buf_arg));
+        }
+        {
+            cumetal::metal_backend::KernelArg cap_arg;
+            cap_arg.kind = cumetal::metal_backend::KernelArg::Kind::kBytes;
+            cap_arg.bytes.resize(sizeof(std::uint32_t));
+            const std::uint32_t cap = kPrintfCapWords;
+            std::memcpy(cap_arg.bytes.data(), &cap, sizeof(cap));
+            launch_args.push_back(std::move(cap_arg));
+        }
+    }
+
     cumetal::metal_backend::LaunchConfig config{
         .grid = grid_dim,
         .block = block_dim,
@@ -2670,6 +2802,18 @@ cudaError_t cudaLaunchKernel(const void* func,
     const cudaError_t status =
         cumetal::metal_backend::launch_kernel(metallib_path, kernel_name, config, launch_args,
                                               backend_stream, &error);
+
+    // Drain device printf output after kernel completes.
+    if (needs_printf && printf_buffer != nullptr && status == cudaSuccess) {
+        if (backend_stream != nullptr) {
+            // Async stream: synchronize to ensure kernel output is visible.
+            std::string sync_error;
+            cumetal::metal_backend::stream_synchronize(backend_stream, &sync_error);
+        }
+        drain_printf_buffer(printf_buffer->contents(), kPrintfCapWords,
+                            registered_kernel.printf_formats);
+    }
+
     return fail(status);
 }
 

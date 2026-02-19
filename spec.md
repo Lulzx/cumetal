@@ -627,9 +627,11 @@ populated from Metal device queries:
 | M3 | 8–10 | 8–10 |
 | M3 Pro | 11–18 | 11–18 |
 | M3 Max | 30–40 | 30–40 |
+| M3 Ultra | 60 | 60 |
 | M4 | 10 | 10 |
 | M4 Pro | 16–20 | 16–20 |
 | M4 Max | 32–40 | 32–40 |
+| M4 Ultra | 60 | 60 |
 
 The runtime detects the specific chip variant via `device.name` string matching and returns
 the correct core count. Unknown chips return a conservative estimate of 8.

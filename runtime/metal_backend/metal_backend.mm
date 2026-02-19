@@ -299,6 +299,9 @@ int infer_multi_processor_count(const std::string& device_name) {
         return 8;
     }
 
+    if (lowered.find("m3 ultra") != std::string::npos) {
+        return 60;
+    }
     if (lowered.find("m3 max") != std::string::npos) {
         return 30;
     }
@@ -309,6 +312,9 @@ int infer_multi_processor_count(const std::string& device_name) {
         return 8;
     }
 
+    if (lowered.find("m4 ultra") != std::string::npos) {
+        return 60;
+    }
     if (lowered.find("m4 max") != std::string::npos) {
         return 32;
     }
