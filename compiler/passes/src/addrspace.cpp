@@ -63,6 +63,12 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
         out->opcode = instruction.opcode;
         out->address_space = 0;
         out->rewritten = false;
+    } else if (starts_with(instruction.opcode, "prefetch") ||
+               starts_with(instruction.opcode, "prefetchu")) {
+        // prefetch / prefetchu: cache hint; no address space rewrite needed (no-op on UMA).
+        out->opcode = instruction.opcode;
+        out->address_space = 0;
+        out->rewritten = false;
     } else if (starts_with(instruction.opcode, "red.global")) {
         // red.global.*: write-only atomic reduction (no return value)
         // intrinsic_lower handles the actual lowering; passthrough here.

@@ -338,6 +338,15 @@ run_case "sweep_trap"               "trap;"
 # exit: terminate thread (same as ret in our model)
 run_case "sweep_exit"               "exit;"
 
+# bar.arrive: arrive at barrier without waiting (cooperative groups)
+# Conservative: full threadgroup barrier
+run_case "sweep_bar_arrive"         "bar.arrive 0, %r1;"
+
+# prefetch / prefetchu: cache prefetch hints → no-op on UMA (spec §8, __ldg() note)
+run_case "sweep_prefetch_global_L1" "prefetch.global.L1 [%rd1];"
+run_case "sweep_prefetch_local_L1"  "prefetch.local.L1 [%rd1];"
+run_case "sweep_prefetchu_L1"       "prefetchu.L1 [%rd1];"
+
 # vote.uni: predicate uniformity test → air.simdgroup.all (conservative)
 run_case "sweep_vote_uni_pred"      "vote.uni.pred %p1, %p2;"
 

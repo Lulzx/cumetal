@@ -81,6 +81,25 @@ bool map_barrier(const cumetal::ptx::EntryFunction::Instruction& instruction, Lo
         return true;
     }
 
+    // bar.arrive N, count — arrive at barrier without waiting (cooperative groups)
+    // Conservative lowering: full threadgroup barrier (safe superset of arrive semantics).
+    if (op.rfind("bar.arrive", 0) == 0) {
+        lowered->opcode = "air.threadgroup_barrier";
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    // prefetch / prefetchu — cache prefetch hints (memory latency optimization)
+    // On Apple Silicon UMA, the memory subsystem handles caching automatically.
+    // Lower to no-op (empty barrier-free hint marker).
+    if (op.rfind("prefetch", 0) == 0) {
+        lowered->opcode = "air.prefetch.noop";
+        lowered->operands = {};
+        lowered->translated = true;
+        return true;
+    }
+
     // membar.gl  → device-wide fence  (__threadfence)
     // membar.sys → system-wide fence  (__threadfence_system)
     // membar.cta → threadgroup fence  (__threadfence_block)
