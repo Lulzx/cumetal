@@ -183,4 +183,42 @@ run_case "sweep_set_eq_u32"     "set.eq.u32.u32 %r1, %r2, %r3;"
 run_case "sweep_set_lt_u32"     "set.lt.u32.s32 %r1, %r2, %r3;"
 run_case "sweep_set_ne_f32"     "set.ne.u32.f32 %r1, %f1, %f2;"
 
+# abs (integer and float)
+run_case "sweep_abs_s32"        "abs.s32 %r1, %r2;"
+run_case "sweep_abs_s64"        "abs.s64 %rd1, %rd2;"
+run_case "sweep_abs_f32"        "abs.f32 %f1, %f2;"
+run_case "sweep_abs_f64"        "abs.f64 %fd1, %fd2;"
+
+# shr (logical and arithmetic shifts)
+run_case "sweep_shr_b32"        "shr.b32 %r1, %r2, 3;"
+run_case "sweep_shr_u32"        "shr.u32 %r1, %r2, 5;"
+run_case "sweep_shr_s32"        "shr.s32 %r1, %r2, 2;"
+run_case "sweep_shr_b64"        "shr.b64 %rd1, %rd2, 4;"
+run_case "sweep_shr_u64"        "shr.u64 %rd1, %rd2, 7;"
+
+# non-sync vote forms
+run_case "sweep_vote_ballot_b32" "vote.ballot.b32 %r1, %p1;"
+run_case "sweep_vote_any"        "vote.any.pred %p1, %p2;"
+run_case "sweep_vote_all"        "vote.all.pred %p1, %p2;"
+
+# additional st.global variants
+run_case "sweep_st_global_u32"  "st.global.u32 [%rd1], %r1;"
+run_case "sweep_st_global_u64"  "st.global.u64 [%rd1], %rd2;"
+run_case "sweep_st_global_f64"  "st.global.f64 [%rd1], %fd1;"
+
+# additional ld.global variants (byte/short widths)
+run_case "sweep_ld_global_u8"   "ld.global.u8 %r1, [%rd1];"
+run_case "sweep_ld_global_s8"   "ld.global.s8 %r1, [%rd1];"
+run_case "sweep_ld_global_u16"  "ld.global.u16 %r1, [%rd1];"
+run_case "sweep_ld_global_s16"  "ld.global.s16 %r1, [%rd1];"
+
+# atom cas and bitwise
+run_case "sweep_atom_global_cas_b32" "atom.global.cas.b32 %r1, [%rd1], %r2, %r3;"
+run_case "sweep_atom_global_and_b32" "atom.global.and.b32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_or_b32"  "atom.global.or.b32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_xor_b32" "atom.global.xor.b32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_min_s32" "atom.global.min.s32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_max_s32" "atom.global.max.s32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_exch_b32" "atom.global.exch.b32 %r1, [%rd1], %r2;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
