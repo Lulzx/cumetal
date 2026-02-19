@@ -112,6 +112,7 @@ add_library(cumetal_runtime SHARED
     ${CUMETAL_REGISTRATION_SOURCE}
     runtime/rt/allocation_table.cpp
     runtime/rt/cublas.cpp
+    runtime/rt/cufft.cpp
     runtime/rt/curand.cpp
     runtime/rt/cuda_runtime.cpp
     runtime/metal_backend/metal_backend.mm
@@ -143,6 +144,7 @@ target_include_directories(cumetal_runtime
 
 target_link_libraries(cumetal_runtime
     PRIVATE
+        "-framework Accelerate"
         "-framework Foundation"
         "-framework Metal"
         "-framework MetalPerformanceShaders"
@@ -165,6 +167,9 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E create_symlink
                 $<TARGET_FILE_NAME:cumetal_runtime>
                 $<TARGET_FILE_DIR:cumetal_runtime>/libcurand.dylib
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+                $<TARGET_FILE_NAME:cumetal_runtime>
+                $<TARGET_FILE_DIR:cumetal_runtime>/libcufft.dylib
     )
 
     if(CUMETAL_ENABLE_BINARY_SHIM)
@@ -367,6 +372,10 @@ if(APPLE)
             COMMAND "${CMAKE_COMMAND}" -E create_symlink
                     "libcumetal.dylib"
                     "${CMAKE_INSTALL_PREFIX}/lib/libcurand.dylib")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E create_symlink
+                    "libcumetal.dylib"
+                    "${CMAKE_INSTALL_PREFIX}/lib/libcufft.dylib")
     ]])
 
     if(CUMETAL_ENABLE_BINARY_SHIM)
@@ -383,6 +392,7 @@ install(FILES
     runtime/api/cublas_v2.h
     runtime/api/cuda.h
     runtime/api/cuda_runtime.h
+    runtime/api/cufft.h
     runtime/api/curand.h
     DESTINATION include
 )

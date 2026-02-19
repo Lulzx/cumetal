@@ -179,6 +179,14 @@ Supported library shim subset:
   - `curandGenerateUniform`, `curandGenerateUniformDouble`
   - `curandGenerateNormal`, `curandGenerateNormalDouble`
   - `curandGenerateLogNormal`, `curandGenerateLogNormalDouble`
+- cuFFT (`cufft.h`)
+  - `cufftCreate`, `cufftDestroy`, `cufftSetStream`, `cufftGetSize`, `cufftGetVersion`
+  - `cufftPlan1d`, `cufftPlan2d`, `cufftPlan3d`, `cufftPlanMany`
+  - `cufftMakePlan1d`, `cufftMakePlan2d`, `cufftMakePlan3d`, `cufftMakePlanMany`
+  - `cufftExecC2C`, `cufftExecR2C`, `cufftExecC2R` (single-precision)
+  - `cufftExecZ2Z`, `cufftExecD2Z`, `cufftExecZ2D` (double-precision)
+  - Backed by Apple Accelerate `vDSP_DFT_Execute` (arbitrary N, any batch size)
+  - `libcufft.dylib` symlink alias to `libcumetal.dylib`
 - cuBLAS v2 (`cublas_v2.h`)
   - `cublasCreate`, `cublasDestroy`, `cublasGetVersion`
   - `cublasSetStream`, `cublasGetStream`
