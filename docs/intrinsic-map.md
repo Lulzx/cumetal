@@ -121,6 +121,12 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `popc.b64` | `llvm.ctpop.i64` | Population count (64-bit) |
 | `brev.b32` | `llvm.bitreverse.i32` | Bit reverse (32-bit) |
 | `brev.b64` | `llvm.bitreverse.i64` | Bit reverse (64-bit) |
+| `isspacep.global pred, ptr` | `air.isspacep.global` | Pointer space test: true for global (UMA flat model) |
+| `isspacep.shared/local/const pred, ptr` | `air.isspacep.nonglobal` | Always false (conservative UMA lowering) |
+| `bfe.u32 d, a, b, c` | `air.bfe.unsigned` | Bit field extract (unsigned) |
+| `bfe.s32 d, a, b, c` | `air.bfe.signed` | Bit field extract (signed, sign-extended) |
+| `bfi.b32 d, a, b, c, f` | `air.bfi` | Bit field insert |
+| `prmt.b32 d, a, b, c` | `air.prmt` | Byte permutation from two 32-bit words |
 
 ---
 
@@ -153,7 +159,7 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 
 The following PTX opcodes are passed through to subsequent pipeline stages unchanged:
 
-`ret`, `ld` (non-global), `st` (non-global), `setp`, `bra`, `cvt`, `cvta`, `mov` (non-special-register), `call`, `atom`
+`ret`, `ld` (non-global), `st` (non-global), `setp`, `bra`, `cvt`, `cvta`, `mov` (non-special-register), `call`, `atom`, `set`
 
 ---
 

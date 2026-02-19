@@ -221,6 +221,15 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // prmt.b32 d, a, b, c  — byte permutation from two 32-bit sources
         // Lowered to air.prmt; downstream stages emit byte-select sequences.
         lowered->opcode = "air.prmt";
+    } else if (instruction.opcode.rfind("lop3", 0) == 0) {
+        // lop3.b32 d, a, b, c, immLut  — 3-input look-up-table logic (Turing+)
+        // Maps to air.lop3; downstream stages lower to a sequence of and/or/xor/not
+        // operations implementing the LUT entry.
+        lowered->opcode = "air.lop3";
+    } else if (instruction.opcode.rfind("sad", 0) == 0) {
+        // sad.{u32,s32} d, a, b, c  — sum of absolute differences: d = |a-b| + c
+        // Lowered to air.sad; downstream stages emit abs(sub(a,b))+c sequence.
+        lowered->opcode = "air.sad";
     } else {
         return false;
     }

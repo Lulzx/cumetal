@@ -12,7 +12,8 @@ bool starts_with(const std::string& text, const std::string& prefix) {
 bool has_address_space_token(const std::string& opcode) {
     return opcode.find(".shared") != std::string::npos ||
            opcode.find(".global") != std::string::npos ||
-           opcode.find(".local") != std::string::npos;
+           opcode.find(".local") != std::string::npos ||
+           opcode.find(".const") != std::string::npos;
 }
 
 bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruction,
@@ -45,6 +46,11 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
     } else if (starts_with(instruction.opcode, "atom.global")) {
         out->opcode = "llvm.atomicrmw";
         out->address_space = 1;
+    } else if (starts_with(instruction.opcode, "ld.const")) {
+        // Constant address space (CUDA AS 4 → AIR AS 2).
+        // Loads from __constant__ variables; mapped to AIR constant buffer.
+        out->opcode = "llvm.load";
+        out->address_space = 2;
     } else if (starts_with(instruction.opcode, "cp.async")) {
         // cp.async global→shared: intrinsic_lower handles the actual lowering.
         // Passthrough here to suppress the unhandled-addrspace-opcode warning.

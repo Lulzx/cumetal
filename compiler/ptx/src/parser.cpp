@@ -129,9 +129,10 @@ bool is_supported_opcode(const std::string& opcode) {
     static const std::unordered_set<std::string> kSupportedRoots = {
         "abs",      "add",   "and",   "atom",  "bar",   "bfe",   "bfi",   "bra",   "brev",  "call",
         "clz",      "cos",   "cp",    "cvt",   "cvta",  "div",   "ex2",   "fma",   "isspacep",
-        "ld",       "lg2",   "mad",   "max",   "membar","min",   "mov",   "mul",   "neg",   "not",
-        "or",       "popc",  "prmt",  "rcp",   "redux", "rem",   "ret",   "rsqrt", "selp",  "set",
-        "setp",     "shl",   "shr",   "shfl",  "sin",   "sqrt",  "st",    "sub",   "vote",  "xor",
+        "ld",       "lg2",   "lop3",  "mad",   "max",   "membar","min",   "mov",   "mul",   "neg",
+        "not",      "or",    "popc",  "prmt",  "rcp",   "redux", "rem",   "ret",   "rsqrt", "sad",
+        "selp",     "set",   "setp",  "shl",   "shr",   "shfl",  "sin",   "sqrt",  "st",    "sub",
+        "vote",     "xor",
     };
     return kSupportedRoots.contains(root);
 }

@@ -313,6 +313,17 @@ run_case "sweep_atom_shared_add_u32"  "atom.shared.add.u32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_shared_exch_b32" "atom.shared.exch.b32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_shared_cas_b32"  "atom.shared.cas.b32 %r1, [%rd1], %r2, %r3;"
 
+# ld.const: constant address-space load (spec §5.4.1, __constant__ memory)
+run_case "sweep_ld_const_f32"       "ld.const.f32 %f1, [%rd1];"
+run_case "sweep_ld_const_u32"       "ld.const.u32 %r1, [%rd1];"
+
+# lop3: 3-input LUT logic op (Turing/Ampere+)
+run_case "sweep_lop3_b32"           "lop3.b32 %r1, %r2, %r3, %r4, 0xf0, 1;"
+
+# sad: sum of absolute differences
+run_case "sweep_sad_u32"            "sad.u32 %r1, %r2, %r3, %r4;"
+run_case "sweep_sad_s32"            "sad.s32 %r1, %r2, %r3, %r4;"
+
 # isspacep: pointer address-space predicate (spec §5.4)
 # Conservative lowering: .global → true; .shared/.local → false on UMA model.
 run_case "sweep_isspacep_global"  "isspacep.global %p1, %rd1;"
