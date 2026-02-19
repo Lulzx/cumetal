@@ -2695,7 +2695,16 @@ cudaError_t cudaLaunchKernel(const void* func,
         }
     }
 
-    constexpr std::uint32_t kPrintfCapWords = 256u * 1024u;  // 1 MB ring buffer
+    // Printf ring buffer size: 1 MB default, overridable via CUMETAL_PRINTF_BUFFER_SIZE (bytes).
+    const std::uint32_t kPrintfCapWords = [&]() -> std::uint32_t {
+        constexpr std::uint32_t kDefault = 256u * 1024u;  // 1 MB
+        const char* env = std::getenv("CUMETAL_PRINTF_BUFFER_SIZE");
+        if (env == nullptr || env[0] == '\0') return kDefault;
+        const long val = std::strtol(env, nullptr, 10);
+        if (val <= 0) return kDefault;
+        const std::uint32_t words = static_cast<std::uint32_t>(val) / sizeof(std::uint32_t);
+        return words > 0 ? words : kDefault;
+    }();
     const bool needs_printf = use_registered_kernel && !registered_kernel.printf_formats.empty();
 
     std::vector<cumetal::metal_backend::KernelArg> launch_args;
@@ -2761,7 +2770,7 @@ cudaError_t cudaLaunchKernel(const void* func,
     // Append hidden printf ring-buffer args if the kernel uses device printf (spec §5.3).
     std::shared_ptr<cumetal::metal_backend::Buffer> printf_buffer;
     if (needs_printf) {
-        constexpr std::size_t kBufBytes =
+        const std::size_t kBufBytes =
             static_cast<std::size_t>(kPrintfCapWords) * sizeof(std::uint32_t);
         std::string alloc_error;
         const cudaError_t alloc_status =
