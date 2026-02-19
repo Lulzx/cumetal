@@ -223,4 +223,50 @@ run_case "sweep_atom_global_min_s32" "atom.global.min.s32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_global_max_s32" "atom.global.max.s32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_global_exch_b32" "atom.global.exch.b32 %r1, [%rd1], %r2;"
 
+# brev (bit reverse)
+run_case "sweep_brev_b32"       "brev.b32 %r1, %r2;"
+run_case "sweep_brev_b64"       "brev.b64 %rd1, %rd2;"
+
+# ld/st shared float (complement existing u32 variants)
+run_case "sweep_ld_shared_f32"  "ld.shared.f32 %f1, [%rd1];"
+run_case "sweep_st_shared_f32"  "st.shared.f32 [%rd1], %f1;"
+run_case "sweep_ld_shared_s32"  "ld.shared.s32 %r1, [%rd1];"
+run_case "sweep_ld_shared_u64"  "ld.shared.u64 %rd1, [%rd2];"
+
+# mad.lo.u32 (unsigned GID computation pattern)
+run_case "sweep_mad_lo_u32"     "mad.lo.u32 %r1, %r2, %r3, %r4;"
+
+# clz / popc 64-bit variants (lowering exists; sweep coverage was missing)
+run_case "sweep_clz_b64"        "clz.b64 %r1, %rd1;"
+run_case "sweep_popc_b64"       "popc.b64 %r1, %rd1;"
+
+# basic float arithmetic (f32)
+run_case "sweep_add_f32"        "add.f32 %f1, %f2, %f3;"
+run_case "sweep_sub_f32"        "sub.f32 %f1, %f2, %f3;"
+run_case "sweep_mul_f32"        "mul.f32 %f1, %f2, %f3;"
+run_case "sweep_div_f32"        "div.rn.f32 %f1, %f2, %f3;"
+
+# float f64 unary/binary ops
+run_case "sweep_neg_f64"        "neg.f64 %fd1, %fd2;"
+run_case "sweep_abs_f64"        "abs.f64 %fd1, %fd2;"
+run_case "sweep_min_f64"        "min.f64 %fd1, %fd2, %fd3;"
+run_case "sweep_max_f64"        "max.f64 %fd1, %fd2, %fd3;"
+
+# 64-bit bitwise ops (lowering maps root, so b64 should also work)
+run_case "sweep_and_b64"        "and.b64 %rd1, %rd2, %rd3;"
+run_case "sweep_or_b64"         "or.b64 %rd1, %rd2, %rd3;"
+run_case "sweep_xor_b64"        "xor.b64 %rd1, %rd2, %rd3;"
+run_case "sweep_not_b64"        "not.b64 %rd1, %rd2;"
+
+# 64-bit multiply low
+run_case "sweep_mul_lo_u64"     "mul.lo.u64 %rd1, %rd2, %rd3;"
+
+# unsigned / 64-bit remainder
+run_case "sweep_rem_u32"        "rem.u32 %r1, %r2, %r3;"
+run_case "sweep_rem_s64"        "rem.s64 %rd1, %rd2, %rd3;"
+
+# partial-mask warp primitives (mask != 0xFFFFFFFF; conservative lowering — full-group)
+run_case "sweep_shfl_partial_mask"  "shfl.sync.idx.b32 %r1, %r2, %r3, 0x1f, 0x0000ffff;"
+run_case "sweep_vote_partial_mask"  "vote.sync.ballot.b32 %r1, %p1, 0x0000ffff;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
