@@ -299,4 +299,18 @@ run_case "sweep_cvt_rn_s32_f64"     "cvt.rzi.s32.f64 %r1, %fd1;"
 run_case "sweep_ld_global_nc_f32"   "ld.global.nc.f32 %f1, [%rd1];"
 run_case "sweep_ld_global_nc_u32"   "ld.global.nc.u32 %r1, [%rd1];"
 
+# 64-bit global atomics
+run_case "sweep_atom_global_add_u64"  "atom.global.add.u64 %rd1, [%rd2], %rd3;"
+run_case "sweep_atom_global_exch_b64" "atom.global.exch.b64 %rd1, [%rd2], %rd3;"
+run_case "sweep_atom_global_cas_b64"  "atom.global.cas.b64 %rd1, [%rd2], %rd3, %rd4;"
+
+# unsigned min/max atomics
+run_case "sweep_atom_global_min_u32"  "atom.global.min.u32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_max_u32"  "atom.global.max.u32 %r1, [%rd1], %r2;"
+
+# shared memory atomics
+run_case "sweep_atom_shared_add_u32"  "atom.shared.add.u32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_shared_exch_b32" "atom.shared.exch.b32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_shared_cas_b32"  "atom.shared.cas.b32 %r1, [%rd1], %r2, %r3;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
