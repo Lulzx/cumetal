@@ -69,4 +69,45 @@ run_case "sweep_bra_label" $'bra L_done;\nL_done:'
 run_case "sweep_call_vprintf" "call.uni (%r0), vprintf, (\"tid=%u\", %r1);"
 run_case "sweep_atom_global_add_f32" "atom.global.add.f32 %f1, [%rd1], %f2;"
 
+# Warp / SIMD-group primitives
+run_case "sweep_shfl_sync_idx"   "shfl.sync.idx.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_down"  "shfl.sync.down.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_up"    "shfl.sync.up.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_bfly"  "shfl.sync.bfly.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_vote_sync_ballot" "vote.sync.ballot.b32 %r1, %p1, 0xffffffff;"
+run_case "sweep_vote_sync_any"   "vote.sync.any.pred %p1, %p2, 0xffffffff;"
+run_case "sweep_vote_sync_all"   "vote.sync.all.pred %p1, %p2, 0xffffffff;"
+run_case "sweep_bar_warp_sync"   "bar.warp.sync 0xffffffff;"
+
+# Memory barriers
+run_case "sweep_membar_gl"   "membar.gl;"
+run_case "sweep_membar_cta"  "membar.cta;"
+run_case "sweep_membar_sys"  "membar.sys;"
+
+# Async copy
+run_case "sweep_cp_async_ca"       "cp.async.ca.shared.global [%rd1], [%rd2], 16;"
+run_case "sweep_cp_async_commit"   "cp.async.commit_group;"
+run_case "sweep_cp_async_wait_all" "cp.async.wait_all;"
+
+# Warp reductions
+run_case "sweep_redux_sync_add_s32" "redux.sync.add.s32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_add_f32" "redux.sync.add.f32 %f1, %f2, 0xffffffff;"
+run_case "sweep_redux_sync_and_b32" "redux.sync.and.b32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_or_b32"  "redux.sync.or.b32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_xor_b32" "redux.sync.xor.b32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_min_s32" "redux.sync.min.s32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_max_s32" "redux.sync.max.s32 %r1, %r2, 0xffffffff;"
+
+# Math intrinsics (extended)
+run_case "sweep_sqrt_rn_f32"    "sqrt.rn.f32 %f1, %f2;"
+run_case "sweep_rsqrt_approx"   "rsqrt.approx.f32 %f1, %f2;"
+run_case "sweep_ex2_approx_f32" "ex2.approx.f32 %f1, %f2;"
+run_case "sweep_lg2_approx_f32" "lg2.approx.f32 %f1, %f2;"
+run_case "sweep_sin_approx_f32" "sin.approx.f32 %f1, %f2;"
+run_case "sweep_cos_approx_f32" "cos.approx.f32 %f1, %f2;"
+run_case "sweep_fma_rn_f32"     "fma.rn.f32 %f1, %f2, %f3, %f4;"
+run_case "sweep_abs_f32"        "abs.f32 %f1, %f2;"
+run_case "sweep_min_f32"        "min.f32 %f1, %f2, %f3;"
+run_case "sweep_max_f32"        "max.f32 %f1, %f2, %f3;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"

@@ -549,6 +549,23 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     result.entry_name = pipeline.entry_name;
     result.llvm_ir = ir.str();
     result.warnings = pipeline.warnings;
+
+    // --fp64=warn: scan PTX source for any .f64 instructions and emit per-line warnings.
+    if (options.fp64_mode == Fp64Mode::kWarn) {
+        const std::string ptx_str(ptx);
+        std::istringstream ptx_stream(ptx_str);
+        std::string line;
+        int line_no = 0;
+        while (std::getline(ptx_stream, line)) {
+            ++line_no;
+            if (line.find(".f64") != std::string::npos) {
+                result.warnings.push_back(
+                    "fp64 instruction at line " + std::to_string(line_no) +
+                    " (--fp64=warn): " + trim(line));
+            }
+        }
+    }
+
     return result;
 }
 

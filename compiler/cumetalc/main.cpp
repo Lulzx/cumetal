@@ -30,7 +30,8 @@ void print_usage(const char* argv0) {
               << " [--input] <file.{metal,cu,ptx,ll,air,bc}> [--output|-o <file.metallib>]"
                  " [--mode xcrun|experimental] [--fallback-experimental]"
                  " [--overwrite] [--skip-validate] [--xcrun-validate]"
-                 " [--kernel-name name] [--entry name] [--ptx-strict]\n";
+                 " [--kernel-name name] [--entry name] [--ptx-strict]"
+                 " [--fp64=native|emulate|warn]\n";
 }
 
 std::string lower_ext(const std::filesystem::path& path) {
@@ -186,6 +187,7 @@ int main(int argc, char** argv) {
     bool positional_input_set = false;
     std::string ptx_entry_name;
     bool ptx_strict = false;
+    cumetal::ptx::Fp64Mode ptx_fp64_mode = cumetal::ptx::Fp64Mode::kNative;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -239,6 +241,19 @@ int main(int argc, char** argv) {
             ptx_entry_name = argv[++i];
         } else if (arg == "--ptx-strict") {
             ptx_strict = true;
+        } else if (arg.size() > 7 && arg.substr(0, 7) == "--fp64=") {
+            const std::string fp64_mode_str = arg.substr(7);
+            if (fp64_mode_str == "native") {
+                ptx_fp64_mode = cumetal::ptx::Fp64Mode::kNative;
+            } else if (fp64_mode_str == "emulate") {
+                ptx_fp64_mode = cumetal::ptx::Fp64Mode::kEmulate;
+            } else if (fp64_mode_str == "warn") {
+                ptx_fp64_mode = cumetal::ptx::Fp64Mode::kWarn;
+            } else {
+                std::cerr << "invalid --fp64 mode: " << fp64_mode_str
+                          << " (valid: native, emulate, warn)\n";
+                return 2;
+            }
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -308,6 +323,7 @@ int main(int argc, char** argv) {
             cumetal::ptx::LowerToLlvmOptions lower_options;
             lower_options.strict = ptx_strict;
             lower_options.entry_name = ptx_entry_name;
+            lower_options.fp64_mode = ptx_fp64_mode;
             const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(std::string_view(ptx_source), lower_options);
             for (const auto& warning : lowered.warnings) {
                 std::cerr << "ptx warning: " << warning << "\n";

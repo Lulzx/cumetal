@@ -207,6 +207,14 @@ add_executable(cumetal_runtime_atomic_test
     runtime_atomic_test.cpp
 )
 
+add_executable(cumetal_runtime_warp_shuffle_test
+    runtime_warp_shuffle_test.cpp
+)
+
+add_executable(cumetal_runtime_fp16_ops_test
+    runtime_fp16_ops_test.cpp
+)
+
 if(CUMETAL_ENABLE_BINARY_SHIM)
     add_executable(cumetal_runtime_registration_path_test
         runtime_registration_path_test.cpp
@@ -484,6 +492,16 @@ target_link_libraries(cumetal_runtime_axpy_offset_test
 )
 
 target_link_libraries(cumetal_runtime_atomic_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_warp_shuffle_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_fp16_ops_test
     PRIVATE
         cumetal_runtime
 )
@@ -871,6 +889,20 @@ target_compile_options(cumetal_runtime_axpy_offset_test
 )
 
 target_compile_options(cumetal_runtime_atomic_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_warp_shuffle_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_fp16_ops_test
     PRIVATE
         -Wall
         -Wextra
@@ -1332,6 +1364,26 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_atomic PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_warp_shuffle
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_warp_shuffle_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/warp_shuffle.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/warp_shuffle.metallib
+)
+
+set_tests_properties(functional_runtime_warp_shuffle PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_fp16_ops
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_fp16_ops_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/fp16_ops.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/fp16_ops.metallib
+)
+
+set_tests_properties(functional_runtime_fp16_ops PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_ptx_lowering_regression

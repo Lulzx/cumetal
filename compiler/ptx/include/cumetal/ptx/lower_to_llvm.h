@@ -6,11 +6,19 @@
 
 namespace cumetal::ptx {
 
+// FP64 compilation mode (see spec §8.1 and --fp64 CLI flag).
+enum class Fp64Mode {
+    kNative,   // emit AIR FP64 instructions as-is (default)
+    kEmulate,  // placeholder for Dekker's algorithm decomposition (future)
+    kWarn,     // same as kNative but emit a per-instruction warning for .f64 ops
+};
+
 struct LowerToLlvmOptions {
     bool strict = false;
     std::string entry_name;
     std::string module_id = "cumetal.ptx.module";
     std::string target_triple = "air64_v28-apple-macosx26.0.0";
+    Fp64Mode fp64_mode = Fp64Mode::kNative;
 };
 
 struct LowerToLlvmResult {

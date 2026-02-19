@@ -45,6 +45,12 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
     } else if (starts_with(instruction.opcode, "atom.global")) {
         out->opcode = "llvm.atomicrmw";
         out->address_space = 1;
+    } else if (starts_with(instruction.opcode, "cp.async")) {
+        // cp.async global→shared: intrinsic_lower handles the actual lowering.
+        // Passthrough here to suppress the unhandled-addrspace-opcode warning.
+        out->opcode = instruction.opcode;
+        out->address_space = 1;  // source is global memory
+        out->rewritten = false;
     } else {
         return false;
     }
