@@ -28,11 +28,35 @@ Complete CUDA/PTX → AIR intrinsic mapping table for the CuMetal intrinsic lowe
 | PTX Opcode | AIR / LLVM Intrinsic | Notes |
 |------------|---------------------|-------|
 | `bar.sync N` | `air.threadgroup_barrier` | `__syncthreads()` — threadgroup scope |
-| `bar.warp.sync mask` | `air.simdgroup.barrier` | `__syncwarp(mask)` — simdgroup scope; mask emulation: non-0xFFFFFFFF masks conservatively emit full-group barrier |
-| `membar.gl` / `__threadfence()` | `air.mem.barrier(scope=device)` | Device-wide memory fence |
-| `membar.cta` / `__threadfence_block()` | `air.mem.barrier(scope=threadgroup)` | Threadgroup memory fence |
+| `bar.warp.sync mask` | `air.simdgroup.barrier` | `__syncwarp(mask)` — simdgroup scope; non-0xFFFFFFFF masks conservatively emit full-group barrier |
+| `membar.gl` | `air.mem.barrier.device` | `__threadfence()` — device-wide memory fence |
+| `membar.sys` | `air.mem.barrier.device` | `__threadfence_system()` — system-wide fence (lowered to device scope) |
+| `membar.cta` | `air.mem.barrier.threadgroup` | `__threadfence_block()` — threadgroup memory fence |
+
+## Async Copy
+
+| PTX Opcode | AIR / LLVM Intrinsic | Notes |
+|------------|---------------------|-------|
+| `cp.async.ca.shared.global [dst], [src], sz` | `air.cp_async` | Async copy global→shared; lowered to synchronous ld+st (functional, not performance-equivalent) |
+| `cp.async.commit_group` | `air.threadgroup_barrier` | Commit outstanding async copies (barrier serializes) |
+| `cp.async.wait_group N` | `air.threadgroup_barrier` | Wait until ≤N outstanding groups remain (barrier serializes) |
+| `cp.async.wait_all` | `air.threadgroup_barrier` | Wait for all outstanding async copies |
 
 ---
+
+## Warp / SIMD-group Reductions
+
+| PTX Opcode | AIR / LLVM Intrinsic | Notes |
+|------------|---------------------|-------|
+| `redux.sync.add.s32 dst, src, mask` | `air.simdgroup.reduce_add` | `__redux_sync` warp-wide add (integer) |
+| `redux.sync.add.f32 dst, src, mask` | `air.simdgroup.reduce_add.f32` | Warp-wide add (float) |
+| `redux.sync.and.b32 dst, src, mask` | `air.simdgroup.reduce_and` | Warp-wide bitwise AND |
+| `redux.sync.or.b32 dst, src, mask` | `air.simdgroup.reduce_or` | Warp-wide bitwise OR |
+| `redux.sync.xor.b32 dst, src, mask` | `air.simdgroup.reduce_xor` | Warp-wide bitwise XOR |
+| `redux.sync.min.s32 dst, src, mask` | `air.simdgroup.reduce_min` | Warp-wide min (integer) |
+| `redux.sync.min.f32 dst, src, mask` | `air.simdgroup.reduce_min.f32` | Warp-wide min (float) |
+| `redux.sync.max.s32 dst, src, mask` | `air.simdgroup.reduce_max` | Warp-wide max (integer) |
+| `redux.sync.max.f32 dst, src, mask` | `air.simdgroup.reduce_max.f32` | Warp-wide max (float) |
 
 ## Warp / SIMD-group Primitives
 

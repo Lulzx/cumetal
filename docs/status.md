@@ -21,6 +21,19 @@ Implemented today:
     used in regression tests for `neg.f32`, `shl.b64`, and `atom.global.add.f32` paths
   - intrinsic-lowering opcode coverage expanded for `div`, `rem`, `and`, `or`, `xor`, `not`,
     `selp`, and `rcp` instruction roots, with strict PTX sweep coverage
+  - math intrinsic lowering extended: `fma`, `max/min/abs` (with float/int variants),
+    `sqrt`, `rsqrt`, `ex2`→`exp2`, `lg2`→`log2`, `sin`, `cos`
+  - warp primitive lowering: `shfl.sync.{idx,down,up,bfly}` → `air.simdgroup.shuffle*`,
+    `vote.sync.{ballot,any,all}` → `air.simdgroup.{ballot,any,all}`,
+    `bar.warp.sync` → `air.simdgroup.barrier` (__syncwarp emulation)
+  - memory barrier lowering: `membar.gl/sys` → `air.mem.barrier.device`,
+    `membar.cta` → `air.mem.barrier.threadgroup` (__threadfence/__threadfence_block)
+  - async copy lowering: `cp.async.*` → `air.cp_async` (serialized ld+st);
+    `cp.async.commit_group/wait_group/wait_all` → `air.threadgroup_barrier`
+  - warp reduction lowering: `redux.sync.{add,and,or,xor,min,max}` →
+    `air.simdgroup.reduce_{add,and,or,xor,min,max}[.f32]` (__redux_sync emulation)
+  - parser: targeted error diagnostics for Hopper cluster ops (`cluster.*`, `mbarrier.*`),
+    TMA (`cp.async.bulk.tensor.*`), and FP8 (`cvt.rn.f8*`) with specific messages
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
   - `cumetalc` accepts initial `.cu` input via xcrun clang++ frontend lowering to LLVM IR
   - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
