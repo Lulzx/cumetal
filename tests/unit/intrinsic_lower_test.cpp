@@ -322,6 +322,47 @@ int main() {
                 "redux.sync.add.f32 → air.simdgroup.reduce_add.f32"))
         return 1;
 
+    // ── Test 5: clz and popc (count-leading-zeros, population-count) ────────
+    const std::string ptx5 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k5(
+    .param .u64 p0,
+    .param .u64 p1
+)
+{
+    clz.b32  %r0, %r1;
+    clz.b64  %r0, %rd1;
+    popc.b32 %r0, %r1;
+    popc.b64 %r0, %rd1;
+    ret;
+}
+)PTX";
+
+    const auto parsed5 = cumetal::ptx::parse_ptx(ptx5);
+    if (!expect(parsed5.ok, "parse PTX5 for clz/popc")) return 1;
+    if (!expect(parsed5.module.entries.size() == 1, "single PTX5 entry")) return 1;
+    if (!expect(parsed5.module.entries[0].instructions.size() == 5,
+                "PTX5 instruction count (4 bit ops + ret)"))
+        return 1;
+
+    const auto bp = cumetal::passes::lower_intrinsics(parsed5.module.entries[0]);
+    if (!expect(bp.ok, "clz/popc lower ok")) return 1;
+    if (!expect(bp.warnings.empty(), "no warnings for clz/popc")) return 1;
+
+    if (!expect(bp.instructions[0].translated && bp.instructions[0].opcode == "llvm.ctlz.i32",
+                "clz.b32 → llvm.ctlz.i32"))
+        return 1;
+    if (!expect(bp.instructions[1].translated && bp.instructions[1].opcode == "llvm.ctlz.i64",
+                "clz.b64 → llvm.ctlz.i64"))
+        return 1;
+    if (!expect(bp.instructions[2].translated && bp.instructions[2].opcode == "llvm.ctpop.i32",
+                "popc.b32 → llvm.ctpop.i32"))
+        return 1;
+    if (!expect(bp.instructions[3].translated && bp.instructions[3].opcode == "llvm.ctpop.i64",
+                "popc.b64 → llvm.ctpop.i64"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }
