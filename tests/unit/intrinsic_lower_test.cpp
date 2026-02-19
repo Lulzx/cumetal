@@ -363,6 +363,59 @@ int main() {
                 "popc.b64 → llvm.ctpop.i64"))
         return 1;
 
+    // ── Test 6: abs (integer/float) and shr (logical/arithmetic) ────────────
+    const std::string ptx6 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k6(.param .u64 p0, .param .u64 p1)
+{
+    abs.s32   %r0, %r1;
+    abs.s64   %rd0, %rd1;
+    abs.f32   %f0, %f1;
+    abs.f64   %fd0, %fd1;
+    shr.b32   %r2, %r1, 3;
+    shr.s32   %r3, %r1, 2;
+    shr.u32   %r4, %r1, 5;
+    shr.b64   %rd2, %rd1, 4;
+    ret;
+})PTX";
+
+    const auto parsed6 = cumetal::ptx::parse_ptx(ptx6);
+    if (!expect(parsed6.ok, "parse PTX6 for abs/shr")) return 1;
+    if (!expect(parsed6.module.entries.size() == 1, "single PTX6 entry")) return 1;
+    if (!expect(parsed6.module.entries[0].instructions.size() == 9,
+                "PTX6 instruction count (8 ops + ret)"))
+        return 1;
+
+    const auto t6 = cumetal::passes::lower_intrinsics(parsed6.module.entries[0]);
+    if (!expect(t6.ok, "abs/shr lower ok")) return 1;
+    if (!expect(t6.warnings.empty(), "no warnings for abs/shr")) return 1;
+
+    if (!expect(t6.instructions[0].translated && t6.instructions[0].opcode == "llvm.abs",
+                "abs.s32 → llvm.abs"))
+        return 1;
+    if (!expect(t6.instructions[1].translated && t6.instructions[1].opcode == "llvm.abs",
+                "abs.s64 → llvm.abs"))
+        return 1;
+    if (!expect(t6.instructions[2].translated && t6.instructions[2].opcode == "llvm.fabs",
+                "abs.f32 → llvm.fabs"))
+        return 1;
+    if (!expect(t6.instructions[3].translated && t6.instructions[3].opcode == "llvm.fabs",
+                "abs.f64 → llvm.fabs"))
+        return 1;
+    if (!expect(t6.instructions[4].translated && t6.instructions[4].opcode == "llvm.shr",
+                "shr.b32 → llvm.shr"))
+        return 1;
+    if (!expect(t6.instructions[5].translated && t6.instructions[5].opcode == "llvm.shr",
+                "shr.s32 → llvm.shr"))
+        return 1;
+    if (!expect(t6.instructions[6].translated && t6.instructions[6].opcode == "llvm.shr",
+                "shr.u32 → llvm.shr"))
+        return 1;
+    if (!expect(t6.instructions[7].translated && t6.instructions[7].opcode == "llvm.shr",
+                "shr.b64 → llvm.shr"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }
