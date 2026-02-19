@@ -121,6 +121,12 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `popc.b64` | `llvm.ctpop.i64` | Population count (64-bit) |
 | `brev.b32` | `llvm.bitreverse.i32` | Bit reverse (32-bit) |
 | `brev.b64` | `llvm.bitreverse.i64` | Bit reverse (64-bit) |
+| `bfind.u32 d, a` | `air.bfind.i32` | Find most significant non-zero bit (MSB position); 0xffffffff if a==0 |
+| `bfind.s32 d, a` | `air.bfind.i32` | Signed variant (MSB of non-sign bits) |
+| `bfind.u64 d, a` | `air.bfind.i64` | 64-bit variant |
+| `lop3.b32 d, a, b, c, immLut` | `air.lop3` | 3-input LUT logic op (Turing+); downstream emits and/or/xor/not sequence |
+| `sad.u32 d, a, b, c` | `air.sad` | Sum of absolute differences: d = |a-b| + c |
+| `sad.s32 d, a, b, c` | `air.sad` | Signed variant |
 | `isspacep.global pred, ptr` | `air.isspacep.global` | Pointer space test: true for global (UMA flat model) |
 | `isspacep.shared/local/const pred, ptr` | `air.isspacep.nonglobal` | Always false (conservative UMA lowering) |
 | `bfe.u32 d, a, b, c` | `air.bfe.unsigned` | Bit field extract (unsigned) |

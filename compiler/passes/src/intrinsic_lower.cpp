@@ -221,6 +221,14 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // prmt.b32 d, a, b, c  — byte permutation from two 32-bit sources
         // Lowered to air.prmt; downstream stages emit byte-select sequences.
         lowered->opcode = "air.prmt";
+    } else if (instruction.opcode.rfind("bfind", 0) == 0) {
+        // bfind.{u32,s32,u64} d, a  — find most significant non-sign bit
+        // bfind.shiftamt.* returns 0 when d==0; plain bfind returns 0xffffffff.
+        // Equivalent to: 31 - clz(a) (for u32/s32); 63 - clz(a) (for u64).
+        // Lowered to air.bfind; downstream stages emit ctlz + sub.
+        const bool is_64 = instruction.opcode.find(".u64") != std::string::npos ||
+                           instruction.opcode.find(".s64") != std::string::npos;
+        lowered->opcode = is_64 ? "air.bfind.i64" : "air.bfind.i32";
     } else if (instruction.opcode.rfind("lop3", 0) == 0) {
         // lop3.b32 d, a, b, c, immLut  — 3-input look-up-table logic (Turing+)
         // Maps to air.lop3; downstream stages lower to a sequence of and/or/xor/not

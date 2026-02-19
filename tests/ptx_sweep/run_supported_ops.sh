@@ -324,6 +324,23 @@ run_case "sweep_lop3_b32"           "lop3.b32 %r1, %r2, %r3, %r4, 0xf0, 1;"
 run_case "sweep_sad_u32"            "sad.u32 %r1, %r2, %r3, %r4;"
 run_case "sweep_sad_s32"            "sad.s32 %r1, %r2, %r3, %r4;"
 
+# bfind: find most significant non-sign bit (ISA 5.0+)
+run_case "sweep_bfind_u32"          "bfind.u32 %r1, %r2;"
+run_case "sweep_bfind_s32"          "bfind.s32 %r1, %r2;"
+run_case "sweep_bfind_shiftamt"     "bfind.shiftamt.u32 %r1, %r2;"
+
+# mul.wide: widening multiply (produces 64-bit from 32-bit inputs)
+run_case "sweep_mul_wide_u32"       "mul.wide.u32 %rd1, %r1, %r2;"
+run_case "sweep_mul_wide_s32"       "mul.wide.s32 %rd1, %r1, %r2;"
+
+# mul.hi: high word of 32×32-bit multiply
+run_case "sweep_mul_hi_u32"         "mul.hi.u32 %r1, %r2, %r3;"
+run_case "sweep_mul_hi_s32"         "mul.hi.s32 %r1, %r2, %r3;"
+
+# f32 atomics (Ampere+: atom.global.{max,min}.f32)
+run_case "sweep_atom_global_max_f32" "atom.global.max.f32 %f1, [%rd1], %f2;"
+run_case "sweep_atom_global_min_f32" "atom.global.min.f32 %f1, [%rd1], %f2;"
+
 # isspacep: pointer address-space predicate (spec §5.4)
 # Conservative lowering: .global → true; .shared/.local → false on UMA model.
 run_case "sweep_isspacep_global"  "isspacep.global %p1, %rd1;"
