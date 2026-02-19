@@ -102,6 +102,24 @@ Implemented today:
     - `functional_runtime_fp64_ops` (PTX fma.rn.f64 via driver API; PASS via emulate mode)
     - `functional_runtime_atomic_shared` (threadgroup atomic, 128 blocks×256 threads=32768)
     - `functional_runtime_warp_vote` (simd_any/all/ballot; 64 threads, ballot=0x55555555)
+    - `functional_runtime_struct_arg` (struct by-value argument via CUMETAL_ARG_BYTES)
+    - `functional_runtime_barrier_order` (thread 0 writes sentinel; all threads verify post-barrier)
+    - `functional_runtime_cp_async_emul` (cp.async emulated as ld+st+threadgroup_barrier)
+    - `functional_runtime_warp_partial_mask` (spec §5.3/§10.3 partial-mask conservative lowering)
+  - intrinsic lowering: `brev.b32/b64` → `llvm.bitreverse.i32/i64` added to pass and parser
+  - intrinsic_lower unit tests: Test 6 (abs/shr), Test 7 (brev), Test 8 (f32/f64 math, b64 bitwise)
+  - PTX sweep: expanded to 93+ cases covering all kSupportedRoots opcode roots including:
+    - `clz.b64`, `popc.b64` (64-bit bit-count ops)
+    - `add/sub/mul/div.f32` (basic float arithmetic)
+    - `neg/abs/min/max.f64` (double-precision unary/binary)
+    - `and/or/xor/not.b64` (64-bit bitwise ops)
+    - `mul.lo.u64`, `rem.u32`, `rem.s64`
+    - `abs.{s32,s64,f32,f64}`, `shr.{b32,u32,s32,b64,u64,s64}`
+    - `vote.{ballot,any,all}` non-sync forms
+    - `st.global.{u32,u64,f64}`, `ld.global.{u8,s8,u16,s16}`
+    - `atom.global.{cas,and,or,xor,min,max,exch}.b32`
+    - `redux.sync.{min,max}.f32`
+    - partial-mask variants: `shfl.sync` and `vote.sync.ballot` with mask=0x0000FFFF
 
 Supported runtime API subset:
 
