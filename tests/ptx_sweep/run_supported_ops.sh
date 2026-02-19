@@ -110,4 +110,61 @@ run_case "sweep_abs_f32"        "abs.f32 %f1, %f2;"
 run_case "sweep_min_f32"        "min.f32 %f1, %f2, %f3;"
 run_case "sweep_max_f32"        "max.f32 %f1, %f2, %f3;"
 
+# Integer 64-bit arithmetic
+run_case "sweep_add_s64"        "add.s64 %rd1, %rd2, %rd3;"
+run_case "sweep_sub_s64"        "sub.s64 %rd1, %rd2, %rd3;"
+run_case "sweep_mul_lo_s64"     "mul.lo.s64 %rd1, %rd2, %rd3;"
+run_case "sweep_shl_b32"        "shl.b32 %r1, %r2, %r3;"
+run_case "sweep_shr_u32"        "shr.u32 %r1, %r2, %r3;"
+run_case "sweep_shr_s32"        "shr.s32 %r1, %r2, %r3;"
+
+# Integer abs / bitfield
+run_case "sweep_abs_s32"        "abs.s32 %r1, %r2;"
+run_case "sweep_min_s32"        "min.s32 %r1, %r2, %r3;"
+run_case "sweep_max_s32"        "max.s32 %r1, %r2, %r3;"
+run_case "sweep_min_u32"        "min.u32 %r1, %r2, %r3;"
+run_case "sweep_max_u32"        "max.u32 %r1, %r2, %r3;"
+run_case "sweep_clz_b32"        "clz.b32 %r1, %r2;"
+run_case "sweep_popc_b32"       "popc.b32 %r1, %r2;"
+
+# Multiply-wide (produces 64-bit result from two 32-bit inputs)
+run_case "sweep_mul_wide_u32"   "mul.wide.u32 %rd1, %r2, %r3;"
+run_case "sweep_mul_wide_s32"   "mul.wide.s32 %rd1, %r2, %r3;"
+
+# Type conversions
+run_case "sweep_cvt_f32_s32"    "cvt.rn.f32.s32 %f1, %r1;"
+run_case "sweep_cvt_f32_u32"    "cvt.rn.f32.u32 %f1, %r1;"
+run_case "sweep_cvt_s32_f32"    "cvt.rzi.s32.f32 %r1, %f1;"
+run_case "sweep_cvt_u32_f32"    "cvt.rzi.u32.f32 %r1, %f1;"
+run_case "sweep_cvt_f64_f32"    "cvt.f64.f32 %fd1, %f1;"
+run_case "sweep_cvt_f32_f64"    "cvt.rn.f32.f64 %f1, %fd1;"
+run_case "sweep_cvt_u64_u32"    "cvt.u64.u32 %rd1, %r1;"
+run_case "sweep_cvt_s64_s32"    "cvt.s64.s32 %rd1, %r1;"
+
+# Predicate conversions
+run_case "sweep_selp_s32"       "selp.s32 %r1, %r2, %r3, %p1;"
+run_case "sweep_selp_s64"       "selp.s64 %rd1, %rd2, %rd3, %p1;"
+
+# Setp variants (beyond eq.s32)
+run_case "sweep_setp_lt_f32"    "setp.lt.f32 %p1, %f1, %f2;"
+run_case "sweep_setp_gt_s32"    "setp.gt.s32 %p1, %r1, %r2;"
+run_case "sweep_setp_ne_u32"    "setp.ne.u32 %p1, %r1, %r2;"
+run_case "sweep_setp_ge_f32"    "setp.ge.f32 %p1, %f1, %f2;"
+run_case "sweep_setp_le_u32"    "setp.le.u32 %p1, %r1, %r2;"
+
+# FP64 compile-time (native mode: parsed + LLVM IR emitted; may not execute on Apple Silicon)
+run_case "sweep_fma_rn_f64"     "fma.rn.f64 %fd1, %fd2, %fd3, %fd4;"
+run_case "sweep_add_f64"        "add.rn.f64 %fd1, %fd2, %fd3;"
+run_case "sweep_mul_f64"        "mul.rn.f64 %fd1, %fd2, %fd3;"
+
+# Load types
+run_case "sweep_ld_global_u32"  "ld.global.u32 %r1, [%rd1];"
+run_case "sweep_ld_global_s32"  "ld.global.s32 %r1, [%rd1];"
+run_case "sweep_ld_global_u64"  "ld.global.u64 %rd1, [%rd2];"
+run_case "sweep_ld_global_f64"  "ld.global.f64 %fd1, [%rd1];"
+
+# Atomic add (global, integer)
+run_case "sweep_atom_global_add_s32" "atom.global.add.s32 %r1, [%rd1], %r2;"
+run_case "sweep_atom_global_add_u32" "atom.global.add.u32 %r1, [%rd1], %r2;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"

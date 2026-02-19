@@ -127,9 +127,9 @@ bool is_supported_opcode(const std::string& opcode) {
     const std::string root = (dot == std::string::npos) ? opcode : opcode.substr(0, dot);
 
     static const std::unordered_set<std::string> kSupportedRoots = {
-        "abs",    "add",   "and",   "atom",  "bar",   "bra",   "call",  "cos",   "cp",
+        "abs",    "add",   "and",   "atom",  "bar",   "bra",   "call",  "clz",   "cos",   "cp",
         "cvt",    "cvta",  "div",   "ex2",   "fma",   "ld",    "lg2",   "mad",   "max",
-        "membar", "min",   "mov",   "mul",   "neg",   "not",   "or",    "rcp",   "redux",
+        "membar", "min",   "mov",   "mul",   "neg",   "not",   "or",    "popc",  "rcp",   "redux",
         "rem",    "ret",   "rsqrt", "selp",  "set",   "setp",  "shl",   "shr",   "shfl",
         "sin",    "sqrt",  "st",    "sub",   "vote",  "xor",
     };

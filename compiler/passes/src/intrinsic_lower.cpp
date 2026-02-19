@@ -167,6 +167,16 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         lowered->opcode = "llvm.sin";
     } else if (instruction.opcode.rfind("cos", 0) == 0) {
         lowered->opcode = "llvm.cos";
+    } else if (instruction.opcode.rfind("clz", 0) == 0) {
+        // clz.b32 dst, src → @llvm.ctlz.i32(i32, i1 false)
+        // clz.b64 dst, src → @llvm.ctlz.i64(i64, i1 false)
+        const bool is_64 = instruction.opcode.find(".b64") != std::string::npos;
+        lowered->opcode = is_64 ? "llvm.ctlz.i64" : "llvm.ctlz.i32";
+    } else if (instruction.opcode.rfind("popc", 0) == 0) {
+        // popc.b32 dst, src → @llvm.ctpop.i32(i32)
+        // popc.b64 dst, src → @llvm.ctpop.i64(i64)
+        const bool is_64 = instruction.opcode.find(".b64") != std::string::npos;
+        lowered->opcode = is_64 ? "llvm.ctpop.i64" : "llvm.ctpop.i32";
     } else {
         return false;
     }

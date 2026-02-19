@@ -89,11 +89,19 @@ Implemented today:
     (`cluster.sync.aligned`, `mbarrier.init`, `mbarrier.arrive`), TMA
     (`cp.async.bulk.tensor.1d.*`), and FP8 (`cvt.rn.f8x2.*`)
   - `--fp64=native|emulate|warn` flag added to `cumetalc` (spec §8.1); `warn` mode emits
-    per-instruction warnings for `.f64` opcodes; `emulate` accepts the flag and warns that
-    Dekker decomposition is deferred (falls back to native FP64)
-  - functional tests added: `functional_runtime_warp_shuffle` (simd_shuffle broadcast, 64
-    threads, verifies simdgroup lane-0 broadcast) and `functional_runtime_fp16_ops`
-    (half-precision add, 256 elements, exact integer arithmetic check)
+    per-instruction warnings for `.f64` opcodes; `emulate` implements Dekker FP32-pair
+    decomposition for recognized fp64 kernels; runtime defaults to `kEmulate` because
+    Apple Silicon GPU rejects `fmul double` in Metal pipelines at runtime (set
+    `CUMETAL_FP64_MODE=native` to force native mode for compilation-path testing)
+  - functional tests added:
+    - `functional_runtime_warp_shuffle` (simd_shuffle broadcast, 64 threads, lane-0 broadcast)
+    - `functional_runtime_fp16_ops` (half-precision add, 256 elements, exact integer check)
+    - `functional_runtime_shared_reduce` (256-thread tree reduction, output[0]==256.0)
+    - `functional_runtime_grid_2d` (4×4 grid of 2×2 blocks, linear index check)
+    - `functional_runtime_grid_3d` (2×3×4 grid of 2×2×2 blocks, 3D linear index check)
+    - `functional_runtime_fp64_ops` (PTX fma.rn.f64 via driver API; PASS via emulate mode)
+    - `functional_runtime_atomic_shared` (threadgroup atomic, 128 blocks×256 threads=32768)
+    - `functional_runtime_warp_vote` (simd_any/all/ballot; 64 threads, ballot=0x55555555)
 
 Supported runtime API subset:
 
