@@ -3120,4 +3120,56 @@ cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* /*prop*/) {
     return fail(cudaSuccess);
 }
 
+// Stream with priority — priority is ignored; Metal has no priority queue.
+cudaError_t cudaStreamCreateWithPriority(cudaStream_t* stream, unsigned int flags,
+                                          int /*priority*/) {
+    return cudaStreamCreateWithFlags(stream, flags);
+}
+
+// Device limits — Metal exposes no equivalent knobs; no-op set, sensible get.
+cudaError_t cudaDeviceSetLimit(cudaLimit /*limit*/, size_t /*value*/) {
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDeviceGetLimit(size_t* pValue, cudaLimit limit) {
+    if (pValue == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+    switch (limit) {
+        case cudaLimitStackSize:
+            *pValue = 1024;
+            break;
+        case cudaLimitPrintfFifoSize:
+            *pValue = 1024u * 1024u;  // 1 MB (matches CUMETAL_PRINTF_BUFFER_SIZE default)
+            break;
+        case cudaLimitMallocHeapSize:
+            *pValue = 8u * 1024u * 1024u;  // 8 MB
+            break;
+        default:
+            *pValue = 0;
+            break;
+    }
+    return fail(cudaSuccess);
+}
+
+// Cooperative kernel launch — grid-wide CG is not supported on Metal (no cross-
+// threadgroup barrier), but threadgroup-scoped CG works.  Forward to cudaLaunchKernel
+// so programs that only use thread_block CG continue to function (spec §8).
+cudaError_t cudaLaunchCooperativeKernel(const void* func,
+                                         dim3 gridDim,
+                                         dim3 blockDim,
+                                         void** args,
+                                         size_t sharedMem,
+                                         cudaStream_t stream) {
+    return cudaLaunchKernel(func, gridDim, blockDim, args, sharedMem, stream);
+}
+
 }  // extern "C"

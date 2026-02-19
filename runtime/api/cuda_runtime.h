@@ -276,6 +276,7 @@ cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t
 cudaError_t cudaDeviceReset(void);
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags);
+cudaError_t cudaStreamCreateWithPriority(cudaStream_t* stream, unsigned int flags, int priority);
 cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaStreamQuery(cudaStream_t stream);
@@ -329,6 +330,25 @@ cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize,
                                                int blockSizeLimit);
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr);
 cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* prop);
+
+typedef enum cudaLimit {
+    cudaLimitStackSize = 0x00,
+    cudaLimitPrintfFifoSize = 0x01,
+    cudaLimitMallocHeapSize = 0x02,
+    cudaLimitDevRuntimeSyncDepth = 0x03,
+    cudaLimitDevRuntimePendingLaunchCount = 0x04,
+    cudaLimitMaxL2FetchGranularity = 0x05,
+    cudaLimitPersistingL2CacheSize = 0x06,
+} cudaLimit;
+
+cudaError_t cudaDeviceSetLimit(cudaLimit limit, size_t value);
+cudaError_t cudaDeviceGetLimit(size_t* pValue, cudaLimit limit);
+cudaError_t cudaLaunchCooperativeKernel(const void* func,
+                                         dim3 gridDim,
+                                         dim3 blockDim,
+                                         void** args,
+                                         size_t sharedMem,
+                                         cudaStream_t stream);
 
 #ifdef __cplusplus
 }

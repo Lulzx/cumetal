@@ -146,6 +146,9 @@ Supported runtime API subset:
 - `cudaFuncGetAttributes`, `cudaFuncSetCacheConfig`, `cudaFuncSetSharedMemConfig`
 - `cudaOccupancyMaxActiveBlocksPerMultiprocessor`, `cudaOccupancyMaxPotentialBlockSize`
 - `cudaPointerGetAttributes`, `cudaChooseDevice`
+- `cudaStreamCreateWithPriority` (priority ignored; creates regular stream)
+- `cudaDeviceSetLimit` (no-op), `cudaDeviceGetLimit` (returns sensible defaults)
+- `cudaLaunchCooperativeKernel` (forwards to `cudaLaunchKernel`; threadgroup CG works)
 
 Supported driver API subset:
 
