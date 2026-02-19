@@ -48,10 +48,55 @@ bool map_special_register_mov(const cumetal::ptx::EntryFunction::Instruction& in
 }
 
 bool map_barrier(const cumetal::ptx::EntryFunction::Instruction& instruction, LoweredInstruction* lowered) {
-    if (lowered == nullptr || instruction.opcode.rfind("bar.sync", 0) != 0) {
+    if (lowered == nullptr) {
         return false;
     }
-    lowered->opcode = "air.threadgroup_barrier";
+    const std::string& op = instruction.opcode;
+
+    if (op.rfind("bar.sync", 0) == 0) {
+        lowered->opcode = "air.threadgroup_barrier";
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    // membar.gl  → device-wide fence  (__threadfence)
+    // membar.sys → system-wide fence  (__threadfence_system)
+    // membar.cta → threadgroup fence  (__threadfence_block)
+    if (op.rfind("membar", 0) == 0) {
+        lowered->opcode = (op.find(".cta") != std::string::npos)
+                              ? "air.mem.barrier.threadgroup"
+                              : "air.mem.barrier.device";
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    return false;
+}
+
+bool map_async_copy(const cumetal::ptx::EntryFunction::Instruction& instruction,
+                    LoweredInstruction* lowered) {
+    if (lowered == nullptr || instruction.opcode.rfind("cp.async", 0) != 0) {
+        return false;
+    }
+    const std::string& op = instruction.opcode;
+
+    // cp.async.commit_group / cp.async.wait_group / cp.async.wait_all →
+    // threadgroup barrier (serializes the async copy pipeline;
+    // functional but not performance-equivalent to hardware async copy)
+    if (op.find("commit_group") != std::string::npos ||
+        op.find("wait_group") != std::string::npos ||
+        op.find("wait_all") != std::string::npos) {
+        lowered->opcode = "air.threadgroup_barrier";
+        lowered->operands = {};
+        lowered->translated = true;
+        return true;
+    }
+
+    // cp.async.ca.shared.global [dst], [src], size →
+    // marked as air.cp_async; downstream stages lower to synchronous ld+st
+    lowered->opcode = "air.cp_async";
     lowered->operands = instruction.operands;
     lowered->translated = true;
     return true;
@@ -183,6 +228,30 @@ bool map_warp_primitives(const cumetal::ptx::EntryFunction::Instruction& instruc
         return true;
     }
 
+    // redux.sync: warp-wide reduction (__redux_sync, Ampere+)
+    // redux.sync.{add,and,or,xor,min,max}.{s32,u32,b32,f32} dst, src, membermask
+    if (op.rfind("redux.sync", 0) == 0) {
+        const bool is_float = op.find(".f32") != std::string::npos;
+        if (op.find(".add.") != std::string::npos) {
+            lowered->opcode = is_float ? "air.simdgroup.reduce_add.f32" : "air.simdgroup.reduce_add";
+        } else if (op.find(".and.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.reduce_and";
+        } else if (op.find(".or.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.reduce_or";
+        } else if (op.find(".xor.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.reduce_xor";
+        } else if (op.find(".min.") != std::string::npos) {
+            lowered->opcode = is_float ? "air.simdgroup.reduce_min.f32" : "air.simdgroup.reduce_min";
+        } else if (op.find(".max.") != std::string::npos) {
+            lowered->opcode = is_float ? "air.simdgroup.reduce_max.f32" : "air.simdgroup.reduce_max";
+        } else {
+            return false;
+        }
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
     return false;
 }
 
@@ -200,6 +269,7 @@ IntrinsicLowerResult lower_intrinsics(const cumetal::ptx::EntryFunction& entry,
         bool translated = false;
         translated = translated || map_special_register_mov(instruction, &lowered);
         translated = translated || map_barrier(instruction, &lowered);
+        translated = translated || map_async_copy(instruction, &lowered);
         translated = translated || map_warp_primitives(instruction, &lowered);
         translated = translated || map_math(instruction, &lowered);
 

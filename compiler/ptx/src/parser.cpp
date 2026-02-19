@@ -127,12 +127,42 @@ bool is_supported_opcode(const std::string& opcode) {
     const std::string root = (dot == std::string::npos) ? opcode : opcode.substr(0, dot);
 
     static const std::unordered_set<std::string> kSupportedRoots = {
-        "abs",   "add",  "and",  "atom", "bar",  "bra",  "call", "cos",  "cvt",  "cvta",
-        "div",   "ex2",  "fma",  "ld",   "lg2",  "mad",  "max",  "min",  "mov",  "mul",
-        "neg",   "not",  "or",   "rcp",  "rem",  "ret",  "rsqrt","selp", "set",  "setp",
-        "shl",   "shr",  "shfl", "sin",  "sqrt", "st",   "sub",  "vote", "xor",
+        "abs",    "add",   "and",   "atom",  "bar",   "bra",   "call",  "cos",   "cp",
+        "cvt",    "cvta",  "div",   "ex2",   "fma",   "ld",    "lg2",   "mad",   "max",
+        "membar", "min",   "mov",   "mul",   "neg",   "not",   "or",    "rcp",   "redux",
+        "rem",    "ret",   "rsqrt", "selp",  "set",   "setp",  "shl",   "shr",   "shfl",
+        "sin",    "sqrt",  "st",    "sub",   "vote",  "xor",
     };
     return kSupportedRoots.contains(root);
+}
+
+// Returns true for opcodes that must be treated as unsupported regardless of root membership.
+// This overrides kSupportedRoots for opcodes whose root is shared with supported variants
+// (e.g., cp.async.bulk.tensor shares root "cp" with supported cp.async).
+bool is_explicitly_unsupported(const std::string& opcode) {
+    return opcode.rfind("cluster.", 0) == 0 ||
+           opcode.rfind("mbarrier.", 0) == 0 ||
+           opcode.rfind("cp.async.bulk.tensor", 0) == 0 ||
+           opcode.rfind("cvt.rn.f8x2", 0) == 0 ||
+           opcode.rfind("cvt.rn.f8.", 0) == 0;
+}
+
+// Returns a targeted diagnostic for opcodes that are unsupported with a known reason.
+// Returns empty string for generic unsupported opcodes.
+std::string targeted_unsupported_message(const std::string& opcode) {
+    if (opcode.rfind("cluster.", 0) == 0 || opcode.rfind("mbarrier.", 0) == 0) {
+        return "unsupported opcode '" + opcode +
+               "' (Hopper cluster / distributed shared memory ops have no Metal equivalent)";
+    }
+    if (opcode.rfind("cp.async.bulk.tensor", 0) == 0) {
+        return "unsupported opcode '" + opcode +
+               "' (Tensor Memory Accelerator (TMA) has no Metal equivalent)";
+    }
+    if (opcode.rfind("cvt.rn.f8x2", 0) == 0 || opcode.rfind("cvt.rn.f8.", 0) == 0) {
+        return "unsupported opcode '" + opcode +
+               "' (FP8 / Transformer Engine types have no Metal equivalent)";
+    }
+    return "";
 }
 
 std::vector<std::string> split_operands(const std::string& text) {
@@ -478,10 +508,14 @@ void parse_instructions(const std::string& body,
             instruction.operands = split_operands(line_text.substr(ws + 1));
         }
 
-        instruction.supported = is_supported_opcode(instruction.opcode);
+        instruction.supported = !is_explicitly_unsupported(instruction.opcode) &&
+                                is_supported_opcode(instruction.opcode);
         if (!instruction.supported) {
-            warnings->push_back("unsupported opcode '" + instruction.opcode + "' at line " +
-                                std::to_string(instruction.line));
+            const std::string targeted = targeted_unsupported_message(instruction.opcode);
+            warnings->push_back(!targeted.empty()
+                                     ? targeted
+                                     : "unsupported opcode '" + instruction.opcode + "' at line " +
+                                           std::to_string(instruction.line));
         }
         entry->instructions.push_back(std::move(instruction));
     }

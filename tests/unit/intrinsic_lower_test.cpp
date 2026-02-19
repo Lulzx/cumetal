@@ -268,6 +268,60 @@ int main() {
                 "bar.warp.sync → air.simdgroup.barrier"))
         return 1;
 
+    // ── Test 4: membar, cp.async, redux.sync ────────────────────────────────
+    const std::string ptx4 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k4(
+    .param .u64 p0,
+    .param .u64 p1
+)
+{
+    membar.gl;
+    membar.cta;
+    cp.async.ca.shared.global [p0], [p1], 16;
+    cp.async.commit_group;
+    cp.async.wait_group 0;
+    redux.sync.add.s32 %r0, %r1, 0xffffffff;
+    redux.sync.add.f32 %f0, %f1, 0xffffffff;
+    ret;
+}
+)PTX";
+
+    const auto parsed4 = cumetal::ptx::parse_ptx(ptx4);
+    if (!expect(parsed4.ok, "parse PTX4 for membar/cp.async/redux")) return 1;
+    if (!expect(parsed4.module.entries.size() == 1, "single PTX4 entry")) return 1;
+    if (!expect(parsed4.module.entries[0].instructions.size() == 8,
+                "PTX4 instruction count (7 ops + ret)"))
+        return 1;
+
+    const auto z = cumetal::passes::lower_intrinsics(parsed4.module.entries[0]);
+    if (!expect(z.ok, "membar/cp.async/redux lower ok")) return 1;
+    if (!expect(z.warnings.empty(), "no warnings for supported ops")) return 1;
+
+    if (!expect(z.instructions[0].translated && z.instructions[0].opcode == "air.mem.barrier.device",
+                "membar.gl → air.mem.barrier.device"))
+        return 1;
+    if (!expect(z.instructions[1].translated && z.instructions[1].opcode == "air.mem.barrier.threadgroup",
+                "membar.cta → air.mem.barrier.threadgroup"))
+        return 1;
+    if (!expect(z.instructions[2].translated && z.instructions[2].opcode == "air.cp_async",
+                "cp.async → air.cp_async"))
+        return 1;
+    if (!expect(z.instructions[3].translated && z.instructions[3].opcode == "air.threadgroup_barrier",
+                "cp.async.commit_group → air.threadgroup_barrier"))
+        return 1;
+    if (!expect(z.instructions[4].translated && z.instructions[4].opcode == "air.threadgroup_barrier",
+                "cp.async.wait_group → air.threadgroup_barrier"))
+        return 1;
+    if (!expect(z.instructions[5].translated && z.instructions[5].opcode == "air.simdgroup.reduce_add",
+                "redux.sync.add.s32 → air.simdgroup.reduce_add"))
+        return 1;
+    if (!expect(z.instructions[6].translated &&
+                    z.instructions[6].opcode == "air.simdgroup.reduce_add.f32",
+                "redux.sync.add.f32 → air.simdgroup.reduce_add.f32"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }

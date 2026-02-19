@@ -264,6 +264,47 @@ L_done:
         return 1;
     }
 
+    // ── Test: targeted diagnostics for cluster/TMA/FP8 unsupported opcodes ──
+    const std::string cluster_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry cluster_test(
+    .param .u64 p0
+)
+{
+    cluster.sync.aligned;
+    ret;
+}
+)PTX";
+
+    const auto cluster_parse = cumetal::ptx::parse_ptx(cluster_ptx);
+    if (!expect(cluster_parse.ok, "cluster opcode parses tolerantly")) return 1;
+    if (!expect(!cluster_parse.warnings.empty(), "cluster opcode emits warning")) return 1;
+    if (!expect(cluster_parse.warnings[0].find("cluster") != std::string::npos &&
+                    cluster_parse.warnings[0].find("Metal equivalent") != std::string::npos,
+                "cluster warning mentions Metal equivalent gap"))
+        return 1;
+
+    const std::string tma_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry tma_test(
+    .param .u64 p0
+)
+{
+    cp.async.bulk.tensor.1d.global.shared [p0], [p0], 16;
+    ret;
+}
+)PTX";
+
+    const auto tma_parse = cumetal::ptx::parse_ptx(tma_ptx);
+    if (!expect(tma_parse.ok, "TMA opcode parses tolerantly")) return 1;
+    if (!expect(!tma_parse.warnings.empty(), "TMA opcode emits warning")) return 1;
+    if (!expect(tma_parse.warnings[0].find("TMA") != std::string::npos ||
+                    tma_parse.warnings[0].find("Tensor Memory") != std::string::npos,
+                "TMA warning identifies TMA opcode"))
+        return 1;
+
     std::printf("PASS: ptx parser unit tests\n");
     return 0;
 }
