@@ -170,6 +170,27 @@ CUresult cuGetErrorString(CUresult error, const char** pStr);
 CUresult cuProfilerStart(void);
 CUresult cuProfilerStop(void);
 
+CUresult cuStreamCreateWithPriority(CUstream* phStream, unsigned int flags, int priority);
+CUresult cuLaunchCooperativeKernel(CUfunction f,
+                                    unsigned int gridDimX,
+                                    unsigned int gridDimY,
+                                    unsigned int gridDimZ,
+                                    unsigned int blockDimX,
+                                    unsigned int blockDimY,
+                                    unsigned int blockDimZ,
+                                    unsigned int sharedMemBytes,
+                                    CUstream hStream,
+                                    void** kernelParams);
+
+CUresult cuMemsetD16(CUdeviceptr dstDevice, unsigned short us, size_t N);
+CUresult cuMemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N);
+CUresult cuMemsetD16Async(CUdeviceptr dstDevice, unsigned short us, size_t N,
+                           CUstream hStream);
+CUresult cuMemsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N, CUstream hStream);
+
+CUresult cuDeviceComputeCapability(int* major, int* minor, CUdevice dev);
+CUresult cuDeviceCanAccessPeer(int* canAccessPeer, CUdevice dev, CUdevice peerDev);
+
 typedef enum CUfunc_attribute {
     CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 0,
     CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES = 1,

@@ -1531,6 +1531,74 @@ CUresult cuProfilerStop(void) {
     return CUDA_SUCCESS;
 }
 
+// Stream with priority — priority ignored; Metal has no priority queue.
+CUresult cuStreamCreateWithPriority(CUstream* phStream, unsigned int flags, int /*priority*/) {
+    return cuStreamCreate(phStream, flags);
+}
+
+// Cooperative kernel launch — forwards to cuLaunchKernel (threadgroup CG works; spec §8).
+CUresult cuLaunchCooperativeKernel(CUfunction f,
+                                    unsigned int gridDimX, unsigned int gridDimY,
+                                    unsigned int gridDimZ, unsigned int blockDimX,
+                                    unsigned int blockDimY, unsigned int blockDimZ,
+                                    unsigned int sharedMemBytes, CUstream hStream,
+                                    void** kernelParams) {
+    return cuLaunchKernel(f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
+                          sharedMemBytes, hStream, kernelParams, nullptr);
+}
+
+// Memset 16/32-bit variants backed by the existing 8-bit path (via loop for correctness).
+CUresult cuMemsetD16(CUdeviceptr dstDevice, unsigned short us, size_t N) {
+    if (dstDevice == 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    unsigned short* ptr = reinterpret_cast<unsigned short*>(static_cast<uintptr_t>(dstDevice));
+    for (size_t i = 0; i < N; ++i) {
+        ptr[i] = us;
+    }
+    return CUDA_SUCCESS;
+}
+
+CUresult cuMemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N) {
+    if (dstDevice == 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    unsigned int* ptr = reinterpret_cast<unsigned int*>(static_cast<uintptr_t>(dstDevice));
+    for (size_t i = 0; i < N; ++i) {
+        ptr[i] = ui;
+    }
+    return CUDA_SUCCESS;
+}
+
+CUresult cuMemsetD16Async(CUdeviceptr dstDevice, unsigned short us, size_t N,
+                           CUstream /*hStream*/) {
+    return cuMemsetD16(dstDevice, us, N);
+}
+
+CUresult cuMemsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N,
+                           CUstream /*hStream*/) {
+    return cuMemsetD32(dstDevice, ui, N);
+}
+
+// Compute capability — synthetic 8.0 (Ampere-equivalent, spec §6.8).
+CUresult cuDeviceComputeCapability(int* major, int* minor, CUdevice dev) {
+    if (major == nullptr || minor == nullptr || dev != 0) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    *major = 8;
+    *minor = 0;
+    return CUDA_SUCCESS;
+}
+
+// Peer access — Apple Silicon is single GPU; no peer-to-peer.
+CUresult cuDeviceCanAccessPeer(int* canAccessPeer, CUdevice /*dev*/, CUdevice /*peerDev*/) {
+    if (canAccessPeer == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    *canAccessPeer = 0;
+    return CUDA_SUCCESS;
+}
+
 // Occupancy API — conservative estimates (spec §8, driver-API counterparts).
 CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
                                                      CUfunction /*func*/,
