@@ -299,6 +299,24 @@ target_compile_options(air_inspect
         -Wpedantic
 )
 
+add_executable(ptx_diff
+    tools/ptx_diff/main.cpp
+)
+
+target_link_libraries(ptx_diff
+    PRIVATE
+        cumetal_passes
+        cumetal_ptx_codegen
+        cumetal_ptx
+)
+
+target_compile_options(ptx_diff
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_executable(cumetal_bench
     tools/cumetal_bench/main.cpp
 )
@@ -331,6 +349,7 @@ install(TARGETS
     cumetal-air-emitter
     cumetalc
     cumetal-ptx2llvm
+    ptx_diff
     cumetal_bench
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
