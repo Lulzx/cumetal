@@ -85,9 +85,10 @@ run_case "sweep_membar_cta"  "membar.cta;"
 run_case "sweep_membar_sys"  "membar.sys;"
 
 # Async copy
-run_case "sweep_cp_async_ca"       "cp.async.ca.shared.global [%rd1], [%rd2], 16;"
-run_case "sweep_cp_async_commit"   "cp.async.commit_group;"
-run_case "sweep_cp_async_wait_all" "cp.async.wait_all;"
+run_case "sweep_cp_async_ca"          "cp.async.ca.shared.global [%rd1], [%rd2], 16;"
+run_case "sweep_cp_async_commit"      "cp.async.commit_group;"
+run_case "sweep_cp_async_wait_all"    "cp.async.wait_all;"
+run_case "sweep_cp_async_wait_group0" "cp.async.wait_group 0;"
 
 # Warp reductions
 run_case "sweep_redux_sync_add_s32" "redux.sync.add.s32 %r1, %r2, 0xffffffff;"
@@ -287,5 +288,10 @@ run_case "sweep_setp_eq_f64"        "setp.eq.f64 %p1, %fd1, %fd2;"
 # additional cvt variants
 run_case "sweep_cvt_f32_f16"        "cvt.f32.f16 %f1, %r1;"
 run_case "sweep_cvt_rn_s32_f64"     "cvt.rzi.s32.f64 %r1, %fd1;"
+
+# ld.global.nc: non-coherent (texture-cache) global load — __ldg() equivalent (spec §8)
+# Lowered to plain global load (no texture cache on Apple Silicon UMA).
+run_case "sweep_ld_global_nc_f32"   "ld.global.nc.f32 %f1, [%rd1];"
+run_case "sweep_ld_global_nc_u32"   "ld.global.nc.u32 %r1, [%rd1];"
 
 echo "PASS: PTX sweep supported-op strict checks completed"
