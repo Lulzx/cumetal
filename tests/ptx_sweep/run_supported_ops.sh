@@ -97,6 +97,8 @@ run_case "sweep_redux_sync_or_b32"  "redux.sync.or.b32 %r1, %r2, 0xffffffff;"
 run_case "sweep_redux_sync_xor_b32" "redux.sync.xor.b32 %r1, %r2, 0xffffffff;"
 run_case "sweep_redux_sync_min_s32" "redux.sync.min.s32 %r1, %r2, 0xffffffff;"
 run_case "sweep_redux_sync_max_s32" "redux.sync.max.s32 %r1, %r2, 0xffffffff;"
+run_case "sweep_redux_sync_min_f32" "redux.sync.min.f32 %f1, %f2, 0xffffffff;"
+run_case "sweep_redux_sync_max_f32" "redux.sync.max.f32 %f1, %f2, 0xffffffff;"
 
 # Math intrinsics (extended)
 run_case "sweep_sqrt_rn_f32"    "sqrt.rn.f32 %f1, %f2;"

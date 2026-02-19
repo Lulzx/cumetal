@@ -31,6 +31,10 @@ add_executable(cumetal_runtime_barrier_order_test
     runtime_barrier_order_test.cpp
 )
 
+add_executable(cumetal_runtime_cp_async_emul_test
+    runtime_cp_async_emul_test.cpp
+)
+
 add_executable(cumetal_runtime_stream_vector_add_test
     runtime_stream_vector_add_test.cpp
 )
@@ -316,6 +320,11 @@ target_link_libraries(cumetal_runtime_struct_arg_test
 )
 
 target_link_libraries(cumetal_runtime_barrier_order_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_cp_async_emul_test
     PRIVATE
         cumetal_runtime
 )
@@ -680,6 +689,13 @@ target_compile_options(cumetal_runtime_struct_arg_test
 )
 
 target_compile_options(cumetal_runtime_barrier_order_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_cp_async_emul_test
     PRIVATE
         -Wall
         -Wextra
@@ -1240,6 +1256,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_barrier_order PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_cp_async_emul
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_cp_async_emul_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/cp_async_emul.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/cp_async_emul.metallib
+)
+
+set_tests_properties(functional_runtime_cp_async_emul PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_stream_vector_add
