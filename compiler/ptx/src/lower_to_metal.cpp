@@ -1267,8 +1267,92 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
         // ── Unconditional branch → unsupported ──────────────────────────────
         if (op == "bra") return {};
 
-        // ── bar.sync → no-op (single wave assumption) ────────────────────────
+        // ── bar.sync / bar.arrive → no-op (single wave assumption) ─────────
         if (op.size() >= 3 && op.substr(0, 3) == "bar") continue;
+
+        // ── fence / membar → no-op (UMA — all memory is coherent) ────────────
+        if (op.find("fence") == 0 || op.find("membar") == 0) continue;
+
+        // ── shfl.sync: warp shuffle → Metal simd_shuffle* ────────────────────
+        // shfl.sync.{idx,down,up,bfly}.b32 d, src, lane/delta, width, mask
+        // Conservative: ignore width and mask (full-group operations on UMA model).
+        if (op.find("shfl.sync") == 0 && ops.size() >= 3) {
+            if (!all_sources_defined(ops, 1)) return {};
+            // ops[0] may be "dst|pred_dst"; extract the value register.
+            const std::string raw0 = ops[0];
+            const auto pipe = raw0.find('|');
+            const std::string dest = get_reg(pipe != std::string::npos ? raw0.substr(0, pipe) : raw0);
+            const std::string src = resolve(ops[1]);
+            const std::string lane = resolve(ops[2]);
+            const std::string dtype = reg_type(dest);
+            std::string shuffle_fn;
+            if (op.find(".down.") != std::string::npos) {
+                shuffle_fn = "simd_shuffle_down";
+            } else if (op.find(".up.") != std::string::npos) {
+                shuffle_fn = "simd_shuffle_up";
+            } else if (op.find(".bfly.") != std::string::npos) {
+                shuffle_fn = "simd_shuffle_xor";
+            } else {
+                shuffle_fn = "simd_shuffle";
+            }
+            metal << "    " << dtype << " " << mvar(dest)
+                  << " = (" << dtype << ")" << shuffle_fn << "(" << src << ", (ushort)" << lane << ");\n";
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // ── vote.sync: warp-wide predicate vote → Metal simd_* ───────────────
+        // vote.sync.ballot.b32 d, pred, mask → simd_ballot
+        // vote.sync.any.pred   d, pred, mask → simd_any
+        // vote.sync.all.pred   d, pred, mask → simd_all
+        if (op.find("vote.sync") == 0 && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            const std::string pred = resolve(ops[1]);
+            const std::string dtype = reg_type(dest);
+            if (op.find(".ballot.") != std::string::npos) {
+                metal << "    " << dtype << " " << mvar(dest)
+                      << " = (uint)simd_ballot((bool)" << pred << ");\n";
+            } else if (op.find(".any.") != std::string::npos) {
+                metal << "    bool " << mvar(dest) << " = simd_any((bool)" << pred << ");\n";
+            } else if (op.find(".all.") != std::string::npos) {
+                metal << "    bool " << mvar(dest) << " = simd_all((bool)" << pred << ");\n";
+            } else {
+                // vote.uni / vote.sync.uni — uniformity test, same as all
+                metal << "    bool " << mvar(dest) << " = simd_all((bool)" << pred << ");\n";
+            }
+            defined_regs.insert(dest);
+            continue;
+        }
+
+        // ── redux.sync: warp-wide reduction → Metal simd_sum/and/or/xor ──────
+        // redux.sync.{add,and,or,xor,min,max}.{s32,u32,b32,f32} d, src, mask
+        if (op.find("redux.sync") == 0 && ops.size() >= 2) {
+            if (!all_sources_defined(ops, 1)) return {};
+            const std::string dest = get_reg(ops[0]);
+            const std::string src = resolve(ops[1]);
+            const std::string dtype = reg_type(dest);
+            std::string reduce_fn;
+            if (op.find(".add.") != std::string::npos) {
+                reduce_fn = "simd_sum";
+            } else if (op.find(".and.") != std::string::npos) {
+                reduce_fn = "simd_and";
+            } else if (op.find(".or.") != std::string::npos) {
+                reduce_fn = "simd_or";
+            } else if (op.find(".xor.") != std::string::npos) {
+                reduce_fn = "simd_xor";
+            } else if (op.find(".min.") != std::string::npos) {
+                reduce_fn = "simd_min";
+            } else if (op.find(".max.") != std::string::npos) {
+                reduce_fn = "simd_max";
+            } else {
+                reduce_fn = "simd_sum";
+            }
+            metal << "    " << dtype << " " << mvar(dest)
+                  << " = (" << dtype << ")" << reduce_fn << "(" << src << ");\n";
+            defined_regs.insert(dest);
+            continue;
+        }
 
         // ── Type conversion ──────────────────────────────────────────────────
         if (op.find("cvt") == 0 && ops.size() == 2) {
