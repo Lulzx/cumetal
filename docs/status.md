@@ -150,6 +150,10 @@ Supported runtime API subset:
 - `cudaDeviceSetLimit` (no-op), `cudaDeviceGetLimit` (returns sensible defaults)
 - `cudaLaunchCooperativeKernel` (forwards to `cudaLaunchKernel`; threadgroup CG works)
 
+`cudaDeviceProp` fields now populated per spec §6.8:
+- `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
+- `maxBufferArguments = 31` (Metal buffer argument limit)
+
 Supported driver API subset:
 
 - `cuInit`, `cuDriverGetVersion`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`, `cuDeviceGetAttribute`
@@ -175,6 +179,11 @@ Supported driver API subset:
 - `cuMemsetD16`, `cuMemsetD32`, `cuMemsetD16Async`, `cuMemsetD32Async`
 - `cuDeviceComputeCapability` (returns 8.0 — synthetic Ampere-equivalent)
 - `cuDeviceCanAccessPeer` (returns 0; single GPU on Apple Silicon)
+
+Public headers now installed: `cuda.h`, `cuda_runtime.h`, `cuda_fp16.h`, `cublas_v2.h`,
+`cufft.h`, `curand.h`, `cooperative_groups.h`, `cooperative_groups/reduce.h`.
+`cuda_fp16.h` provides host-side `__half` (IEEE 754 float16 via bit manipulation) and
+device-side `__half = _Float16`; `atomicAdd(__half*, __half)` via CAS loop (spec §8).
 
 Supported library shim subset:
 
