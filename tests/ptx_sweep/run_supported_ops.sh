@@ -313,4 +313,21 @@ run_case "sweep_atom_shared_add_u32"  "atom.shared.add.u32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_shared_exch_b32" "atom.shared.exch.b32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_shared_cas_b32"  "atom.shared.cas.b32 %r1, [%rd1], %r2, %r3;"
 
+# isspacep: pointer address-space predicate (spec §5.4)
+# Conservative lowering: .global → true; .shared/.local → false on UMA model.
+run_case "sweep_isspacep_global"  "isspacep.global %p1, %rd1;"
+run_case "sweep_isspacep_shared"  "isspacep.shared %p1, %rd1;"
+run_case "sweep_isspacep_local"   "isspacep.local  %p1, %rd1;"
+
+# prmt: byte permutation from two 32-bit words (ISA 6.0+)
+run_case "sweep_prmt_b32"         "prmt.b32 %r1, %r2, %r3, %r4;"
+run_case "sweep_prmt_f4e"         "prmt.b32.f4e %r1, %r2, %r3, %r4;"
+
+# bfe: bit field extract (ISA 6.0+)
+run_case "sweep_bfe_u32"          "bfe.u32 %r1, %r2, %r3, %r4;"
+run_case "sweep_bfe_s32"          "bfe.s32 %r1, %r2, %r3, %r4;"
+
+# bfi: bit field insert (ISA 6.0+)
+run_case "sweep_bfi_b32"          "bfi.b32 %r1, %r2, %r3, %r4, %r5;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"

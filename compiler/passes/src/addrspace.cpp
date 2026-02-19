@@ -51,6 +51,12 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
         out->opcode = instruction.opcode;
         out->address_space = 1;  // source is global memory
         out->rewritten = false;
+    } else if (starts_with(instruction.opcode, "isspacep")) {
+        // isspacep.{global,shared,local,const} pred, ptr
+        // intrinsic_lower maps this to air.isspacep.*; passthrough here.
+        out->opcode = instruction.opcode;
+        out->address_space = 0;
+        out->rewritten = false;
     } else {
         return false;
     }

@@ -533,6 +533,47 @@ int main() {
     if (!expect(t9.instructions[9].opcode == "llvm.xor", "xor.b64 → llvm.xor")) return 1;
     if (!expect(t9.instructions[10].opcode == "llvm.not","not.b64 → llvm.not")) return 1;
 
+    // ── Test 10: isspacep / bfe / bfi / prmt ─────────────────────────────────
+    const std::string ptx10 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k10(.param .u64 p0)
+{
+    isspacep.global  %p1, %rd1;
+    isspacep.shared  %p1, %rd1;
+    bfe.u32 %r1, %r2, %r3, %r4;
+    bfe.s32 %r1, %r2, %r3, %r4;
+    bfi.b32 %r1, %r2, %r3, %r4, %r5;
+    prmt.b32 %r1, %r2, %r3, %r4;
+    ret;
+})PTX";
+
+    const auto parsed10 = cumetal::ptx::parse_ptx(ptx10);
+    if (!expect(parsed10.ok, "parse PTX10 isspacep/bfe/bfi/prmt")) return 1;
+
+    const auto t10 = cumetal::passes::lower_intrinsics(parsed10.module.entries[0]);
+    if (!expect(t10.ok, "lower PTX10 ok")) return 1;
+    if (!expect(t10.warnings.empty(), "no warnings PTX10")) return 1;
+
+    if (!expect(t10.instructions[0].opcode == "air.isspacep.global",
+                "isspacep.global → air.isspacep.global"))
+        return 1;
+    if (!expect(t10.instructions[1].opcode == "air.isspacep.nonglobal",
+                "isspacep.shared → air.isspacep.nonglobal"))
+        return 1;
+    if (!expect(t10.instructions[2].opcode == "air.bfe.unsigned",
+                "bfe.u32 → air.bfe.unsigned"))
+        return 1;
+    if (!expect(t10.instructions[3].opcode == "air.bfe.signed",
+                "bfe.s32 → air.bfe.signed"))
+        return 1;
+    if (!expect(t10.instructions[4].opcode == "air.bfi",
+                "bfi.b32 → air.bfi"))
+        return 1;
+    if (!expect(t10.instructions[5].opcode == "air.prmt",
+                "prmt.b32 → air.prmt"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }

@@ -203,6 +203,24 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // brev.b64 dst, src → @llvm.bitreverse.i64(i64)
         const bool is_64 = instruction.opcode.find(".b64") != std::string::npos;
         lowered->opcode = is_64 ? "llvm.bitreverse.i64" : "llvm.bitreverse.i32";
+    } else if (instruction.opcode.rfind("isspacep", 0) == 0) {
+        // isspacep.{global,shared,local,const} pred, ptr
+        // On Apple Silicon, all device memory is in the global address space (flat UMA).
+        // Conservative lowering: isspacep.global → true; all others → false.
+        const bool is_global = instruction.opcode.find(".global") != std::string::npos;
+        lowered->opcode = is_global ? "air.isspacep.global" : "air.isspacep.nonglobal";
+    } else if (instruction.opcode.rfind("bfe", 0) == 0) {
+        // bfe.{u32,s32,u64,s64} d, a, b, c  — bit field extract
+        // Lowered to air.bfe; downstream stages emit shift+mask sequences.
+        const bool is_signed = instruction.opcode.find(".s") != std::string::npos;
+        lowered->opcode = is_signed ? "air.bfe.signed" : "air.bfe.unsigned";
+    } else if (instruction.opcode.rfind("bfi", 0) == 0) {
+        // bfi.b32 d, a, b, c, f  — bit field insert
+        lowered->opcode = "air.bfi";
+    } else if (instruction.opcode.rfind("prmt", 0) == 0) {
+        // prmt.b32 d, a, b, c  — byte permutation from two 32-bit sources
+        // Lowered to air.prmt; downstream stages emit byte-select sequences.
+        lowered->opcode = "air.prmt";
     } else {
         return false;
     }
