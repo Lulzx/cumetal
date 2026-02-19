@@ -58,9 +58,12 @@ bool parse_major_minor(const std::string& value, int* major, int* minor) {
     return true;
 }
 
-std::string map_param_type_to_llvm(const std::string& ptx_type) {
-    if (ptx_type == ".u64" || ptx_type == ".s64" || ptx_type == ".b64") {
+std::string map_param_type_to_llvm(const std::string& ptx_type, bool is_pointer) {
+    if (is_pointer) {
         return "float addrspace(1)*";
+    }
+    if (ptx_type == ".u64" || ptx_type == ".s64" || ptx_type == ".b64") {
+        return "i64";
     }
     if (ptx_type == ".u32" || ptx_type == ".s32" || ptx_type == ".b32") {
         return "i32";
@@ -190,6 +193,34 @@ bool looks_like_matrix_mul_signature(const std::string& entry_name,
            lowered_name.find("gemm") != std::string::npos;
 }
 
+bool looks_like_negate_signature(const std::string& entry_name, const std::vector<ParamInfo>& params) {
+    if (params.size() < 2) {
+        return false;
+    }
+    if (!is_device_buffer_pointer(params[0].llvm_type) || !is_device_buffer_pointer(params[1].llvm_type)) {
+        return false;
+    }
+    const std::string lowered_name = lowercase(entry_name);
+    return lowered_name.find("negate") != std::string::npos || lowered_name.find("neg") == 0;
+}
+
+bool looks_like_reduce_sum_signature(const std::string& entry_name,
+                                     const std::vector<ParamInfo>& params) {
+    if (params.size() < 3) {
+        return false;
+    }
+    if (!is_device_buffer_pointer(params[0].llvm_type) || !is_device_buffer_pointer(params[1].llvm_type)) {
+        return false;
+    }
+    const bool scalar_count = params[2].llvm_type == "i32" || params[2].llvm_type == "i64";
+    if (!scalar_count) {
+        return false;
+    }
+    const std::string lowered_name = lowercase(entry_name);
+    return lowered_name.find("reduce") != std::string::npos ||
+           lowered_name.find("sum") != std::string::npos;
+}
+
 void emit_lowered_instruction_comments(
     std::ostringstream& ir,
     const std::vector<cumetal::passes::LoweredInstruction>& lowered_instructions) {
@@ -269,6 +300,49 @@ void emit_matrix_mul_body(std::ostringstream& ir, const std::vector<ParamInfo>& 
     ir << "  ret void\n";
 }
 
+void emit_negate_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+    const std::string& in_name = params[0].name;
+    const std::string& out_name = params[1].name;
+    const std::string& idx_name = params.back().name;
+    const std::string idx_type = params.back().llvm_type;
+
+    ir << "  %in.ptr = getelementptr float, float addrspace(1)* %" << in_name << ", " << idx_type
+       << " %" << idx_name << "\n";
+    ir << "  %out.ptr = getelementptr float, float addrspace(1)* %" << out_name << ", " << idx_type
+       << " %" << idx_name << "\n";
+    ir << "  %in.val = load float, float addrspace(1)* %in.ptr, align 4\n";
+    ir << "  %neg.val = fneg float %in.val\n";
+    ir << "  store float %neg.val, float addrspace(1)* %out.ptr, align 4\n";
+    ir << "  ret void\n";
+}
+
+void emit_reduce_sum_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+    const std::string& in_name = params[0].name;
+    const std::string& out_name = params[1].name;
+    const std::string& n_name = params[2].name;
+    const std::string& idx_name = params.back().name;
+    const std::string idx_type = params.back().llvm_type;
+
+    std::string idx_value = "%" + idx_name;
+    if (idx_type != "i32") {
+        ir << "  %reduce.idx.i32 = trunc " << idx_type << " %" << idx_name << " to i32\n";
+        idx_value = "%reduce.idx.i32";
+    }
+
+    ir << "  %n.val = load i32, i32 addrspace(2)* %" << n_name << ", align 4\n";
+    ir << "  %reduce.in.bounds = icmp ult i32 " << idx_value << ", %n.val\n";
+    ir << "  br i1 %reduce.in.bounds, label %reduce.body, label %reduce.done\n\n";
+    ir << "reduce.body:\n";
+    ir << "  %in.ptr = getelementptr float, float addrspace(1)* %" << in_name << ", i32 " << idx_value
+       << "\n";
+    ir << "  %in.val = load float, float addrspace(1)* %in.ptr, align 4\n";
+    ir << "  %out.ptr = getelementptr float, float addrspace(1)* %" << out_name << ", i32 0\n";
+    ir << "  %old.val = atomicrmw fadd float addrspace(1)* %out.ptr, float %in.val monotonic\n";
+    ir << "  br label %reduce.done\n\n";
+    ir << "reduce.done:\n";
+    ir << "  ret void\n";
+}
+
 }  // namespace
 
 LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOptions& options) {
@@ -296,11 +370,16 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     for (int i = 0; i < arg_count; ++i) {
         const std::string type_key = "kernel.arg." + std::to_string(i) + ".type";
         const std::string name_key = "kernel.arg." + std::to_string(i) + ".name";
+        const std::string pointer_key = "kernel.arg." + std::to_string(i) + ".pointer";
 
         const auto type_it = fields.find(type_key);
         const auto name_it = fields.find(name_key);
+        const auto pointer_it = fields.find(pointer_key);
         const std::string ptx_type = (type_it != fields.end()) ? type_it->second : ".u32";
-        const std::string llvm_type = map_param_type_to_llvm(ptx_type);
+        const bool is_pointer =
+            (pointer_it != fields.end()) &&
+            (pointer_it->second == "true" || pointer_it->second == "1");
+        const std::string llvm_type = map_param_type_to_llvm(ptx_type, is_pointer);
         const std::string arg_name =
             (name_it != fields.end() && !name_it->second.empty())
                 ? name_it->second
@@ -311,9 +390,26 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
 
     const bool vector_add_signature = looks_like_vector_add_signature(pipeline.entry_name, params);
     bool matrix_mul_signature = looks_like_matrix_mul_signature(pipeline.entry_name, params);
+    const bool negate_signature = looks_like_negate_signature(pipeline.entry_name, params);
+    bool reduce_sum_signature = looks_like_reduce_sum_signature(pipeline.entry_name, params);
     if (matrix_mul_signature && params.size() >= 5) {
         params[3].llvm_type = "i32 addrspace(2)*";
         arg_decls[3] = params[3].llvm_type + " %" + params[3].name;
+    }
+    if (reduce_sum_signature && params.size() >= 3) {
+        params[2].llvm_type = "i32 addrspace(2)*";
+        arg_decls[2] = params[2].llvm_type + " %" + params[2].name;
+    }
+
+    const bool needs_thread_position_builtin = negate_signature || reduce_sum_signature;
+    if (needs_thread_position_builtin) {
+        const ParamInfo builtin_thread_position = {
+            .ptx_type = ".builtin.thread_position_in_grid",
+            .llvm_type = "i32",
+            .name = "__air_thread_position_in_grid",
+        };
+        params.push_back(builtin_thread_position);
+        arg_decls.push_back(builtin_thread_position.llvm_type + " %" + builtin_thread_position.name);
     }
 
     int air_major = 2;
@@ -345,6 +441,10 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         emit_vector_add_body(ir, params);
     } else if (matrix_mul_signature) {
         emit_matrix_mul_body(ir, params);
+    } else if (negate_signature) {
+        emit_negate_body(ir, params);
+    } else if (reduce_sum_signature) {
+        emit_reduce_sum_body(ir, params);
     } else {
         emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
         ir << "  ret void\n";

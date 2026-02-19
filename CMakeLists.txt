@@ -79,6 +79,7 @@ target_compile_options(cumetal_passes
 
 add_library(cumetal_ptx_codegen STATIC
     compiler/ptx/src/lower_to_llvm.cpp
+    compiler/ptx/src/lower_to_metal.cpp
 )
 
 target_include_directories(cumetal_ptx_codegen

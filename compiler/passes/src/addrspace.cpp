@@ -39,6 +39,12 @@ bool rewrite_load_store(const cumetal::ptx::EntryFunction::Instruction& instruct
     } else if (starts_with(instruction.opcode, "st.local")) {
         out->opcode = "llvm.store";
         out->address_space = 5;
+    } else if (starts_with(instruction.opcode, "atom.shared")) {
+        out->opcode = "llvm.atomicrmw";
+        out->address_space = 3;
+    } else if (starts_with(instruction.opcode, "atom.global")) {
+        out->opcode = "llvm.atomicrmw";
+        out->address_space = 1;
     } else {
         return false;
     }

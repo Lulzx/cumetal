@@ -68,6 +68,30 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         lowered->opcode = "llvm.sub";
     } else if (instruction.opcode.rfind("mul", 0) == 0) {
         lowered->opcode = "llvm.mul";
+    } else if (instruction.opcode.rfind("div", 0) == 0) {
+        lowered->opcode = "llvm.div";
+    } else if (instruction.opcode.rfind("rem", 0) == 0) {
+        lowered->opcode = "llvm.rem";
+    } else if (instruction.opcode.rfind("and", 0) == 0) {
+        lowered->opcode = "llvm.and";
+    } else if (instruction.opcode.rfind("or", 0) == 0) {
+        lowered->opcode = "llvm.or";
+    } else if (instruction.opcode.rfind("xor", 0) == 0) {
+        lowered->opcode = "llvm.xor";
+    } else if (instruction.opcode.rfind("not", 0) == 0) {
+        lowered->opcode = "llvm.not";
+    } else if (instruction.opcode.rfind("shl", 0) == 0) {
+        lowered->opcode = "llvm.shl";
+    } else if (instruction.opcode.rfind("shr", 0) == 0) {
+        lowered->opcode = "llvm.shr";
+    } else if (instruction.opcode.rfind("selp", 0) == 0) {
+        lowered->opcode = "llvm.select";
+    } else if (instruction.opcode.rfind("rcp", 0) == 0) {
+        lowered->opcode = "llvm.rcp";
+    } else if (instruction.opcode.rfind("neg", 0) == 0) {
+        const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
+                              instruction.opcode.find(".f64") != std::string::npos;
+        lowered->opcode = is_float ? "llvm.fneg" : "llvm.neg";
     } else if (instruction.opcode.rfind("mad", 0) == 0) {
         const bool is_float = instruction.opcode.find(".f32") != std::string::npos ||
                               instruction.opcode.find(".f64") != std::string::npos;
@@ -102,7 +126,8 @@ IntrinsicLowerResult lower_intrinsics(const cumetal::ptx::EntryFunction& entry,
                 instruction.opcode.rfind("st", 0) == 0 || instruction.opcode.rfind("setp", 0) == 0 ||
                 instruction.opcode.rfind("bra", 0) == 0 || instruction.opcode.rfind("cvt", 0) == 0 ||
                 instruction.opcode.rfind("cvta", 0) == 0 || instruction.opcode.rfind("mov", 0) == 0 ||
-                instruction.opcode.rfind("call", 0) == 0) {
+                instruction.opcode.rfind("call", 0) == 0 || instruction.opcode.rfind("atom", 0) == 0 ||
+                instruction.opcode.rfind("selp", 0) == 0) {
                 // keep instruction as-is; lowering not needed yet for this stage.
             } else {
                 result.warnings.push_back("intrinsic_lower: no mapping for opcode '" + instruction.opcode + "'");

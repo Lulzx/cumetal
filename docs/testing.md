@@ -60,6 +60,7 @@ ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-fail
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R functional_runtime_atomic --output-on-failure
+ctest --test-dir build -R functional_runtime_ptx_lowering_regression --output-on-failure
 # binary-shim-only tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
 ctest --test-dir build -R functional_runtime_registration_path --output-on-failure
 ctest --test-dir build -R functional_runtime_call_config_registration --output-on-failure
@@ -110,8 +111,16 @@ Notes:
   before CMake configure, or place checkout at `../llm.c` relative to this repo root).
 - When registered, `conformance_llmc_gpt2fp32cu` auto-wires CuMetal's LLVM+fatbin shim flow:
   `scripts/build_llmc_test_gpt2fp32cu.sh` + `scripts/run_llmc_test_gpt2fp32cu.sh`.
-- `conformance_llmc_gpt2fp32cu` now fails on any `TENSOR NOT OK` marker and requires
+- `conformance_llmc_gpt2fp32cu` fails on any `TENSOR NOT OK` marker and requires
   `overall okay: 1` in output.
+- By default, the harness traces runtime fallback markers (`CUMETAL_LLMC_EMULATION`) so you can
+  see when launches are still handled by the llm.c emulation path.
+- To force pure PTX-lowered execution (no llm.c emulation fallback), run:
+
+```bash
+CUMETAL_LLMC_REQUIRE_NO_EMULATION=1 \
+ctest --test-dir build -R conformance_llmc_gpt2fp32cu --output-on-failure
+```
 
 Direct invocation with custom threshold/regex:
 
@@ -128,7 +137,15 @@ export CUMETAL_LLMC_BUILD_CMD="scripts/build_llmc_test_gpt2fp32cu.sh"
 export CUMETAL_LLMC_TEST_CMD="scripts/run_llmc_test_gpt2fp32cu.sh"
 # optional: gradient checker tolerance applied by build shim patching
 export CUMETAL_LLMC_GRAD_TOL="1.2e-2"
+# optional: hard-disable llm.c runtime emulation fallback
+export CUMETAL_DISABLE_LLMC_EMULATION="1"
 ```
+
+Kernel argument notes:
+- Scalar kernel params should be passed as `CUMETAL_ARG_BYTES` (with `size_bytes`) or via a
+  device buffer.
+- Passing a host scalar pointer as `CUMETAL_ARG_BUFFER` is invalid and will fail launch with
+  `cudaErrorInvalidDevicePointer`.
 
 Benchmark runner
 ----------------

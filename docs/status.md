@@ -17,6 +17,10 @@ Implemented today:
     with tolerant/strict unsupported-op modes in `compiler/ptx/`
   - `cumetal-ptx2llvm`: PTX text to LLVM IR (AIR metadata scaffold) via the phase1 pipeline,
     including concrete vector-add and matrix-multiply body emission for recognized signatures
+  - PTX signature lowering now also covers unary `negate` and `reduce_sum` (atomic add) kernels
+    used in regression tests for `neg.f32`, `shl.b64`, and `atom.global.add.f32` paths
+  - intrinsic-lowering opcode coverage expanded for `div`, `rem`, `and`, `or`, `xor`, `not`,
+    `selp`, and `rcp` instruction roots, with strict PTX sweep coverage
   - `cumetalc` accepts `.ptx` input via internal PTX->LLVM lowering (`--entry`, `--ptx-strict`)
   - `cumetalc` accepts initial `.cu` input via xcrun clang++ frontend lowering to LLVM IR
   - expanded PTX sweep harness (`tests/ptx_sweep`) for strict-mode supported/unsupported opcode checks
@@ -59,6 +63,8 @@ Implemented today:
     `OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, and `overall okay: 1`
   - llm.c harness build shim supports `CUMETAL_LLMC_GRAD_TOL` (default `1.2e-2`) to tune
     gradient-check tolerance applied to the generated test translation unit
+  - llm.c runtime emulation fallback is now explicitly traceable (`CUMETAL_TRACE_LLMC_EMULATION=1`)
+    and can be disabled (`CUMETAL_DISABLE_LLMC_EMULATION=1`) to validate pure PTX-lowered execution
 
 Supported runtime API subset:
 

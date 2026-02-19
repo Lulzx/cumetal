@@ -6,10 +6,13 @@
 #include "registration.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -481,6 +484,83 @@ T* read_pointer_launch_arg(void** args, std::uint32_t index) {
 
 bool kernel_name_contains(const std::string& kernel_name, std::string_view needle) {
     return kernel_name.find(needle) != std::string::npos;
+}
+
+bool kernel_name_matches_env_list(const std::string& kernel_name, const char* env_var) {
+    if (env_var == nullptr || env_var[0] == '\0') {
+        return false;
+    }
+
+    std::string token;
+    for (const char* p = env_var;; ++p) {
+        const char c = *p;
+        if (c == ',' || c == '\0') {
+            std::size_t begin = 0;
+            while (begin < token.size() &&
+                   std::isspace(static_cast<unsigned char>(token[begin])) != 0) {
+                ++begin;
+            }
+            std::size_t end = token.size();
+            while (end > begin &&
+                   std::isspace(static_cast<unsigned char>(token[end - 1])) != 0) {
+                --end;
+            }
+            if (end > begin) {
+                const std::string_view needle(token.data() + begin, end - begin);
+                if (kernel_name.find(needle) != std::string::npos) {
+                    return true;
+                }
+            }
+            token.clear();
+            if (c == '\0') {
+                break;
+            }
+            continue;
+        }
+        token.push_back(c);
+    }
+
+    return false;
+}
+
+bool env_truthy(const char* value) {
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+    std::string normalized(value);
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return normalized == "1" || normalized == "true" || normalized == "yes" ||
+           normalized == "on";
+}
+
+bool llmc_emulation_enabled() {
+    return !env_truthy(std::getenv("CUMETAL_DISABLE_LLMC_EMULATION"));
+}
+
+bool llmc_emulation_skips_kernel(const std::string& kernel_name) {
+    return kernel_name_matches_env_list(kernel_name, std::getenv("CUMETAL_LLMC_EMULATION_SKIP"));
+}
+
+bool llmc_emulation_trace_enabled() {
+    return env_truthy(std::getenv("CUMETAL_TRACE_LLMC_EMULATION"));
+}
+
+std::atomic<std::uint64_t>& llmc_emulation_count() {
+    static std::atomic<std::uint64_t> count{0};
+    return count;
+}
+
+void note_llmc_emulation_hit(const std::string& kernel_name, std::uint32_t arg_count) {
+    const std::uint64_t hit = llmc_emulation_count().fetch_add(1, std::memory_order_relaxed) + 1;
+    if (llmc_emulation_trace_enabled()) {
+        std::fprintf(stderr,
+                     "INFO: CUMETAL_LLMC_EMULATION kernel=%s arg_count=%u hit=%llu\n",
+                     kernel_name.c_str(),
+                     static_cast<unsigned int>(arg_count),
+                     static_cast<unsigned long long>(hit));
+    }
 }
 
 std::uint32_t llmc_expected_arg_count(const std::string& kernel_name) {
@@ -2437,20 +2517,34 @@ cudaError_t cudaLaunchKernel(const void* func,
             return fail(cudaErrorInvalidValue);
         }
 
-        const std::uint32_t known_arg_count = llmc_expected_arg_count(registered_kernel.kernel_name);
-        if (known_arg_count > 0) {
-            arg_count = known_arg_count;
-        } else {
-            std::size_t inferred_count = 0;
-            for (; inferred_count < 31; ++inferred_count) {
-                if (args[inferred_count] == nullptr) {
+        if (!registered_kernel.arg_info.empty()) {
+            const std::uint32_t ptx_arg_count =
+                static_cast<std::uint32_t>(registered_kernel.arg_info.size());
+            // Clip to null-terminator: some callers pass nullptr as sentinel after real args
+            std::uint32_t clipped = 0;
+            for (; clipped < ptx_arg_count; ++clipped) {
+                if (args[clipped] == nullptr) {
                     break;
                 }
             }
-            if (inferred_count == 31) {
-                return fail(cudaErrorInvalidValue);
+            arg_count = clipped;
+            arg_info = registered_kernel.arg_info.data();
+        } else {
+            const std::uint32_t known_arg_count = llmc_expected_arg_count(registered_kernel.kernel_name);
+            if (known_arg_count > 0) {
+                arg_count = known_arg_count;
+            } else {
+                std::size_t inferred_count = 0;
+                for (; inferred_count < 31; ++inferred_count) {
+                    if (args[inferred_count] == nullptr) {
+                        break;
+                    }
+                }
+                if (inferred_count == 31) {
+                    return fail(cudaErrorInvalidValue);
+                }
+                arg_count = static_cast<std::uint32_t>(inferred_count);
             }
-            arg_count = static_cast<std::uint32_t>(inferred_count);
         }
     } else {
         std::memcpy(&kernel_copy, func, sizeof(kernel_copy));
@@ -2480,7 +2574,8 @@ cudaError_t cudaLaunchKernel(const void* func,
         }
     }
 
-    if (use_registered_kernel) {
+    if (use_registered_kernel && llmc_emulation_enabled() &&
+        !llmc_emulation_skips_kernel(registered_kernel.kernel_name)) {
         bool emulated = false;
         const cudaError_t emulation_status =
             try_emulate_llmc_registered_kernel(registered_kernel.kernel_name,
@@ -2495,6 +2590,7 @@ cudaError_t cudaLaunchKernel(const void* func,
             return fail(emulation_status);
         }
         if (emulated) {
+            note_llmc_emulation_hit(registered_kernel.kernel_name, arg_count);
             return fail(cudaSuccess);
         }
     }
@@ -2513,7 +2609,7 @@ cudaError_t cudaLaunchKernel(const void* func,
             .kind = CUMETAL_ARG_BUFFER,
             .size_bytes = static_cast<std::uint32_t>(sizeof(void*)),
         };
-        if (!use_registered_kernel && arg_info != nullptr) {
+        if (arg_info != nullptr) {
             info = arg_info[i];
         } else if (use_registered_kernel) {
             std::uintptr_t value = 0;
@@ -2527,6 +2623,15 @@ cudaError_t cudaLaunchKernel(const void* func,
 
         if (info.kind == CUMETAL_ARG_BUFFER) {
             void* device_ptr = *reinterpret_cast<void**>(args[i]);
+            if (use_registered_kernel && device_ptr == nullptr) {
+                cumetal::metal_backend::KernelArg arg;
+                arg.kind = cumetal::metal_backend::KernelArg::Kind::kBuffer;
+                arg.buffer = nullptr;
+                arg.offset = 0;
+                launch_args.push_back(std::move(arg));
+                continue;
+            }
+
             cumetal::rt::AllocationTable::ResolvedAllocation resolved;
             if (!state.allocations.resolve(device_ptr, &resolved)) {
                 return fail(cudaErrorInvalidDevicePointer);

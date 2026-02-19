@@ -1333,6 +1333,17 @@ add_test(
 
 set_tests_properties(functional_runtime_atomic PROPERTIES SKIP_RETURN_CODE 77)
 
+add_test(
+    NAME functional_runtime_ptx_lowering_regression
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_ptx_lowering_regression.sh
+            $<TARGET_FILE:cumetalc>
+            ${CMAKE_SOURCE_DIR}
+            ${CMAKE_BINARY_DIR}
+)
+
+set_tests_properties(functional_runtime_ptx_lowering_regression PROPERTIES SKIP_RETURN_CODE 77)
+
 if(CUMETAL_ENABLE_BINARY_SHIM)
     add_test(
         NAME functional_runtime_registration_path

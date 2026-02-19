@@ -4,8 +4,9 @@
 #include <cctype>
 #include <regex>
 #include <sstream>
-#include <utility>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace cumetal::ptx {
 namespace {
@@ -127,8 +128,9 @@ bool is_supported_opcode(const std::string& opcode) {
 
     static const std::unordered_set<std::string> kSupportedRoots = {
         "abs",   "add",  "and",  "atom", "bar", "bra", "call", "cvt",  "cvta", "div",
-        "fma",   "ld",   "mad",  "max",  "min", "mov", "mul",  "neg",  "or",   "rem",
-        "ret",   "set",  "setp", "shl",  "shr", "st",  "sub",  "vote", "xor",
+        "fma",   "ld",   "mad",  "max",  "min", "mov", "mul",  "neg",  "not",  "or",
+        "rcp",   "rem",  "ret",  "selp", "set", "setp", "shl", "shr",  "st",   "sub",
+        "vote",  "xor",
     };
     return kSupportedRoots.contains(root);
 }
@@ -195,6 +197,215 @@ std::string sanitize_param_name(std::string name) {
         name.pop_back();
     }
     return name;
+}
+
+bool starts_with(std::string_view text, std::string_view prefix) {
+    if (text.size() < prefix.size()) {
+        return false;
+    }
+    return text.substr(0, prefix.size()) == prefix;
+}
+
+std::string opcode_root(const std::string& opcode) {
+    const std::size_t dot = opcode.find('.');
+    if (dot == std::string::npos) {
+        return opcode;
+    }
+    return opcode.substr(0, dot);
+}
+
+std::string extract_bracket_contents(const std::string& operand) {
+    const std::size_t open = operand.find('[');
+    if (open == std::string::npos) {
+        return {};
+    }
+    const std::size_t close = operand.find(']', open + 1);
+    if (close == std::string::npos || close <= open + 1) {
+        return {};
+    }
+    return trim(operand.substr(open + 1, close - open - 1));
+}
+
+std::string extract_register_name(std::string_view text) {
+    const std::size_t percent = text.find('%');
+    if (percent == std::string::npos) {
+        return {};
+    }
+
+    std::size_t end = percent + 1;
+    while (end < text.size()) {
+        const unsigned char c = static_cast<unsigned char>(text[end]);
+        if (std::isalnum(c) != 0 || c == '_' || c == '.' || c == '$') {
+            ++end;
+            continue;
+        }
+        break;
+    }
+    if (end <= percent + 1) {
+        return {};
+    }
+    return std::string(text.substr(percent, end - percent));
+}
+
+std::string extract_param_name_from_operand(const std::string& operand) {
+    std::string token = extract_bracket_contents(operand);
+    if (token.empty()) {
+        return {};
+    }
+    if (!token.empty() && token[0] == '%') {
+        return {};
+    }
+
+    const std::size_t cutoff = token.find_first_of(" +-");
+    if (cutoff != std::string::npos) {
+        token = token.substr(0, cutoff);
+    }
+    return sanitize_param_name(trim(token));
+}
+
+bool is_memory_opcode(const std::string& opcode) {
+    const std::string root = opcode_root(opcode);
+    if (root != "ld" && root != "st" && root != "atom") {
+        return false;
+    }
+    if (starts_with(opcode, "ld.param") || starts_with(opcode, "st.param")) {
+        return false;
+    }
+    return true;
+}
+
+bool is_64bit_param_type(const std::string& type) {
+    return type == ".u64" || type == ".s64" || type == ".b64";
+}
+
+void infer_pointer_parameters(EntryFunction* entry) {
+    if (entry == nullptr) {
+        return;
+    }
+
+    struct Usage {
+        bool address_use = false;
+        bool value_use = false;
+    };
+
+    std::unordered_set<std::string> param_names;
+    std::unordered_map<std::string, Usage> usage;
+    for (const auto& param : entry->params) {
+        param_names.insert(param.name);
+        usage[param.name] = Usage{};
+    }
+
+    std::unordered_map<std::string, std::string> register_to_param;
+    for (const auto& instruction : entry->instructions) {
+        if (starts_with(instruction.opcode, "ld.param") && instruction.operands.size() >= 2) {
+            const std::string dest_register = extract_register_name(instruction.operands[0]);
+            const std::string param_name = extract_param_name_from_operand(instruction.operands[1]);
+            if (!dest_register.empty() && param_names.contains(param_name)) {
+                register_to_param[dest_register] = param_name;
+            }
+        }
+
+        if (is_memory_opcode(instruction.opcode)) {
+            for (const std::string& operand : instruction.operands) {
+                const std::string bracket = extract_bracket_contents(operand);
+                if (bracket.empty()) {
+                    continue;
+                }
+
+                const std::string register_name = extract_register_name(bracket);
+                if (!register_name.empty()) {
+                    const auto reg_it = register_to_param.find(register_name);
+                    if (reg_it != register_to_param.end()) {
+                        usage[reg_it->second].address_use = true;
+                    }
+                    continue;
+                }
+
+                const std::string param_name = sanitize_param_name(trim(bracket));
+                if (param_names.contains(param_name)) {
+                    usage[param_name].address_use = true;
+                }
+            }
+        }
+
+        if (!starts_with(instruction.opcode, "ld.param") && !instruction.operands.empty()) {
+            const std::string dest_register = extract_register_name(instruction.operands[0]);
+            if (!dest_register.empty()) {
+                std::string mapped_param;
+                bool ambiguous = false;
+                for (std::size_t i = 1; i < instruction.operands.size(); ++i) {
+                    const std::string src_register = extract_register_name(instruction.operands[i]);
+                    if (src_register.empty()) {
+                        continue;
+                    }
+                    const auto reg_it = register_to_param.find(src_register);
+                    if (reg_it == register_to_param.end()) {
+                        continue;
+                    }
+                    if (mapped_param.empty()) {
+                        mapped_param = reg_it->second;
+                    } else if (mapped_param != reg_it->second) {
+                        ambiguous = true;
+                        break;
+                    }
+                }
+
+                if (ambiguous || mapped_param.empty()) {
+                    register_to_param.erase(dest_register);
+                } else {
+                    register_to_param[dest_register] = mapped_param;
+                }
+            }
+        }
+
+        const std::string root = opcode_root(instruction.opcode);
+        const bool marks_scalar_use =
+            root == "set" || root == "setp" || root == "bra" || root == "call" || root == "div" ||
+            root == "rem" || root == "mul" || root == "mad" || root == "fma" || root == "max" ||
+            root == "min" || root == "neg" || root == "not" || root == "and" || root == "or" ||
+            root == "xor" || root == "rcp" || root == "selp";
+        if (marks_scalar_use) {
+            const std::size_t first_source_index = (root == "set" || root == "setp") ? 1 : 0;
+            for (std::size_t i = first_source_index; i < instruction.operands.size(); ++i) {
+                if (!extract_bracket_contents(instruction.operands[i]).empty()) {
+                    continue;
+                }
+                const std::string register_name = extract_register_name(instruction.operands[i]);
+                if (register_name.empty()) {
+                    continue;
+                }
+                const auto reg_it = register_to_param.find(register_name);
+                if (reg_it != register_to_param.end()) {
+                    usage[reg_it->second].value_use = true;
+                }
+            }
+        }
+    }
+
+    for (auto& param : entry->params) {
+        if (!is_64bit_param_type(param.type)) {
+            continue;
+        }
+        if (param.is_pointer) {
+            continue;
+        }
+
+        const auto usage_it = usage.find(param.name);
+        if (usage_it == usage.end()) {
+            continue;
+        }
+        if (usage_it->second.address_use) {
+            param.is_pointer = true;
+            continue;
+        }
+        if (usage_it->second.value_use) {
+            param.is_pointer = false;
+            continue;
+        }
+
+        // Preserve historical behavior for unannotated .u64 params unless proven scalar.
+        param.is_pointer = true;
+    }
 }
 
 int count_line_number_at_offset(const std::string& text, std::size_t offset) {
@@ -337,13 +548,15 @@ ParseResult parse_ptx(std::string_view text, const ParseOptions& options) {
                     break;
                 }
             }
+            const bool is_pointer =
+                std::find(tokens.begin(), tokens.end(), ".ptr") != tokens.end();
 
             std::string name = sanitize_param_name(tokens.back());
             if (name.empty()) {
                 continue;
             }
 
-            entry.params.push_back({.type = type, .name = name});
+            entry.params.push_back({.type = type, .name = name, .is_pointer = is_pointer});
         }
 
         const std::size_t open_brace = static_cast<std::size_t>(iter->position(0) + iter->length(0) - 1);
@@ -356,6 +569,7 @@ ParseResult parse_ptx(std::string_view text, const ParseOptions& options) {
         }
         const int start_line = count_line_number_at_offset(source, body_start);
         parse_instructions(body, start_line, &entry, &result.warnings);
+        infer_pointer_parameters(&entry);
 
         result.module.entries.push_back(std::move(entry));
     }

@@ -16,3 +16,6 @@
   conformance harness (`OK (LOGITS)`, `LOSS OK`, `TENSOR OK`, `overall okay: 1`), but this is still
   mediated by the harness shim and tolerance patching (`CUMETAL_LLMC_GRAD_TOL`) rather than full
   instruction-accurate PTX->LLVM lowering for arbitrary kernels.
+- With `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` (or `CUMETAL_DISABLE_LLMC_EMULATION=1`), llm.c currently
+  fails early (`NOT OK (LOGITS)`, `LOSS MISMATCH`, `TENSOR NOT OK`), confirming that non-emulated PTX
+  lowering for those kernels is still incomplete.

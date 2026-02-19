@@ -4,12 +4,14 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace cumetal::registration {
 
 struct RegisteredKernel {
     std::string metallib_path;
     std::string kernel_name;
+    std::vector<cumetalKernelArgInfo_t> arg_info;
 };
 
 struct LaunchConfiguration {

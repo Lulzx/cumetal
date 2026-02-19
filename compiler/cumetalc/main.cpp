@@ -1,5 +1,6 @@
 #include "cumetal/air_emitter/emitter.h"
 #include "cumetal/common/metallib.h"
+#include "cumetal/ptx/lower_to_metal.h"
 #include "cumetal/ptx/lower_to_llvm.h"
 
 #include <cctype>
@@ -40,11 +41,11 @@ std::string lower_ext(const std::filesystem::path& path) {
     return ext;
 }
 
-std::filesystem::path make_temp_ll_path() {
+std::filesystem::path make_temp_path(const std::string& extension_with_dot) {
     const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto pid = static_cast<long long>(::getpid());
     return std::filesystem::temp_directory_path() /
-           ("cumetalc-ptx-" + std::to_string(pid) + "-" + std::to_string(now) + ".ll");
+           ("cumetalc-ptx-" + std::to_string(pid) + "-" + std::to_string(now) + extension_with_dot);
 }
 
 std::string quote_shell(const std::string& value) {
@@ -266,7 +267,7 @@ int main(int argc, char** argv) {
         options.mode = cumetal::air_emitter::EmitMode::kXcrun;
     }
 
-    std::filesystem::path temp_ll;
+    std::filesystem::path temp_stage_file;
     const std::string input_ext = lower_ext(options.input);
     if (input_ext == ".ptx") {
         std::string io_error;
@@ -277,45 +278,71 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        cumetal::ptx::LowerToLlvmOptions lower_options;
-        lower_options.strict = ptx_strict;
-        lower_options.entry_name = ptx_entry_name;
-        const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(
-            std::string_view(reinterpret_cast<const char*>(ptx_bytes.data()), ptx_bytes.size()),
-            lower_options);
-        for (const auto& warning : lowered.warnings) {
+        const std::string ptx_source(reinterpret_cast<const char*>(ptx_bytes.data()), ptx_bytes.size());
+
+        cumetal::ptx::LowerToMetalOptions lower_to_metal_options;
+        lower_to_metal_options.strict = ptx_strict;
+        lower_to_metal_options.entry_name = ptx_entry_name;
+        const auto lowered_metal =
+            cumetal::ptx::lower_ptx_to_metal_source(std::string_view(ptx_source), lower_to_metal_options);
+        for (const auto& warning : lowered_metal.warnings) {
             std::cerr << "ptx warning: " << warning << "\n";
         }
-        if (!lowered.ok) {
-            std::cerr << "cumetalc failed: PTX lowering failed: " << lowered.error << "\n";
+        if (!lowered_metal.ok) {
+            std::cerr << "cumetalc failed: PTX->Metal lowering failed: " << lowered_metal.error << "\n";
             return 1;
         }
 
-        temp_ll = make_temp_ll_path();
-        const std::vector<std::uint8_t> ll_bytes(lowered.llvm_ir.begin(), lowered.llvm_ir.end());
-        if (!cumetal::common::write_file_bytes(temp_ll, ll_bytes, &io_error)) {
-            std::cerr << "cumetalc failed: failed to write temporary LLVM IR: " << io_error << "\n";
-            return 1;
+        if (lowered_metal.matched && !lowered_metal.metal_source.empty()) {
+            temp_stage_file = make_temp_path(".metal");
+            const std::vector<std::uint8_t> metal_bytes(lowered_metal.metal_source.begin(),
+                                                        lowered_metal.metal_source.end());
+            if (!cumetal::common::write_file_bytes(temp_stage_file, metal_bytes, &io_error)) {
+                std::cerr << "cumetalc failed: failed to write temporary Metal source: "
+                          << io_error << "\n";
+                return 1;
+            }
+            options.input = temp_stage_file;
+            options.kernel_name = lowered_metal.entry_name;
+        } else {
+            cumetal::ptx::LowerToLlvmOptions lower_options;
+            lower_options.strict = ptx_strict;
+            lower_options.entry_name = ptx_entry_name;
+            const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(std::string_view(ptx_source), lower_options);
+            for (const auto& warning : lowered.warnings) {
+                std::cerr << "ptx warning: " << warning << "\n";
+            }
+            if (!lowered.ok) {
+                std::cerr << "cumetalc failed: PTX lowering failed: " << lowered.error << "\n";
+                return 1;
+            }
+
+            temp_stage_file = make_temp_path(".ll");
+            const std::vector<std::uint8_t> ll_bytes(lowered.llvm_ir.begin(), lowered.llvm_ir.end());
+            if (!cumetal::common::write_file_bytes(temp_stage_file, ll_bytes, &io_error)) {
+                std::cerr << "cumetalc failed: failed to write temporary LLVM IR: " << io_error << "\n";
+                return 1;
+            }
+            options.input = temp_stage_file;
+            options.kernel_name = lowered.entry_name;
         }
-        options.input = temp_ll;
-        options.kernel_name = lowered.entry_name;
     } else if (input_ext == ".cu") {
         const bool needs_fallback_air_ll =
             options.mode == cumetal::air_emitter::EmitMode::kXcrun && !command_exists("llvm-as");
         if (needs_fallback_air_ll) {
-            temp_ll = make_temp_ll_path();
+            temp_stage_file = make_temp_path(".ll");
             std::string fallback_error;
-            if (try_emit_vector_add_air_ir_from_cu(options.input, temp_ll, &fallback_error)) {
-                options.input = temp_ll;
+            if (try_emit_vector_add_air_ir_from_cu(options.input, temp_stage_file, &fallback_error)) {
+                options.input = temp_stage_file;
                 options.kernel_name = "vector_add";
             } else {
                 std::cerr << "cumetalc warning: " << fallback_error
                           << "; attempting generic .cu frontend lowering\n";
-                temp_ll.clear();
+                temp_stage_file.clear();
             }
         }
 
-        if (!temp_ll.empty()) {
+        if (!temp_stage_file.empty()) {
             // Fallback AIR-ready LLVM IR path selected.
         } else {
         if (!command_exists("xcrun")) {
@@ -327,7 +354,7 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        temp_ll = make_temp_ll_path();
+        temp_stage_file = make_temp_path(".ll");
         const std::filesystem::path runtime_api_dir =
             std::filesystem::path(CUMETAL_SOURCE_DIR) / "runtime" / "api";
         const std::string command =
@@ -337,7 +364,7 @@ int main(int argc, char** argv) {
             ((std::filesystem::exists(runtime_api_dir) && std::filesystem::is_directory(runtime_api_dir))
                  ? ("-I " + quote_shell(runtime_api_dir.string()) + " ")
                  : "") +
-            quote_shell(options.input.string()) + " -o " + quote_shell(temp_ll.string()) + " 2>&1";
+            quote_shell(options.input.string()) + " -o " + quote_shell(temp_stage_file.string()) + " 2>&1";
         const CommandResult result = run_command_capture(command);
         if (!result.started || result.exit_code != 0) {
             if (!result.output.empty()) {
@@ -350,14 +377,14 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        options.input = temp_ll;
+        options.input = temp_stage_file;
         }
     }
 
     const auto result = cumetal::air_emitter::emit_metallib(options);
-    if (!temp_ll.empty()) {
+    if (!temp_stage_file.empty()) {
         std::error_code ec;
-        std::filesystem::remove(temp_ll, ec);
+        std::filesystem::remove(temp_stage_file, ec);
     }
     for (const auto& log : result.logs) {
         if (!log.empty()) {

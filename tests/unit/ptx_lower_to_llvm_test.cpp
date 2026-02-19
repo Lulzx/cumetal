@@ -131,6 +131,74 @@ int main() {
         return 1;
     }
 
+    const std::string negate_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry negate(
+    .param .u64 negate_param_0,
+    .param .u64 negate_param_1
+)
+{
+    mov.u32 %r0, %tid.x;
+    neg.f32 %f1, %f0;
+    ret;
+}
+)PTX";
+
+    cumetal::ptx::LowerToLlvmOptions negate_options;
+    negate_options.entry_name = "negate";
+    const auto negate_lowered = cumetal::ptx::lower_ptx_to_llvm_ir(negate_ptx, negate_options);
+    if (!expect(negate_lowered.ok, "negate lowering succeeds")) {
+        return 1;
+    }
+    if (!expect(contains(negate_lowered.llvm_ir,
+                         "define void @negate(float addrspace(1)* %negate_param_0"),
+                "negate kernel definition emitted")) {
+        return 1;
+    }
+    if (!expect(contains(negate_lowered.llvm_ir, "i32 %__air_thread_position_in_grid"),
+                "negate includes implicit thread position argument")) {
+        return 1;
+    }
+    if (!expect(contains(negate_lowered.llvm_ir, "%neg.val = fneg float %in.val"),
+                "negate emits fneg body")) {
+        return 1;
+    }
+
+    const std::string reduce_ptx = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry reduce_sum(
+    .param .u64 reduce_param_0,
+    .param .u64 reduce_param_1,
+    .param .u32 reduce_param_2
+)
+{
+    mov.u32 %r0, %tid.x;
+    atom.global.add.f32 %f1, [%rd1], %f0;
+    ret;
+}
+)PTX";
+
+    cumetal::ptx::LowerToLlvmOptions reduce_options;
+    reduce_options.entry_name = "reduce_sum";
+    const auto reduce_lowered = cumetal::ptx::lower_ptx_to_llvm_ir(reduce_ptx, reduce_options);
+    if (!expect(reduce_lowered.ok, "reduce_sum lowering succeeds")) {
+        return 1;
+    }
+    if (!expect(contains(reduce_lowered.llvm_ir, "i32 addrspace(2)* %reduce_param_2"),
+                "reduce_sum scalar count lowered as constant buffer pointer")) {
+        return 1;
+    }
+    if (!expect(contains(reduce_lowered.llvm_ir,
+                         "atomicrmw fadd float addrspace(1)* %out.ptr, float %in.val monotonic"),
+                "reduce_sum emits atomic add")) {
+        return 1;
+    }
+    if (!expect(reduce_lowered.warnings.empty(), "reduce_sum path should not emit warnings")) {
+        return 1;
+    }
+
     const std::string unsupported_ptx = R"PTX(
 .version 8.0
 .target sm_90

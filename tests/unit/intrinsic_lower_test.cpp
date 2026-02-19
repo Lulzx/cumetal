@@ -29,6 +29,14 @@ int main() {
     mov.u32 %r1, %ctaid.y;
     add.s32 %r2, %r0, %r1;
     mul.lo.s32 %r3, %r2, %r0;
+    div.s32 %r7, %r3, %r0;
+    rem.s32 %r8, %r3, %r0;
+    and.b32 %r9, %r7, %r8;
+    or.b32  %r10, %r7, %r8;
+    xor.b32 %r11, %r9, %r10;
+    not.b32 %r12, %r11;
+    selp.f32 %f2, %f0, %f1, %p1;
+    rcp.rn.f32 %f3, %f2;
     mad.lo.s32 %r4, %r2, %r3, %r1;
     bar.sync 0;
     call.uni (%r6), vprintf, ("tid=%u", %r0);
@@ -78,17 +86,49 @@ int main() {
                 "mul mapped to llvm.mul")) {
         return 1;
     }
-    if (!expect(lowered.instructions[4].translated && lowered.instructions[4].opcode == "llvm.mad",
+    if (!expect(lowered.instructions[4].translated && lowered.instructions[4].opcode == "llvm.div",
+                "div mapped to llvm.div")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[5].translated && lowered.instructions[5].opcode == "llvm.rem",
+                "rem mapped to llvm.rem")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[6].translated && lowered.instructions[6].opcode == "llvm.and",
+                "and mapped to llvm.and")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[7].translated && lowered.instructions[7].opcode == "llvm.or",
+                "or mapped to llvm.or")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[8].translated && lowered.instructions[8].opcode == "llvm.xor",
+                "xor mapped to llvm.xor")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[9].translated && lowered.instructions[9].opcode == "llvm.not",
+                "not mapped to llvm.not")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[10].translated && lowered.instructions[10].opcode == "llvm.select",
+                "selp mapped to llvm.select")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[11].translated && lowered.instructions[11].opcode == "llvm.rcp",
+                "rcp mapped to llvm.rcp")) {
+        return 1;
+    }
+    if (!expect(lowered.instructions[12].translated && lowered.instructions[12].opcode == "llvm.mad",
                 "integer mad mapped to llvm.mad")) {
         return 1;
     }
-    if (!expect(lowered.instructions[5].translated &&
-                    lowered.instructions[5].opcode == "air.threadgroup_barrier",
+    if (!expect(lowered.instructions[13].translated &&
+                    lowered.instructions[13].opcode == "air.threadgroup_barrier",
                 "bar.sync mapped to barrier intrinsic")) {
         return 1;
     }
-    if (!expect(!lowered.instructions[6].translated &&
-                    lowered.instructions[6].opcode == "call.uni",
+    if (!expect(!lowered.instructions[14].translated &&
+                    lowered.instructions[14].opcode == "call.uni",
                 "call instruction preserved for printf lowering stage")) {
         return 1;
     }

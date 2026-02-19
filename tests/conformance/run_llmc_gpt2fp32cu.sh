@@ -4,6 +4,7 @@ set -euo pipefail
 LLMC_DIR="${CUMETAL_LLMC_DIR:-}"
 BUILD_CMD="${CUMETAL_LLMC_BUILD_CMD:-}"
 TEST_CMD="${CUMETAL_LLMC_TEST_CMD:-}"
+REQUIRE_NO_EMULATION="${CUMETAL_LLMC_REQUIRE_NO_EMULATION:-0}"
 
 if [[ -z "$LLMC_DIR" ]]; then
   echo "SKIP: set CUMETAL_LLMC_DIR to llm.c checkout root"
@@ -31,6 +32,13 @@ fi
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT
 
+if [[ "$REQUIRE_NO_EMULATION" == "1" ]]; then
+  export CUMETAL_DISABLE_LLMC_EMULATION=1
+  echo "INFO: llm.c conformance requires PTX lowering path (LLMC emulation disabled)"
+else
+  export CUMETAL_TRACE_LLMC_EMULATION=1
+fi
+
 (cd "$LLMC_DIR" && eval "$TEST_CMD") | tee "$OUTPUT_FILE"
 
 if ! rg -qi "loss" "$OUTPUT_FILE"; then
@@ -46,6 +54,14 @@ fi
 if rg -q "TENSOR NOT OK" "$OUTPUT_FILE"; then
   echo "FAIL: llm.c reported gradient tensor mismatch"
   exit 1
+fi
+
+if rg -q "CUMETAL_LLMC_EMULATION" "$OUTPUT_FILE"; then
+  if [[ "$REQUIRE_NO_EMULATION" == "1" ]]; then
+    echo "FAIL: llm.c used runtime emulation fallback while no-emulation mode is required"
+    exit 1
+  fi
+  echo "WARN: llm.c used runtime emulation fallback (not pure PTX->LLVM lowering)"
 fi
 
 if rg -q "overall okay: 1" "$OUTPUT_FILE"; then

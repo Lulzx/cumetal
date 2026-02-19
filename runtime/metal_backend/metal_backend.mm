@@ -1142,10 +1142,8 @@ cudaError_t launch_kernel(const std::string& metallib_path,
             const KernelArg& arg = args[i];
             if (arg.kind == KernelArg::Kind::kBuffer) {
                 if (arg.buffer == nullptr) {
-                    if (error_message != nullptr) {
-                        *error_message = "kernel arg " + std::to_string(i) + " missing buffer";
-                    }
-                    return cudaErrorInvalidValue;
+                    [encoder setBuffer:nil offset:0 atIndex:i];
+                    continue;
                 }
 
                 auto* buffer_impl = dynamic_cast<BufferImpl*>(arg.buffer.get());

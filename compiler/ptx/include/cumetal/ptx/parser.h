@@ -9,6 +9,7 @@ namespace cumetal::ptx {
 struct Parameter {
     std::string type;
     std::string name;
+    bool is_pointer = false;
 };
 
 struct EntryFunction {

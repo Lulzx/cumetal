@@ -42,6 +42,9 @@ Conformance snapshot
   - `LOSS OK`
   - `TENSOR OK`
   - `overall okay: 1`
+- Current llm.c parity path still uses runtime emulation fallback for many registered kernels.
+  Set `CUMETAL_LLMC_REQUIRE_NO_EMULATION=1` to force pure PTX-lowered execution and expose
+  unsupported lowering gaps.
 
 Documentation
 -------------

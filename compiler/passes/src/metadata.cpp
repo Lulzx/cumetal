@@ -16,6 +16,8 @@ KernelMetadata build_kernel_metadata(const cumetal::ptx::EntryFunction& entry,
             {.key = "kernel.arg." + std::to_string(i) + ".type", .value = entry.params[i].type});
         metadata.fields.push_back(
             {.key = "kernel.arg." + std::to_string(i) + ".name", .value = entry.params[i].name});
+        metadata.fields.push_back({.key = "kernel.arg." + std::to_string(i) + ".pointer",
+                                   .value = entry.params[i].is_pointer ? "true" : "false"});
     }
 
     return metadata;
