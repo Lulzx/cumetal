@@ -6,6 +6,12 @@
 - Binary-shim registration supports CuMetal envelopes (`CMTL`), direct PTX images, and basic CUDA
   fatbin PTX images (wrapper and direct blob) with `FatBinary/FatBinary2/FatBinary3` entry points, plus
   host-function and basic symbol-variable mapping, but not full NVCC fatbinary variants.
+- Warp-primitive intrinsic lowering (`shfl.sync.*`, `vote.sync.{ballot,any,all}`, `bar.warp.sync`)
+  is implemented in the `intrinsic_lower` pass, mapping to `air.simdgroup.{shuffle,shuffle_down,
+  shuffle_up,shuffle_xor,ballot,any,all,barrier}`. Mask emulation for non-0xFFFFFFFF membermasks is
+  conservative (full-group barrier) rather than lane-selective; kernels using partial masks should be
+  tested carefully. The generic PTX→Metal emitter does not yet emit Metal `simd_shuffle*` calls for
+  these instructions — they require the LLVM→AIR path.
 - `llm.c` stress coverage (`conformance_llmc_gpt2fp32cu`) now auto-builds/runs via CuMetal's local
   clang+fatbin shim scripts when an `llm.c` checkout is present, but this path still depends on an external
   checkout with model/debug-state assets.

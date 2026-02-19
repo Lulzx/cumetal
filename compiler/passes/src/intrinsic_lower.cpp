@@ -131,6 +131,61 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
     return true;
 }
 
+bool map_warp_primitives(const cumetal::ptx::EntryFunction::Instruction& instruction,
+                          LoweredInstruction* lowered) {
+    if (lowered == nullptr) {
+        return false;
+    }
+
+    const std::string& op = instruction.opcode;
+
+    // shfl: shuffle within a SIMD-group (warp)
+    // shfl.sync.{idx,down,up,bfly}.b32 dst, src, sel, clamp, membermask
+    if (op.rfind("shfl", 0) == 0) {
+        if (op.find(".idx.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.shuffle";
+        } else if (op.find(".down.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.shuffle_down";
+        } else if (op.find(".up.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.shuffle_up";
+        } else if (op.find(".bfly.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.shuffle_xor";
+        } else {
+            return false;
+        }
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    // vote: warp-wide predicate reduction (ballot / any / all)
+    // vote.[sync.]{ballot.b32,any.pred,all.pred}
+    if (op.rfind("vote", 0) == 0) {
+        if (op.find(".ballot.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.ballot";
+        } else if (op.find(".any.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.any";
+        } else if (op.find(".all.") != std::string::npos) {
+            lowered->opcode = "air.simdgroup.all";
+        } else {
+            return false;
+        }
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    // bar.warp.sync → simdgroup barrier (__syncwarp)
+    if (op.rfind("bar.warp.sync", 0) == 0) {
+        lowered->opcode = "air.simdgroup.barrier";
+        lowered->operands = instruction.operands;
+        lowered->translated = true;
+        return true;
+    }
+
+    return false;
+}
+
 }  // namespace
 
 IntrinsicLowerResult lower_intrinsics(const cumetal::ptx::EntryFunction& entry,
@@ -145,6 +200,7 @@ IntrinsicLowerResult lower_intrinsics(const cumetal::ptx::EntryFunction& entry,
         bool translated = false;
         translated = translated || map_special_register_mov(instruction, &lowered);
         translated = translated || map_barrier(instruction, &lowered);
+        translated = translated || map_warp_primitives(instruction, &lowered);
         translated = translated || map_math(instruction, &lowered);
 
         if (!translated) {

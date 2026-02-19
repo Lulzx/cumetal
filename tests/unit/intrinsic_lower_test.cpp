@@ -212,6 +212,62 @@ int main() {
                 "cos.approx.f32 → llvm.cos"))
         return 1;
 
+    // ── Test 3: warp primitives (shfl, vote, bar.warp.sync) ──────────────────
+    const std::string ptx3 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k3(
+    .param .u64 p0
+)
+{
+    shfl.sync.idx.b32   %r0, %r1, %r2, 0x1f, 0xffffffff;
+    shfl.sync.down.b32  %r0, %r1, %r2, 0x1f, 0xffffffff;
+    shfl.sync.up.b32    %r0, %r1, %r2, 0x1f, 0xffffffff;
+    shfl.sync.bfly.b32  %r0, %r1, %r2, 0x1f, 0xffffffff;
+    vote.sync.ballot.b32 %r0, %p0, 0xffffffff;
+    vote.sync.any.pred  %p0, %p1, 0xffffffff;
+    vote.sync.all.pred  %p0, %p1, 0xffffffff;
+    bar.warp.sync       0xffffffff;
+    ret;
+}
+)PTX";
+
+    const auto parsed3 = cumetal::ptx::parse_ptx(ptx3);
+    if (!expect(parsed3.ok, "parse PTX3 for warp primitives")) return 1;
+    if (!expect(parsed3.module.entries.size() == 1, "single PTX3 entry")) return 1;
+    if (!expect(parsed3.module.entries[0].instructions.size() == 9,
+                "PTX3 instruction count (8 warp ops + ret)"))
+        return 1;
+
+    const auto w = cumetal::passes::lower_intrinsics(parsed3.module.entries[0]);
+    if (!expect(w.ok, "warp primitives lower ok")) return 1;
+    if (!expect(w.warnings.empty(), "no warnings for supported warp primitives")) return 1;
+
+    if (!expect(w.instructions[0].translated && w.instructions[0].opcode == "air.simdgroup.shuffle",
+                "shfl.sync.idx → air.simdgroup.shuffle"))
+        return 1;
+    if (!expect(w.instructions[1].translated && w.instructions[1].opcode == "air.simdgroup.shuffle_down",
+                "shfl.sync.down → air.simdgroup.shuffle_down"))
+        return 1;
+    if (!expect(w.instructions[2].translated && w.instructions[2].opcode == "air.simdgroup.shuffle_up",
+                "shfl.sync.up → air.simdgroup.shuffle_up"))
+        return 1;
+    if (!expect(w.instructions[3].translated && w.instructions[3].opcode == "air.simdgroup.shuffle_xor",
+                "shfl.sync.bfly → air.simdgroup.shuffle_xor"))
+        return 1;
+    if (!expect(w.instructions[4].translated && w.instructions[4].opcode == "air.simdgroup.ballot",
+                "vote.sync.ballot → air.simdgroup.ballot"))
+        return 1;
+    if (!expect(w.instructions[5].translated && w.instructions[5].opcode == "air.simdgroup.any",
+                "vote.sync.any → air.simdgroup.any"))
+        return 1;
+    if (!expect(w.instructions[6].translated && w.instructions[6].opcode == "air.simdgroup.all",
+                "vote.sync.all → air.simdgroup.all"))
+        return 1;
+    if (!expect(w.instructions[7].translated && w.instructions[7].opcode == "air.simdgroup.barrier",
+                "bar.warp.sync → air.simdgroup.barrier"))
+        return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }

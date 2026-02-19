@@ -130,7 +130,7 @@ bool is_supported_opcode(const std::string& opcode) {
         "abs",   "add",  "and",  "atom", "bar",  "bra",  "call", "cos",  "cvt",  "cvta",
         "div",   "ex2",  "fma",  "ld",   "lg2",  "mad",  "max",  "min",  "mov",  "mul",
         "neg",   "not",  "or",   "rcp",  "rem",  "ret",  "rsqrt","selp", "set",  "setp",
-        "shl",   "shr",  "sin",  "sqrt", "st",   "sub",  "vote", "xor",
+        "shl",   "shr",  "shfl", "sin",  "sqrt", "st",   "sub",  "vote", "xor",
     };
     return kSupportedRoots.contains(root);
 }
