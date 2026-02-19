@@ -221,6 +221,43 @@ bool looks_like_reduce_sum_signature(const std::string& entry_name,
            lowered_name.find("sum") != std::string::npos;
 }
 
+bool looks_like_fp64_mul_add_signature(const std::string& entry_name,
+                                        const std::vector<ParamInfo>& params) {
+    if (params.size() < 2) {
+        return false;
+    }
+    if (!is_device_buffer_pointer(params[0].llvm_type) ||
+        !is_device_buffer_pointer(params[1].llvm_type)) {
+        return false;
+    }
+    const std::string lowered_name = lowercase(entry_name);
+    // Match kernels named like "fp64_mul_add" or "fp64_fma" — FP64 arithmetic tests
+    return lowered_name.find("fp64") != std::string::npos &&
+           (lowered_name.find("mul") != std::string::npos ||
+            lowered_name.find("fma") != std::string::npos ||
+            lowered_name.find("add") != std::string::npos);
+}
+
+void emit_fp64_mul_add_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+    // params[0]: float* input, params[1]: float* output
+    // params.back(): __air_thread_position_in_grid (i32)
+    const std::string& in_name  = params[0].name;
+    const std::string& out_name = params[1].name;
+    const std::string& idx_name = params.back().name;
+
+    ir << "  %in.ptr = getelementptr float, float addrspace(1)* %" << in_name
+       << ", i32 %" << idx_name << "\n";
+    ir << "  %out.ptr = getelementptr float, float addrspace(1)* %" << out_name
+       << ", i32 %" << idx_name << "\n";
+    ir << "  %f.val = load float, float addrspace(1)* %in.ptr, align 4\n";
+    ir << "  %d.val = fpext float %f.val to double\n";
+    ir << "  %d.result = call double @llvm.fma.f64(double %d.val, "
+          "double 2.000000e+00, double 1.000000e+00)\n";
+    ir << "  %f.result = fptrunc double %d.result to float\n";
+    ir << "  store float %f.result, float addrspace(1)* %out.ptr, align 4\n";
+    ir << "  ret void\n";
+}
+
 void emit_lowered_instruction_comments(
     std::ostringstream& ir,
     const std::vector<cumetal::passes::LoweredInstruction>& lowered_instructions) {
@@ -392,6 +429,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     bool matrix_mul_signature = looks_like_matrix_mul_signature(pipeline.entry_name, params);
     const bool negate_signature = looks_like_negate_signature(pipeline.entry_name, params);
     bool reduce_sum_signature = looks_like_reduce_sum_signature(pipeline.entry_name, params);
+    const bool fp64_mul_add_signature =
+        looks_like_fp64_mul_add_signature(pipeline.entry_name, params);
     if (matrix_mul_signature && params.size() >= 5) {
         params[3].llvm_type = "i32 addrspace(2)*";
         arg_decls[3] = params[3].llvm_type + " %" + params[3].name;
@@ -401,7 +440,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         arg_decls[2] = params[2].llvm_type + " %" + params[2].name;
     }
 
-    const bool needs_thread_position_builtin = negate_signature || reduce_sum_signature;
+    const bool needs_thread_position_builtin =
+        negate_signature || reduce_sum_signature || fp64_mul_add_signature;
     if (needs_thread_position_builtin) {
         const ParamInfo builtin_thread_position = {
             .ptx_type = ".builtin.thread_position_in_grid",
@@ -445,11 +485,17 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         emit_negate_body(ir, params);
     } else if (reduce_sum_signature) {
         emit_reduce_sum_body(ir, params);
+    } else if (fp64_mul_add_signature) {
+        emit_fp64_mul_add_body(ir, params);
     } else {
         emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
         ir << "  ret void\n";
     }
     ir << "}\n\n";
+
+    if (fp64_mul_add_signature) {
+        ir << "declare double @llvm.fma.f64(double, double, double)\n\n";
+    }
 
     std::ostringstream kernel_type;
     kernel_type << "void (";

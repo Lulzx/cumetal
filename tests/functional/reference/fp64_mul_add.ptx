@@ -1,0 +1,47 @@
+.version 7.0
+.target sm_80
+.address_size 64
+
+// FP64 arithmetic test kernel.
+// For each thread: output[i] = float(double(input[i]) * 2.0 + 1.0)
+// Uses fma.rn.f64 to exercise the FP64 lowering path (--fp64=native).
+.visible .entry fp64_mul_add(
+    .param .u64 param_input,
+    .param .u64 param_output
+)
+{
+    .reg .u64  %rd<4>;
+    .reg .f32  %f<2>;
+    .reg .f64  %fd<4>;
+    .reg .u32  %r<2>;
+
+    ld.param.u64 %rd0, [param_input];
+    ld.param.u64 %rd1, [param_output];
+
+    // gid = tid.x  (single block launch)
+    mov.u32 %r0, %tid.x;
+
+    // addr_in  = input  + gid * 4
+    mul.wide.u32 %rd2, %r0, 4;
+    add.u64      %rd2, %rd0, %rd2;
+
+    // addr_out = output + gid * 4
+    mul.wide.u32 %rd3, %r0, 4;
+    add.u64      %rd3, %rd1, %rd3;
+
+    // Load f32, widen to f64
+    ld.global.f32  %f0, [%rd2];
+    cvt.f64.f32    %fd0, %f0;
+
+    // result = fd0 * 2.0 + 1.0  (FMA in f64)
+    // 2.0 = 0x4000000000000000,  1.0 = 0x3FF0000000000000
+    mov.f64  %fd1, 0d4000000000000000;
+    mov.f64  %fd2, 0d3FF0000000000000;
+    fma.rn.f64  %fd3, %fd0, %fd1, %fd2;
+
+    // Narrow back to f32 and store
+    cvt.rn.f32.f64  %f1, %fd3;
+    st.global.f32   [%rd3], %f1;
+
+    ret;
+}

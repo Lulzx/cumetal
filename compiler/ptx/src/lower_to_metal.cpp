@@ -4,6 +4,9 @@
 #include "cumetal/ptx/parser.h"
 
 #include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -1093,7 +1096,26 @@ std::string emit_metal_source_generic(const std::string& entry_name, std::string
     auto resolve = [&](const std::string& operand) -> std::string {
         const std::string r = get_reg(operand);
         if (r.empty()) {
-            return operand;  // immediate
+            // PTX 0d<hex16> — IEEE 754 double bit-cast literal
+            if (operand.size() == 18 && operand[0] == '0' && operand[1] == 'd') {
+                const std::uint64_t bits = std::stoull(operand.substr(2), nullptr, 16);
+                double val;
+                std::memcpy(&val, &bits, sizeof(val));
+                std::ostringstream oss;
+                oss << std::scientific << std::setprecision(17) << val;
+                return oss.str();
+            }
+            // PTX 0f<hex8> — IEEE 754 float bit-cast literal
+            if (operand.size() == 10 && operand[0] == '0' && operand[1] == 'f') {
+                const std::uint32_t bits =
+                    static_cast<std::uint32_t>(std::stoul(operand.substr(2), nullptr, 16));
+                float val;
+                std::memcpy(&val, &bits, sizeof(val));
+                std::ostringstream oss;
+                oss << std::scientific << std::setprecision(9) << val << "f";
+                return oss.str();
+            }
+            return operand;  // other immediate (decimal, hex with 0x prefix, etc.)
         }
         const auto it = reg.find(r);
         if (it != reg.end() && it->second.kind == RegKind::ThreadGid) {

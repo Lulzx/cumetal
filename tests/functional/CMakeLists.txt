@@ -215,6 +215,18 @@ add_executable(cumetal_runtime_fp16_ops_test
     runtime_fp16_ops_test.cpp
 )
 
+add_executable(cumetal_runtime_shared_reduce_test
+    runtime_shared_reduce_test.cpp
+)
+
+add_executable(cumetal_runtime_grid_2d_test
+    runtime_grid_2d_test.cpp
+)
+
+add_executable(cumetal_runtime_fp64_ops_test
+    runtime_fp64_ops_test.cpp
+)
+
 if(CUMETAL_ENABLE_BINARY_SHIM)
     add_executable(cumetal_runtime_registration_path_test
         runtime_registration_path_test.cpp
@@ -502,6 +514,21 @@ target_link_libraries(cumetal_runtime_warp_shuffle_test
 )
 
 target_link_libraries(cumetal_runtime_fp16_ops_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_shared_reduce_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_grid_2d_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_fp64_ops_test
     PRIVATE
         cumetal_runtime
 )
@@ -903,6 +930,27 @@ target_compile_options(cumetal_runtime_warp_shuffle_test
 )
 
 target_compile_options(cumetal_runtime_fp16_ops_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_shared_reduce_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_grid_2d_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_fp64_ops_test
     PRIVATE
         -Wall
         -Wextra
@@ -1384,6 +1432,36 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_fp16_ops PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_shared_reduce
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_shared_reduce_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/shared_reduce.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/shared_reduce.metallib
+)
+
+set_tests_properties(functional_runtime_shared_reduce PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_grid_2d
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_grid_2d_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/grid_2d.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/grid_2d.metallib
+)
+
+set_tests_properties(functional_runtime_grid_2d PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_fp64_ops
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/run_driver_module_load_data_ptx.sh
+            $<TARGET_FILE:cumetal_runtime_fp64_ops_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/fp64_mul_add.ptx
+)
+
+set_tests_properties(functional_runtime_fp64_ops PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_ptx_lowering_regression
