@@ -167,4 +167,20 @@ run_case "sweep_ld_global_f64"  "ld.global.f64 %fd1, [%rd1];"
 run_case "sweep_atom_global_add_s32" "atom.global.add.s32 %r1, [%rd1], %r2;"
 run_case "sweep_atom_global_add_u32" "atom.global.add.u32 %r1, [%rd1], %r2;"
 
+# Integer negation (neg maps to llvm.neg for integers, llvm.fneg for floats)
+run_case "sweep_neg_s32"        "neg.s32 %r1, %r2;"
+run_case "sweep_neg_s64"        "neg.s64 %rd1, %rd2;"
+
+# Multiply-high: high 32 bits of 64-bit product
+run_case "sweep_mul_hi_u32"     "mul.hi.u32 %r1, %r2, %r3;"
+run_case "sweep_mul_hi_s32"     "mul.hi.s32 %r1, %r2, %r3;"
+
+# FP64 atomic add (spec §5.1.1 Ampere atomics)
+run_case "sweep_atom_global_add_f64" "atom.global.add.f64 %fd1, [%rd1], %fd2;"
+
+# set: predicate-to-integer mask (set.CmpOp.dtype.stype d, a, b)
+run_case "sweep_set_eq_u32"     "set.eq.u32.u32 %r1, %r2, %r3;"
+run_case "sweep_set_lt_u32"     "set.lt.u32.s32 %r1, %r2, %r3;"
+run_case "sweep_set_ne_f32"     "set.ne.u32.f32 %r1, %f1, %f2;"
+
 echo "PASS: PTX sweep supported-op strict checks completed"
