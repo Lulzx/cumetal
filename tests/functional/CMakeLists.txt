@@ -223,6 +223,10 @@ add_executable(cumetal_runtime_grid_2d_test
     runtime_grid_2d_test.cpp
 )
 
+add_executable(cumetal_runtime_grid_3d_test
+    runtime_grid_3d_test.cpp
+)
+
 add_executable(cumetal_runtime_fp64_ops_test
     runtime_fp64_ops_test.cpp
 )
@@ -524,6 +528,11 @@ target_link_libraries(cumetal_runtime_shared_reduce_test
 )
 
 target_link_libraries(cumetal_runtime_grid_2d_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_grid_3d_test
     PRIVATE
         cumetal_runtime
 )
@@ -944,6 +953,13 @@ target_compile_options(cumetal_runtime_shared_reduce_test
 )
 
 target_compile_options(cumetal_runtime_grid_2d_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_grid_3d_test
     PRIVATE
         -Wall
         -Wextra
@@ -1452,6 +1468,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_grid_2d PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_grid_3d
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_axpy.sh
+            $<TARGET_FILE:cumetal_runtime_grid_3d_test>
+            ${CMAKE_CURRENT_SOURCE_DIR}/reference/grid_3d.metal
+            ${CMAKE_CURRENT_BINARY_DIR}/grid_3d.metallib
+)
+
+set_tests_properties(functional_runtime_grid_3d PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(
     NAME functional_runtime_fp64_ops
