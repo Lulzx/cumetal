@@ -32,8 +32,6 @@ EOF
 }
 
 run_case_expect_fail "unsupported_foo" "foo.bar %r1, %r2;"
-run_case_expect_fail "unsupported_tex" "tex.2d.v4.f32.f32 {%f1,%f2,%f3,%f4}, [%rd1], %f5;"
-run_case_expect_fail "unsupported_suld" "suld.1d.v4.u32.trap [%rd1], {%r1,%r2,%r3,%r4};"
 
 # Hopper cluster ops (spec §5.1.1: per-instruction compile-time error)
 run_case_expect_fail "unsupported_cluster_sync"   "cluster.sync.aligned;"
@@ -55,6 +53,10 @@ run_case_expect_fail "unsupported_ldmatrix"    "ldmatrix.sync.aligned.m8n8.x1.b1
 # Texture/surface instructions (spec §2.2: deferred to v2; compile-time error)
 run_case_expect_fail "unsupported_tex"   "tex.2d.v4.f32.f32 {%f1,%f2,%f3,%f4}, [%rd1], {%f5, %f6};"
 run_case_expect_fail "unsupported_tld4"  "tld4.r.2d.v4.s32.f32 {%r1,%r2,%r3,%r4}, [%rd1], {%f1,%f2};"
+run_case_expect_fail "unsupported_txq"   "txq.width.b32 %r1, [%rd1];"
 run_case_expect_fail "unsupported_suld"  "suld.b.2d.b32.zero %r1, [%rd1, {%r2, %r3}];"
+run_case_expect_fail "unsupported_sust"  "sust.b.2d.b32.zero [%rd1, {%r1, %r2}], %r3;"
+run_case_expect_fail "unsupported_sured" "sured.b.2d.add.u32 [%rd1, {%r1, %r2}], %r3;"
+run_case_expect_fail "unsupported_suq"   "suq.width.b32 %r1, [%rd1];"
 
 echo "PASS: PTX sweep unsupported-op strict rejection completed"

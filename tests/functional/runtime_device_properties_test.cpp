@@ -39,6 +39,26 @@ int main() {
         return 1;
     }
 
+    if (prop.unifiedAddressing != 1) {
+        std::fprintf(stderr, "FAIL: unifiedAddressing should be 1 on Apple Silicon\n");
+        return 1;
+    }
+
+    if (prop.managedMemory != 1) {
+        std::fprintf(stderr, "FAIL: managedMemory should be 1 on Apple Silicon\n");
+        return 1;
+    }
+
+    if (prop.concurrentManagedAccess != 1) {
+        std::fprintf(stderr, "FAIL: concurrentManagedAccess should be 1 on Apple Silicon\n");
+        return 1;
+    }
+
+    if (prop.maxBufferArguments != 31) {
+        std::fprintf(stderr, "FAIL: maxBufferArguments should be 31 (Metal limit)\n");
+        return 1;
+    }
+
     if (cudaGetDeviceProperties(nullptr, 0) != cudaErrorInvalidValue) {
         std::fprintf(stderr, "FAIL: null properties pointer should fail\n");
         return 1;

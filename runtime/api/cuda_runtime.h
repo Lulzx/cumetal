@@ -114,6 +114,10 @@ typedef struct cudaDeviceProp {
     int regsPerBlock;
     int major;
     int minor;
+    int unifiedAddressing;       // Always 1 on Apple Silicon (UMA)
+    int managedMemory;           // Always 1 on Apple Silicon (UMA)
+    int concurrentManagedAccess; // Always 1 on Apple Silicon (UMA)
+    int maxBufferArguments;      // 31 (Metal buffer argument limit)
 } cudaDeviceProp;
 
 typedef enum cudaDeviceAttr {

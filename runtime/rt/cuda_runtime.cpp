@@ -1674,6 +1674,10 @@ cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
     prop->regsPerBlock = 65536;
     prop->major = 8;
     prop->minor = 0;
+    prop->unifiedAddressing = 1;        // UMA: CPU and GPU share physical DRAM
+    prop->managedMemory = 1;            // cudaMallocManaged == cudaMalloc on UMA
+    prop->concurrentManagedAccess = 1;  // CPU+GPU can access managed memory simultaneously
+    prop->maxBufferArguments = 31;      // Metal buffer argument limit per kernel
 
     return fail(cudaSuccess);
 }
