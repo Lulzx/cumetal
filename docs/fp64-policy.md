@@ -6,9 +6,15 @@ CuMetal's handling of double-precision floating-point (`double`, `f64`) on Apple
 
 ## Hardware Reality
 
-Apple Silicon GPUs have limited FP64 support. The GPU ALUs can execute some FP64 instructions
-but at drastically reduced throughput — approximately 1/32 of FP32 throughput. This is
-consistent across M1, M2, M3, and M4 families.
+Apple Silicon GPUs have highly limited FP64 support. While `fpext`/`fptrunc` type-conversion
+instructions (float↔double) are accepted at runtime, double-precision arithmetic operations
+(`fmul double`, `fadd double`, `@llvm.fma.f64`) cause Metal compute pipeline-state creation to
+fail at runtime on M1–M4 hardware. `xcrun metal` compiles LLVM IR containing `fmul double`
+without error, but the GPU driver rejects such pipelines when they are instantiated. This
+means `--fp64=native` is effectively broken for arithmetic on current hardware.
+
+As a result, **`--fp64=emulate` is the runtime default** (see `CUMETAL_FP64_MODE` env var
+below). Emulation via Dekker's FP32-pair algorithm avoids double-precision ALU ops entirely.
 
 This is not a CuMetal limitation; it reflects the hardware. NVIDIA A100 GPUs provide
 1:2 FP64:FP32 throughput. Apple Silicon GPUs do not have a high-throughput FP64 path.
@@ -19,11 +25,13 @@ This is not a CuMetal limitation; it reflects the hardware. NVIDIA A100 GPUs pro
 
 CuMetal provides three FP64 compilation modes, selected via the `--fp64` flag:
 
-| Mode | Flag | Behavior | Precision |
-|------|------|----------|-----------|
-| **Native** (default) | `--fp64=native` | Emit AIR FP64 instructions directly | IEEE 754 double (64-bit) |
-| **Emulate** | `--fp64=emulate` | Decompose to FP32 pairs via Dekker's algorithm | ~44 bits mantissa |
-| **Warn** | `--fp64=warn` | Same as native, but emit a per-instruction compile warning | IEEE 754 double (64-bit) |
+| Mode | Flag | Runtime default | Behavior | Precision |
+|------|------|-----------------|----------|-----------|
+| **Native** | `--fp64=native` | No | Emit AIR FP64 instructions directly; fails at launch on Apple Silicon | IEEE 754 double (64-bit) |
+| **Emulate** | `--fp64=emulate` | **Yes** (default) | Decompose to FP32 pairs via Dekker's algorithm | ~44 bits mantissa |
+| **Warn** | `--fp64=warn` | No | Same as native + per-instruction compile warning | IEEE 754 double (64-bit) |
+
+Set `CUMETAL_FP64_MODE=native` (or `warn`) to override the runtime default.
 
 ---
 

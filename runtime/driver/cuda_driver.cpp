@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <cstdint>
 #include <filesystem>
@@ -366,7 +367,24 @@ bool emit_ptx_to_temp_metallib(const std::string& ptx, std::string* out_path) {
         return false;
     }
 
-    const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(ptx);
+    // Default to kEmulate: Apple Silicon GPU rejects double-precision ALU ops
+    // (fmul double, @llvm.fma.f64) at pipeline-creation time even though the
+    // xcrun metal compiler accepts them.  kEmulate uses Dekker FP32-pair
+    // arithmetic (~44-bit mantissa) which runs on all Apple Silicon hardware.
+    // Set CUMETAL_FP64_MODE=native to force kNative (IEEE 754 double, fails
+    // at runtime on current hardware but useful for testing the compilation path).
+    cumetal::ptx::LowerToLlvmOptions lower_opts;
+    lower_opts.fp64_mode = cumetal::ptx::Fp64Mode::kEmulate;
+    const char* fp64_env = std::getenv("CUMETAL_FP64_MODE");
+    if (fp64_env != nullptr) {
+        if (std::string(fp64_env) == "native") {
+            lower_opts.fp64_mode = cumetal::ptx::Fp64Mode::kNative;
+        } else if (std::string(fp64_env) == "warn") {
+            lower_opts.fp64_mode = cumetal::ptx::Fp64Mode::kWarn;
+        }
+        // "emulate" is already the default; any other value is ignored
+    }
+    const auto lowered = cumetal::ptx::lower_ptx_to_llvm_ir(ptx, lower_opts);
     if (!lowered.ok || lowered.llvm_ir.empty()) {
         return false;
     }

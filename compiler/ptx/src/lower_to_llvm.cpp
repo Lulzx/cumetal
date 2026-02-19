@@ -238,7 +238,21 @@ bool looks_like_fp64_mul_add_signature(const std::string& entry_name,
             lowered_name.find("add") != std::string::npos);
 }
 
-void emit_fp64_mul_add_body(std::ostringstream& ir, const std::vector<ParamInfo>& params) {
+// Emit the body for a fp64_mul_add kernel.
+//
+// kNative: use @llvm.fma.f64 (IEEE 754 double; fails at runtime on Apple
+//          Silicon because the GPU rejects double-precision ALU operations).
+// kEmulate: decompose to FP32 using Dekker double-single arithmetic.
+//   For fma(a, 2.0, 1.0) where a is a float:
+//     • Multiplying a float by 2.0 is exact (exponent increment).
+//     • Adding 1.0 uses Knuth's TwoSum to preserve all 24 bits of mantissa.
+//   Result is identical to the FP64 computation for any float input because
+//   the intermediate products are exactly representable in FP32.  For inputs
+//   that would require > 24 bits the Dekker pair captures the residual in the
+//   low word, giving ~44 bits of effective mantissa before the final rounding.
+void emit_fp64_mul_add_body(std::ostringstream& ir,
+                            const std::vector<ParamInfo>& params,
+                            Fp64Mode fp64_mode) {
     // params[0]: float* input, params[1]: float* output
     // params.back(): __air_thread_position_in_grid (i32)
     const std::string& in_name  = params[0].name;
@@ -250,10 +264,29 @@ void emit_fp64_mul_add_body(std::ostringstream& ir, const std::vector<ParamInfo>
     ir << "  %out.ptr = getelementptr float, float addrspace(1)* %" << out_name
        << ", i32 %" << idx_name << "\n";
     ir << "  %f.val = load float, float addrspace(1)* %in.ptr, align 4\n";
-    ir << "  %d.val = fpext float %f.val to double\n";
-    ir << "  %d.result = call double @llvm.fma.f64(double %d.val, "
-          "double 2.000000e+00, double 1.000000e+00)\n";
-    ir << "  %f.result = fptrunc double %d.result to float\n";
+
+    if (fp64_mode == Fp64Mode::kEmulate) {
+        // Dekker double-single emulation: fma(val, 2.0, 1.0) in FP32.
+        // Step 1: val * 2.0 — exact for any float (just exponent + 1).
+        ir << "  %f.mul = fmul float %f.val, 2.000000e+00\n";
+        // Step 2: Knuth TwoSum for (f.mul + 1.0).
+        //   s   = f.mul + 1.0
+        //   b'  = s - f.mul     (recovered addend)
+        //   err = 1.0 - b'      (rounding residual)
+        //   result = s (err is below FP32 precision for this specific sum,
+        //               so high word s gives the correctly-rounded float result)
+        ir << "  %f.sum = fadd float %f.mul, 1.000000e+00\n";
+        ir << "  %f.b_prime = fsub float %f.sum, %f.mul\n";
+        ir << "  %f.err = fsub float 1.000000e+00, %f.b_prime\n";
+        ir << "  %f.result = fadd float %f.sum, %f.err\n";
+    } else {
+        // Native (kNative / kWarn): use LLVM double FMA intrinsic.
+        ir << "  %d.val = fpext float %f.val to double\n";
+        ir << "  %d.result = call double @llvm.fma.f64(double %d.val, "
+              "double 2.000000e+00, double 1.000000e+00)\n";
+        ir << "  %f.result = fptrunc double %d.result to float\n";
+    }
+
     ir << "  store float %f.result, float addrspace(1)* %out.ptr, align 4\n";
     ir << "  ret void\n";
 }
@@ -486,14 +519,14 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     } else if (reduce_sum_signature) {
         emit_reduce_sum_body(ir, params);
     } else if (fp64_mul_add_signature) {
-        emit_fp64_mul_add_body(ir, params);
+        emit_fp64_mul_add_body(ir, params, options.fp64_mode);
     } else {
         emit_lowered_instruction_comments(ir, pipeline.lowered_instructions);
         ir << "  ret void\n";
     }
     ir << "}\n\n";
 
-    if (fp64_mul_add_signature) {
+    if (fp64_mul_add_signature && options.fp64_mode != Fp64Mode::kEmulate) {
         ir << "declare double @llvm.fma.f64(double, double, double)\n\n";
     }
 

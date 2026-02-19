@@ -28,10 +28,14 @@
   (`add`, `sub`, `mul`, `div`, `rem`, `shl`, `shr`, `and`, `or`, `xor`, `not`, `selp`), `fma`/`mad`,
   `neg`/`abs`/`rcp`, `max`/`min`, and the unary math intrinsics `sqrt`, `rsqrt`, `ex2`→`exp2`,
   `lg2`→`log2`, `sin`, `cos`. Kernels with unsupported patterns fall back to PTX→LLVM lowering.
-- `--fp64=emulate` mode (Dekker's algorithm FP32-pair decomposition, spec §8.1) is not yet
-  implemented. The flag is accepted and parsed, but currently falls through to native FP64 behavior
-  (`--fp64=native`). A diagnostic warning is emitted to alert the user. Implementing Dekker's
-  decomposition requires a dedicated LLVM pass that is deferred to a future milestone.
+- `--fp64=emulate` mode (Dekker's algorithm FP32-pair decomposition, spec §8.1) is implemented
+  for kernels matched by the `fp64_mul_add` pattern (kernels named `*fp64*{mul,fma,add}*`).
+  The runtime defaults to `kEmulate` because Apple Silicon GPU hardware rejects native FP64
+  arithmetic (`fmul double`, `@llvm.fma.f64`) at Metal pipeline-creation time even though
+  `xcrun metal` compiles the LLVM IR successfully; `fpext`/`fptrunc` conversions do work.
+  Set `CUMETAL_FP64_MODE=native` to force `kNative` mode (useful for testing the compilation
+  path; will fail at launch on current Apple Silicon hardware).  General Dekker decomposition
+  for arbitrary PTX `.f64` instruction streams requires a dedicated LLVM pass and is deferred.
 - Null stream synchronization (spec §6.3.1) is implemented via command-buffer sequencing on the
   default `MTLCommandQueue` rather than the spec's described `MTLSharedEvent`-based approach.
   The observable CUDA semantics (null-stream serialization) are correct for the common single-context

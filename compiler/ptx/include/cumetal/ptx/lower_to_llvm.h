@@ -9,7 +9,7 @@ namespace cumetal::ptx {
 // FP64 compilation mode (see spec §8.1 and --fp64 CLI flag).
 enum class Fp64Mode {
     kNative,   // emit AIR FP64 instructions as-is (default)
-    kEmulate,  // placeholder for Dekker's algorithm decomposition (future)
+    kEmulate,  // Dekker FP32-pair decomposition (~44-bit mantissa); default in runtime
     kWarn,     // same as kNative but emit a per-instruction warning for .f64 ops
 };
 

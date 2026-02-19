@@ -96,19 +96,12 @@ int main(int argc, char** argv) {
     CUdeviceptr arg_output = d_output;
     void* params[] = {&arg_input, &arg_output, nullptr};
 
-    const CUresult launch_res = cuLaunchKernel(kernel,
+    if (cuLaunchKernel(kernel,
                        1, 1, 1,          // grid
                        kBlockSize, 1, 1, // block
-                       0, nullptr, params, nullptr);
-    if (launch_res != CUDA_SUCCESS) {
-        // Apple Silicon GPU does not support FP64 arithmetic at runtime.
-        // Metal pipeline state creation fails when the AIR contains double-
-        // precision arithmetic (fmul/fadd double, @llvm.fma.f64).  This is
-        // a known hardware limitation; return 77 to signal SKIP.
-        std::fprintf(stderr,
-                     "SKIP: cuLaunchKernel failed (FP64 arithmetic not "
-                     "supported on this device - Apple Silicon limitation)\n");
-        return 77;
+                       0, nullptr, params, nullptr) != CUDA_SUCCESS) {
+        std::fprintf(stderr, "FAIL: cuLaunchKernel failed\n");
+        return 1;
     }
 
     if (cuCtxSynchronize() != CUDA_SUCCESS) {
