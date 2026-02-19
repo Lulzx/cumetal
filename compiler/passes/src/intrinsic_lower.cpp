@@ -37,6 +37,27 @@ bool map_special_register_mov(const cumetal::ptx::EntryFunction::Instruction& in
         mapped = "air.threadgroups_per_grid.y";
     } else if (src == "%nctaid.z") {
         mapped = "air.threadgroups_per_grid.z";
+    } else if (src == "%laneid") {
+        // Lane index within SIMD-group (warp). Equivalent to thread_index_in_simdgroup.
+        mapped = "air.thread_position_in_simdgroup";
+    } else if (src == "%warpsize") {
+        // Architecturally fixed at 32 on all Apple Silicon (spec §7).
+        mapped = "air.constant.warp_size";
+    } else if (src == "%lanemask_eq") {
+        // Bitmask with only the current lane's bit set: (1u << laneid).
+        mapped = "air.simdgroup.lanemask_eq";
+    } else if (src == "%lanemask_lt") {
+        // Bits set for all lanes with index < laneid: (1u << laneid) - 1.
+        mapped = "air.simdgroup.lanemask_lt";
+    } else if (src == "%lanemask_le") {
+        // Bits set for all lanes with index <= laneid.
+        mapped = "air.simdgroup.lanemask_le";
+    } else if (src == "%lanemask_gt") {
+        // Bits set for all lanes with index > laneid.
+        mapped = "air.simdgroup.lanemask_gt";
+    } else if (src == "%lanemask_ge") {
+        // Bits set for all lanes with index >= laneid.
+        mapped = "air.simdgroup.lanemask_ge";
     } else {
         return false;
     }
@@ -177,6 +198,11 @@ bool map_math(const cumetal::ptx::EntryFunction::Instruction& instruction, Lower
         // popc.b64 dst, src → @llvm.ctpop.i64(i64)
         const bool is_64 = instruction.opcode.find(".b64") != std::string::npos;
         lowered->opcode = is_64 ? "llvm.ctpop.i64" : "llvm.ctpop.i32";
+    } else if (instruction.opcode.rfind("brev", 0) == 0) {
+        // brev.b32 dst, src → @llvm.bitreverse.i32(i32)
+        // brev.b64 dst, src → @llvm.bitreverse.i64(i64)
+        const bool is_64 = instruction.opcode.find(".b64") != std::string::npos;
+        lowered->opcode = is_64 ? "llvm.bitreverse.i64" : "llvm.bitreverse.i32";
     } else {
         return false;
     }

@@ -20,6 +20,13 @@ Complete CUDA/PTX → AIR intrinsic mapping table for the CuMetal intrinsic lowe
 | `mov.u32 %r, %nctaid.x` | `air.threadgroups_per_grid.x` | Grid dimension |
 | `mov.u32 %r, %nctaid.y` | `air.threadgroups_per_grid.y` | |
 | `mov.u32 %r, %nctaid.z` | `air.threadgroups_per_grid.z` | |
+| `mov.u32 %r, %laneid` | `air.thread_position_in_simdgroup` | Lane index within warp/SIMD-group (0–31) |
+| `mov.u32 %r, %warpsize` | `air.constant.warp_size` | Architecturally fixed at 32 (spec §7) |
+| `mov.u32 %r, %lanemask_eq` | `air.simdgroup.lanemask_eq` | Bitmask: only current lane bit set |
+| `mov.u32 %r, %lanemask_lt` | `air.simdgroup.lanemask_lt` | Bitmask: lanes with index < laneid |
+| `mov.u32 %r, %lanemask_le` | `air.simdgroup.lanemask_le` | Bitmask: lanes with index ≤ laneid |
+| `mov.u32 %r, %lanemask_gt` | `air.simdgroup.lanemask_gt` | Bitmask: lanes with index > laneid |
+| `mov.u32 %r, %lanemask_ge` | `air.simdgroup.lanemask_ge` | Bitmask: lanes with index ≥ laneid |
 
 ---
 
@@ -107,6 +114,13 @@ Apple Silicon SIMD-group width is architecturally fixed at 32 (matching CUDA war
 | `min.s32` | `llvm.min` | Integer min |
 | `abs.f32` | `llvm.fabs` | Float absolute value |
 | `abs.s32` | `llvm.abs` | Integer absolute value |
+
+| `clz.b32` | `llvm.ctlz.i32` | Count leading zeros (32-bit) |
+| `clz.b64` | `llvm.ctlz.i64` | Count leading zeros (64-bit) |
+| `popc.b32` | `llvm.ctpop.i32` | Population count (32-bit) |
+| `popc.b64` | `llvm.ctpop.i64` | Population count (64-bit) |
+| `brev.b32` | `llvm.bitreverse.i32` | Bit reverse (32-bit) |
+| `brev.b64` | `llvm.bitreverse.i64` | Bit reverse (64-bit) |
 
 ---
 
