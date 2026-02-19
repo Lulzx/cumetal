@@ -416,6 +416,80 @@ int main() {
                 "shr.b64 → llvm.shr"))
         return 1;
 
+    // ── Test 7: brev (bit reverse) ───────────────────────────────────────────
+    const std::string ptx7 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k7(.param .u64 p0, .param .u64 p1)
+{
+    brev.b32 %r0, %r1;
+    brev.b64 %rd0, %rd1;
+    ret;
+})PTX";
+
+    const auto parsed7 = cumetal::ptx::parse_ptx(ptx7);
+    if (!expect(parsed7.ok, "parse PTX7 for brev")) return 1;
+    if (!expect(parsed7.module.entries.size() == 1, "single PTX7 entry")) return 1;
+    if (!expect(parsed7.module.entries[0].instructions.size() == 3,
+                "PTX7 instruction count (2 brev ops + ret)"))
+        return 1;
+
+    const auto t7 = cumetal::passes::lower_intrinsics(parsed7.module.entries[0]);
+    if (!expect(t7.ok, "brev lower ok")) return 1;
+    if (!expect(t7.warnings.empty(), "no warnings for brev")) return 1;
+
+    if (!expect(t7.instructions[0].translated &&
+                    t7.instructions[0].opcode == "llvm.bitreverse.i32",
+                "brev.b32 → llvm.bitreverse.i32"))
+        return 1;
+    if (!expect(t7.instructions[1].translated &&
+                    t7.instructions[1].opcode == "llvm.bitreverse.i64",
+                "brev.b64 → llvm.bitreverse.i64"))
+        return 1;
+
+    // ── Test 8: f32/f64 math and 64-bit bitwise ops ──────────────────────────
+    const std::string ptx8 = R"PTX(
+.version 8.0
+.target sm_90
+.visible .entry k8(.param .u64 p0, .param .u64 p1)
+{
+    add.f32 %f1, %f2, %f3;
+    sub.f32 %f1, %f2, %f3;
+    mul.f32 %f1, %f2, %f3;
+    neg.f64 %fd1, %fd2;
+    abs.f64 %fd1, %fd2;
+    min.f64 %fd1, %fd2, %fd3;
+    max.f64 %fd1, %fd2, %fd3;
+    and.b64 %rd1, %rd2, %rd3;
+    or.b64  %rd1, %rd2, %rd3;
+    xor.b64 %rd1, %rd2, %rd3;
+    not.b64 %rd1, %rd2;
+    ret;
+})PTX";
+
+    const auto parsed8 = cumetal::ptx::parse_ptx(ptx8);
+    if (!expect(parsed8.ok, "parse PTX8")) return 1;
+    if (!expect(parsed8.module.entries.size() == 1, "single PTX8 entry")) return 1;
+
+    const auto t8 = cumetal::passes::lower_intrinsics(parsed8.module.entries[0]);
+    if (!expect(t8.ok, "lower PTX8 ok")) return 1;
+    if (!expect(t8.warnings.empty(), "no warnings PTX8")) return 1;
+
+    // f32 arithmetic
+    if (!expect(t8.instructions[0].opcode == "llvm.add", "add.f32 → llvm.add")) return 1;
+    if (!expect(t8.instructions[1].opcode == "llvm.sub", "sub.f32 → llvm.sub")) return 1;
+    if (!expect(t8.instructions[2].opcode == "llvm.mul", "mul.f32 → llvm.mul")) return 1;
+    // f64 unary/binary
+    if (!expect(t8.instructions[3].opcode == "llvm.fneg", "neg.f64 → llvm.fneg")) return 1;
+    if (!expect(t8.instructions[4].opcode == "llvm.fabs", "abs.f64 → llvm.fabs")) return 1;
+    if (!expect(t8.instructions[5].opcode == "llvm.fmin", "min.f64 → llvm.fmin")) return 1;
+    if (!expect(t8.instructions[6].opcode == "llvm.fmax", "max.f64 → llvm.fmax")) return 1;
+    // 64-bit bitwise ops (root: and/or/xor/not — same lowering as 32-bit variants)
+    if (!expect(t8.instructions[7].opcode == "llvm.and", "and.b64 → llvm.and")) return 1;
+    if (!expect(t8.instructions[8].opcode == "llvm.or",  "or.b64  → llvm.or"))  return 1;
+    if (!expect(t8.instructions[9].opcode == "llvm.xor", "xor.b64 → llvm.xor")) return 1;
+    if (!expect(t8.instructions[10].opcode == "llvm.not","not.b64 → llvm.not")) return 1;
+
     std::printf("PASS: intrinsic lower unit tests\n");
     return 0;
 }
