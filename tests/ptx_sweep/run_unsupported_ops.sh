@@ -52,4 +52,9 @@ run_case_expect_fail "unsupported_wmma_load"   "wmma.load.a.sync.aligned.row.m16
 run_case_expect_fail "unsupported_mma_sync"    "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%f1,%f2,%f3,%f4}, {%r1,%r2}, {%r3}, {%f1,%f2,%f3,%f4};"
 run_case_expect_fail "unsupported_ldmatrix"    "ldmatrix.sync.aligned.m8n8.x1.b16 {%r1}, [%rd1];"
 
+# Texture/surface instructions (spec §2.2: deferred to v2; compile-time error)
+run_case_expect_fail "unsupported_tex"   "tex.2d.v4.f32.f32 {%f1,%f2,%f3,%f4}, [%rd1], {%f5, %f6};"
+run_case_expect_fail "unsupported_tld4"  "tld4.r.2d.v4.s32.f32 {%r1,%r2,%r3,%r4}, [%rd1], {%f1,%f2};"
+run_case_expect_fail "unsupported_suld"  "suld.b.2d.b32.zero %r1, [%rd1, {%r2, %r3}];"
+
 echo "PASS: PTX sweep unsupported-op strict rejection completed"

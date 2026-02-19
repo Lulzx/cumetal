@@ -150,7 +150,14 @@ bool is_explicitly_unsupported(const std::string& opcode) {
            opcode.rfind("cvt.rn.f8.", 0) == 0 ||
            opcode.rfind("wmma.", 0) == 0 ||
            opcode.rfind("mma.sync", 0) == 0 ||
-           opcode.rfind("ldmatrix.", 0) == 0;
+           opcode.rfind("ldmatrix.", 0) == 0 ||
+           opcode.rfind("tex.", 0) == 0 ||
+           opcode.rfind("tld4.", 0) == 0 ||
+           opcode.rfind("txq.", 0) == 0 ||
+           opcode.rfind("sust.", 0) == 0 ||
+           opcode.rfind("suld.", 0) == 0 ||
+           opcode.rfind("sured.", 0) == 0 ||
+           opcode.rfind("suq.", 0) == 0;
 }
 
 // Returns a targeted diagnostic for opcodes that are unsupported with a known reason.
@@ -173,6 +180,14 @@ std::string targeted_unsupported_message(const std::string& opcode) {
         return "unsupported opcode '" + opcode +
                "' (tensor core ops (wmma/mma/ldmatrix) have no Metal equivalent; "
                "use MPSMatrixMultiplication for GEMM workloads)";
+    }
+    if (opcode.rfind("tex.", 0) == 0 || opcode.rfind("tld4.", 0) == 0 ||
+        opcode.rfind("txq.", 0) == 0 || opcode.rfind("sust.", 0) == 0 ||
+        opcode.rfind("suld.", 0) == 0 || opcode.rfind("sured.", 0) == 0 ||
+        opcode.rfind("suq.", 0) == 0) {
+        return "unsupported opcode '" + opcode +
+               "' (texture/surface instructions not yet supported; "
+               "deferred to v2 — use global memory buffers instead)";
     }
     return "";
 }
