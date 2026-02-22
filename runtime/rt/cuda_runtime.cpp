@@ -2200,6 +2200,64 @@ cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t
     return fail(cudaSuccess);
 }
 
+// 2D pitched memcpy — on UMA, copy width bytes per row for height rows.
+cudaError_t cudaMemcpy2D(void* dst, size_t dpitch,
+                          const void* src, size_t spitch,
+                          size_t width, size_t height,
+                          cudaMemcpyKind /*kind*/) {
+    if ((dst == nullptr || src == nullptr) && (width > 0 && height > 0)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    auto* d = static_cast<uint8_t*>(dst);
+    const auto* s = static_cast<const uint8_t*>(src);
+    for (size_t row = 0; row < height; ++row) {
+        if (width > 0) {
+            std::memcpy(d + row * dpitch, s + row * spitch, width);
+        }
+    }
+
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpy2DAsync(void* dst, size_t dpitch,
+                               const void* src, size_t spitch,
+                               size_t width, size_t height,
+                               cudaMemcpyKind kind, cudaStream_t stream) {
+    const cudaError_t sync_status = synchronize_stream_for_host_op(stream, nullptr);
+    if (sync_status != cudaSuccess) {
+        return fail(sync_status);
+    }
+
+    return cudaMemcpy2D(dst, dpitch, src, spitch, width, height, kind);
+}
+
+cudaError_t cudaMemset2D(void* dev_ptr, size_t pitch,
+                          int value, size_t width, size_t height) {
+    if (dev_ptr == nullptr && (width > 0 && height > 0)) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    auto* d = static_cast<uint8_t*>(dev_ptr);
+    for (size_t row = 0; row < height; ++row) {
+        if (width > 0) {
+            std::memset(d + row * pitch, value, width);
+        }
+    }
+
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaDeviceReset(void) {
     const cudaError_t init_status = ensure_initialized();
     if (init_status != cudaSuccess) {

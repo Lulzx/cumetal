@@ -337,6 +337,17 @@ cudaError_t cudaMemcpyFromSymbolAsync(void* dst,
                                       cudaStream_t stream);
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
 cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
+// 2D pitched memcpy — on UMA, copy row-by-row (width bytes per row).
+cudaError_t cudaMemcpy2D(void* dst, size_t dpitch,
+                          const void* src, size_t spitch,
+                          size_t width, size_t height,
+                          cudaMemcpyKind kind);
+cudaError_t cudaMemcpy2DAsync(void* dst, size_t dpitch,
+                               const void* src, size_t spitch,
+                               size_t width, size_t height,
+                               cudaMemcpyKind kind, cudaStream_t stream);
+cudaError_t cudaMemset2D(void* dev_ptr, size_t pitch,
+                          int value, size_t width, size_t height);
 // Unified Memory advisory APIs — no-ops on Apple Silicon UMA (all memory is already managed).
 typedef enum cudaMemoryAdvise {
     cudaMemAdviseSetReadMostly = 1,
