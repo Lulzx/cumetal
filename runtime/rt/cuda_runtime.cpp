@@ -3116,6 +3116,53 @@ cudaError_t cudaFuncSetAttribute(const void* /*func*/, cudaFuncAttribute attr, i
     return fail(cudaSuccess);
 }
 
+// Device-level L1/shared-memory config — no-ops on Metal.
+cudaError_t cudaDeviceSetCacheConfig(cudaFuncCache /*cacheConfig*/) {
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDeviceGetCacheConfig(cudaFuncCache* pCacheConfig) {
+    if (pCacheConfig == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    *pCacheConfig = cudaFuncCachePreferNone;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDeviceSetSharedMemConfig(cudaSharedMemConfig /*config*/) {
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDeviceGetSharedMemConfig(cudaSharedMemConfig* pConfig) {
+    if (pConfig == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    *pConfig = cudaSharedMemBankSizeFourByte;  // default on CUDA
+    return fail(cudaSuccess);
+}
+
+// Symbol address query: CuMetal registers __device__ variables as host-accessible
+// pointers (UMA). The symbol pointer is the device address directly.
+cudaError_t cudaGetSymbolAddress(void** devPtr, const void* symbol) {
+    if (devPtr == nullptr || symbol == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    // On UMA, the symbol's host address IS the device address.
+    *devPtr = const_cast<void*>(symbol);
+    return fail(cudaSuccess);
+}
+
+// Symbol size query: CuMetal doesn't track symbol sizes separately from the
+// symbol pointer. Return cudaErrorInvalidSymbol to indicate the symbol table
+// doesn't store sizes; callers should use sizeof() at compile time.
+cudaError_t cudaGetSymbolSize(size_t* /*size*/, const void* symbol) {
+    if (symbol == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    // Symbol table doesn't store sizes separately; callers should use sizeof().
+    return fail(cudaErrorInvalidValue);
+}
+
 // Pointer attribute query — classifies a pointer as host, device, or managed.
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr) {
     if (attributes == nullptr) {

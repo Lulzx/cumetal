@@ -401,6 +401,14 @@ cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize,
                                                int blockSizeLimit);
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr);
 cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* prop);
+// Device-level L1/shared-memory config — no-ops on Metal (no configurable split).
+cudaError_t cudaDeviceSetCacheConfig(cudaFuncCache cacheConfig);
+cudaError_t cudaDeviceGetCacheConfig(cudaFuncCache* pCacheConfig);
+cudaError_t cudaDeviceSetSharedMemConfig(cudaSharedMemConfig config);
+cudaError_t cudaDeviceGetSharedMemConfig(cudaSharedMemConfig* pConfig);
+// Symbol address/size queries for __device__ variables.
+cudaError_t cudaGetSymbolAddress(void** devPtr, const void* symbol);
+cudaError_t cudaGetSymbolSize(size_t* size, const void* symbol);
 
 typedef enum cudaLimit {
     cudaLimitStackSize = 0x00,
