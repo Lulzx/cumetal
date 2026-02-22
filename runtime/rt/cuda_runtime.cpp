@@ -1724,6 +1724,24 @@ cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device) {
         case cudaDevAttrMultiProcessorCount:
             *value = prop.multiProcessorCount;
             break;
+        case cudaDevAttrMaxRegistersPerBlock:
+            *value = 65536;  // Metal has no per-block register limit; return generous value
+            break;
+        case cudaDevAttrClockRate:
+            *value = 1296000;  // kHz — conservative estimate for M-series GPU
+            break;
+        case cudaDevAttrTextureAlignment:
+            *value = 512;
+            break;
+        case cudaDevAttrGpuOverlap:
+            *value = 1;  // Metal supports async compute + copy overlap
+            break;
+        case cudaDevAttrComputeCapabilityMajor:
+            *value = 8;  // Ampere-equivalent feature set (spec §6.8)
+            break;
+        case cudaDevAttrComputeCapabilityMinor:
+            *value = 0;  // Ampere-equivalent feature set (spec §6.8)
+            break;
         case cudaDevAttrUnifiedAddressing:
         case cudaDevAttrManagedMemory:
         case cudaDevAttrConcurrentManagedAccess:

@@ -39,6 +39,31 @@ int main() {
         return 1;
     }
 
+    if (cudaDeviceGetAttribute(&value, cudaDevAttrComputeCapabilityMajor, 0) != cudaSuccess || value != 8) {
+        std::fprintf(stderr, "FAIL: compute capability major should be 8 (Ampere-equivalent, spec §6.8)\n");
+        return 1;
+    }
+
+    if (cudaDeviceGetAttribute(&value, cudaDevAttrComputeCapabilityMinor, 0) != cudaSuccess || value != 0) {
+        std::fprintf(stderr, "FAIL: compute capability minor should be 0 (Ampere-equivalent, spec §6.8)\n");
+        return 1;
+    }
+
+    if (cudaDeviceGetAttribute(&value, cudaDevAttrMaxRegistersPerBlock, 0) != cudaSuccess || value <= 0) {
+        std::fprintf(stderr, "FAIL: max registers per block should be positive\n");
+        return 1;
+    }
+
+    if (cudaDeviceGetAttribute(&value, cudaDevAttrClockRate, 0) != cudaSuccess || value <= 0) {
+        std::fprintf(stderr, "FAIL: clock rate should be positive\n");
+        return 1;
+    }
+
+    if (cudaDeviceGetAttribute(&value, cudaDevAttrGpuOverlap, 0) != cudaSuccess || value != 1) {
+        std::fprintf(stderr, "FAIL: GPU overlap should be enabled\n");
+        return 1;
+    }
+
     if (cudaDeviceGetAttribute(nullptr, cudaDevAttrWarpSize, 0) != cudaErrorInvalidValue) {
         std::fprintf(stderr, "FAIL: null output pointer should be rejected\n");
         return 1;
