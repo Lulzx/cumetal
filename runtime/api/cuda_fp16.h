@@ -69,6 +69,12 @@ inline bool __hgt(const __half& a, const __half& b) {
 inline bool __hlt(const __half& a, const __half& b) {
     return static_cast<float>(a) < static_cast<float>(b);
 }
+inline bool __hge(const __half& a, const __half& b) {
+    return static_cast<float>(a) >= static_cast<float>(b);
+}
+inline bool __hle(const __half& a, const __half& b) {
+    return static_cast<float>(a) <= static_cast<float>(b);
+}
 inline bool __heq(const __half& a, const __half& b) { return a.__x == b.__x; }
 inline bool __hne(const __half& a, const __half& b) { return a.__x != b.__x; }
 
@@ -84,6 +90,30 @@ inline __half __hsub(const __half& a, const __half& b) {
 inline __half __hdiv(const __half& a, const __half& b) {
     return __half(static_cast<float>(a) / static_cast<float>(b));
 }
+inline __half __hfma(const __half& a, const __half& b, const __half& c) {
+    return __half(static_cast<float>(a) * static_cast<float>(b) + static_cast<float>(c));
+}
+inline __half __hneg(const __half& a) {
+    return __half(-static_cast<float>(a));
+}
+inline __half __habs(const __half& a) {
+    __half r = a; r.__x &= 0x7fffu; return r;
+}
+inline __half __hmax(const __half& a, const __half& b) {
+    return static_cast<float>(a) > static_cast<float>(b) ? a : b;
+}
+inline __half __hmin(const __half& a, const __half& b) {
+    return static_cast<float>(a) < static_cast<float>(b) ? a : b;
+}
+// Half ↔ integer conversions.
+inline int   __half2int_rn(const __half& h)    { return static_cast<int>(static_cast<float>(h)); }
+inline unsigned int __half2uint_rn(const __half& h) { return static_cast<unsigned int>(static_cast<float>(h)); }
+inline short __half2short_rn(const __half& h)  { return static_cast<short>(static_cast<float>(h)); }
+inline long long __half2ll_rn(const __half& h) { return static_cast<long long>(static_cast<float>(h)); }
+inline __half __int2half_rn(int i)   { return __half(static_cast<float>(i)); }
+inline __half __uint2half_rn(unsigned int i) { return __half(static_cast<float>(i)); }
+inline __half __short2half_rn(short s) { return __half(static_cast<float>(s)); }
+inline __half __ll2half_rn(long long l) { return __half(static_cast<float>(l)); }
 
 inline __half operator+(const __half& a, const __half& b) { return __hadd(a, b); }
 inline __half operator-(const __half& a, const __half& b) { return __hsub(a, b); }
@@ -114,6 +144,24 @@ static __device__ __forceinline__ __half __hadd(__half a, __half b) { return a +
 static __device__ __forceinline__ __half __hmul(__half a, __half b) { return a * b; }
 static __device__ __forceinline__ __half __hsub(__half a, __half b) { return a - b; }
 static __device__ __forceinline__ __half __hdiv(__half a, __half b) { return a / b; }
+static __device__ __forceinline__ __half __hfma(__half a, __half b, __half c) {
+    return static_cast<__half>(__builtin_fmaf(static_cast<float>(a), static_cast<float>(b), static_cast<float>(c)));
+}
+static __device__ __forceinline__ __half __hneg(__half a) { return -a; }
+static __device__ __forceinline__ __half __habs(__half a) { return a < (__half)0.0f ? -a : a; }
+static __device__ __forceinline__ __half __hmax(__half a, __half b) { return a > b ? a : b; }
+static __device__ __forceinline__ __half __hmin(__half a, __half b) { return a < b ? a : b; }
+static __device__ __forceinline__ bool __hgt(__half a, __half b) { return a > b; }
+static __device__ __forceinline__ bool __hlt(__half a, __half b) { return a < b; }
+static __device__ __forceinline__ bool __hge(__half a, __half b) { return a >= b; }
+static __device__ __forceinline__ bool __hle(__half a, __half b) { return a <= b; }
+static __device__ __forceinline__ bool __heq(__half a, __half b) { return a == b; }
+static __device__ __forceinline__ bool __hne(__half a, __half b) { return a != b; }
+// Half ↔ integer conversions for device code.
+static __device__ __forceinline__ int __half2int_rn(__half h) { return static_cast<int>(h); }
+static __device__ __forceinline__ unsigned int __half2uint_rn(__half h) { return static_cast<unsigned int>(h); }
+static __device__ __forceinline__ __half __int2half_rn(int i) { return static_cast<__half>(i); }
+static __device__ __forceinline__ __half __uint2half_rn(unsigned int i) { return static_cast<__half>(i); }
 
 // atomicAdd for __half via CAS loop (spec §8: "Software emulation via CAS loop").
 // Uses the 32-bit word containing the 16-bit element for the CAS operation.
