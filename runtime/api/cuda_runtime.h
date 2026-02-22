@@ -301,6 +301,9 @@ cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device);
 cudaError_t cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes);
 cudaError_t cudaMalloc(void** dev_ptr, size_t size);
 cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
+// Pitched 2D allocation — on UMA returns a contiguous allocation with pitch = width rounded
+// up to the device's alignment requirement (spec §6.2).
+cudaError_t cudaMallocPitch(void** dev_ptr, size_t* pitch, size_t width, size_t height);
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags);
 cudaError_t cudaMallocHost(void** ptr, size_t size);
 cudaError_t cudaHostGetDevicePointer(void** dev_ptr, void* host_ptr, unsigned int flags);
@@ -432,6 +435,10 @@ cudaError_t cudaOccupancyMaxPotentialBlockSize(int* minGridSize,
                                                int blockSizeLimit);
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr);
 cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* prop);
+// Peer access — Apple Silicon has a single GPU; peer access is unsupported (spec §2.2).
+cudaError_t cudaDeviceCanAccessPeer(int* can_access_peer, int device, int peer_device);
+cudaError_t cudaDeviceEnablePeerAccess(int peer_device, unsigned int flags);
+cudaError_t cudaDeviceDisablePeerAccess(int peer_device);
 // Device-level L1/shared-memory config — no-ops on Metal (no configurable split).
 cudaError_t cudaDeviceSetCacheConfig(cudaFuncCache cacheConfig);
 cudaError_t cudaDeviceGetCacheConfig(cudaFuncCache* pCacheConfig);

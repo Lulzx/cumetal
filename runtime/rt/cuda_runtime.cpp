@@ -1821,6 +1821,16 @@ cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags) {
     return cudaMalloc(dev_ptr, size);
 }
 
+// Pitched 2D allocation — align pitch to 512 bytes (matching cudaDevAttrTextureAlignment).
+cudaError_t cudaMallocPitch(void** dev_ptr, size_t* pitch, size_t width, size_t height) {
+    if (dev_ptr == nullptr || pitch == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    constexpr size_t kAlign = 512;
+    *pitch = (width + kAlign - 1) & ~(kAlign - 1);
+    return cudaMalloc(dev_ptr, *pitch * height);
+}
+
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
     if (ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);
@@ -3293,6 +3303,23 @@ cudaError_t cudaChooseDevice(int* device, const cudaDeviceProp* /*prop*/) {
     }
     *device = 0;
     return fail(cudaSuccess);
+}
+
+// Peer access — Apple Silicon has a single GPU; no peer-to-peer access (spec §2.2).
+cudaError_t cudaDeviceCanAccessPeer(int* can_access_peer, int /*device*/, int /*peer_device*/) {
+    if (can_access_peer == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    *can_access_peer = 0;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDeviceEnablePeerAccess(int /*peer_device*/, unsigned int /*flags*/) {
+    return fail(cudaErrorInvalidValue);
+}
+
+cudaError_t cudaDeviceDisablePeerAccess(int /*peer_device*/) {
+    return fail(cudaErrorInvalidValue);
 }
 
 // Stream with priority — priority is ignored; Metal has no priority queue.
