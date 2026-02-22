@@ -538,6 +538,24 @@ static __device__ __forceinline__ unsigned long long atomicAdd(unsigned long lon
                                                                 unsigned long long val) {
     return __ullAtomicAdd(ptr, val);
 }
+// double atomicAdd via CAS loop (CUDA Volta+ semantics; Apple Silicon UMA has no native FP64 atomic).
+static __device__ __forceinline__ double atomicAdd(double* addr, double val) {
+    unsigned long long* base = reinterpret_cast<unsigned long long*>(addr);
+    unsigned long long assumed;
+    unsigned long long old = *base;
+    do {
+        assumed = old;
+        double cur;
+        __builtin_memcpy(&cur, &assumed, 8);
+        double updated = cur + val;
+        unsigned long long updated_bits;
+        __builtin_memcpy(&updated_bits, &updated, 8);
+        old = __ullAtomicCAS(base, assumed, updated_bits);
+    } while (old != assumed);
+    double result;
+    __builtin_memcpy(&result, &old, 8);
+    return result;
+}
 
 static __device__ __forceinline__ int atomicSub(int* ptr, int val) {
     return __iAtomicAdd(ptr, -val);
