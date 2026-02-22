@@ -143,7 +143,7 @@ Supported runtime API subset:
 - `cudaDeviceSynchronize`
 - `cudaGetLastError`, `cudaPeekAtLastError`, `cudaGetErrorName`, `cudaGetErrorString`
 - `cudaProfilerStart`, `cudaProfilerStop`
-- `cudaFuncGetAttributes`, `cudaFuncSetCacheConfig`, `cudaFuncSetSharedMemConfig`
+- `cudaFuncGetAttributes`, `cudaFuncSetCacheConfig`, `cudaFuncSetSharedMemConfig`, `cudaFuncSetAttribute`
 - `cudaOccupancyMaxActiveBlocksPerMultiprocessor`, `cudaOccupancyMaxPotentialBlockSize`
 - `cudaPointerGetAttributes`, `cudaChooseDevice`
 - `cudaStreamCreateWithPriority` (priority ignored; creates regular stream)
@@ -153,6 +153,19 @@ Supported runtime API subset:
 `cudaDeviceProp` fields now populated per spec §6.8:
 - `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
 - `maxBufferArguments = 31` (Metal buffer argument limit)
+
+`cudaDeviceGetAttribute` and `cuDeviceGetAttribute` now support additional attributes:
+- `cudaDevAttrComputeCapabilityMajor` / `CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR` → 8
+- `cudaDevAttrComputeCapabilityMinor` / `CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR` → 0
+- `cudaDevAttrMaxRegistersPerBlock` / `CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK` → 65536
+- `cudaDevAttrClockRate` / `CU_DEVICE_ATTRIBUTE_CLOCK_RATE` → 1296000 kHz
+- `cudaDevAttrTextureAlignment` → 512 bytes
+- `cudaDevAttrGpuOverlap` / `CU_DEVICE_ATTRIBUTE_GPU_OVERLAP` → 1
+
+`cooperative_groups::thread_block_tile<N>` extended with:
+- `shfl(val, src_rank)`, `shfl_down(val, delta)`, `shfl_xor(val, mask)`
+- `any(pred)`, `all(pred)`, `ballot(pred)` (via `__nvvm_vote_*` builtins)
+- `cooperative_groups::less<T>` binary operator alongside existing `plus<T>` and `greater<T>`
 
 CUDA vector types added to `cuda_runtime.h`:
 - All standard types: `char2/3/4`, `short2/3/4`, `int2/3/4`, `uint2/4`,
@@ -226,7 +239,7 @@ Supported library shim subset:
   - `cublasSetStream`, `cublasGetStream`
   - `cublasSetMathMode`, `cublasGetMathMode`
   - `cublasSaxpy`, `cublasSscal`, `cublasScopy`, `cublasSgemm`
-  - `cublasSgemmStridedBatched`
+  - `cublasSgemmStridedBatched`, `cublasDgemmStridedBatched`
   - `cublasSswap`, `cublasDswap`
   - `cublasSdot`, `cublasDdot`
   - `cublasSasum`, `cublasDasum`
