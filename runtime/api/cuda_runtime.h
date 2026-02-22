@@ -168,10 +168,30 @@ typedef struct cudaDeviceProp {
     int regsPerBlock;
     int major;
     int minor;
-    int unifiedAddressing;       // Always 1 on Apple Silicon (UMA)
-    int managedMemory;           // Always 1 on Apple Silicon (UMA)
-    int concurrentManagedAccess; // Always 1 on Apple Silicon (UMA)
-    int maxBufferArguments;      // 31 (Metal buffer argument limit)
+    int unifiedAddressing;          // Always 1 on Apple Silicon (UMA)
+    int managedMemory;              // Always 1 on Apple Silicon (UMA)
+    int concurrentManagedAccess;    // Always 1 on Apple Silicon (UMA)
+    int maxBufferArguments;         // 31 (Metal buffer argument limit)
+    // Additional fields — populated by cudaGetDeviceProperties (spec §6.8)
+    int clockRate;                  // GPU clock in kHz
+    int memoryClockRate;            // Memory clock in kHz (same as GPU on UMA)
+    int memoryBusWidth;             // Memory bus width in bits
+    size_t totalConstMem;           // Constant memory size (64 KB)
+    size_t sharedMemPerMultiprocessor; // Shared mem per SM
+    int maxThreadsPerMultiProcessor; // Max threads per SM
+    int l2CacheSize;                // L2 cache size in bytes
+    int canMapHostMemory;           // Always 1 on UMA (host pointers are device pointers)
+    int integrated;                 // Always 1 (Apple Silicon is integrated GPU)
+    int concurrentKernels;          // 1 (Metal supports concurrent dispatches)
+    int asyncEngineCount;           // 0 (UMA makes async memcpy effectively free)
+    int computeMode;                // 0 = cudaComputeModeDefault
+    int pciBusID;                   // 0 (no PCI on Apple Silicon)
+    int pciDeviceID;                // 0
+    int pciDomainID;                // 0
+    int tccDriver;                  // 0 (not a Tesla compute cluster)
+    int kernelExecTimeoutEnabled;   // 0 (Metal does not enforce GPU timeout by default)
+    int pageableMemoryAccess;       // 1 (UMA: device can access host pageable memory)
+    int pageableMemoryAccessUsesHostPageTables; // 1 (same page tables on Apple Silicon)
 } cudaDeviceProp;
 
 typedef enum cudaDeviceAttr {

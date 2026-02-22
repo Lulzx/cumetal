@@ -1678,6 +1678,26 @@ cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
     prop->managedMemory = 1;            // cudaMallocManaged == cudaMalloc on UMA
     prop->concurrentManagedAccess = 1;  // CPU+GPU can access managed memory simultaneously
     prop->maxBufferArguments = 31;      // Metal buffer argument limit per kernel
+    // Additional fields (spec §6.8)
+    prop->clockRate = 1296000;          // ~1.3 GHz in kHz (conservative estimate)
+    prop->memoryClockRate = 1296000;    // Same as GPU clock on UMA (shared memory controller)
+    prop->memoryBusWidth = 128;         // 128-bit memory bus (conservative; M-series varies)
+    prop->totalConstMem = 64 * 1024;    // 64 KB constant memory per module (spec §5.4.1)
+    prop->sharedMemPerMultiprocessor = prop->sharedMemPerBlock; // Same as per-block on Metal
+    prop->maxThreadsPerMultiProcessor = 2048; // Conservative estimate for M-series
+    prop->l2CacheSize = 4 * 1024 * 1024; // 4 MB L2 (varies by chip; conservative)
+    prop->canMapHostMemory = 1;          // UMA: all host memory is device-accessible
+    prop->integrated = 1;               // Apple Silicon is an integrated GPU
+    prop->concurrentKernels = 1;        // Metal supports concurrent command buffer execution
+    prop->asyncEngineCount = 0;         // UMA makes async memcpy a memcpy, no DMA engine
+    prop->computeMode = 0;              // 0 = cudaComputeModeDefault
+    prop->pciBusID = 0;                 // No PCI bus on Apple Silicon
+    prop->pciDeviceID = 0;
+    prop->pciDomainID = 0;
+    prop->tccDriver = 0;                // Not a Tesla compute cluster driver
+    prop->kernelExecTimeoutEnabled = 0; // Metal does not enforce kernel timeout by default
+    prop->pageableMemoryAccess = 1;     // UMA: device can access host pageable memory
+    prop->pageableMemoryAccessUsesHostPageTables = 1; // Shared page tables on Apple Silicon
 
     return fail(cudaSuccess);
 }
