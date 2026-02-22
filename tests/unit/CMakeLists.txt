@@ -242,11 +242,29 @@ add_test(
     COMMAND cumetal_library_conflict_test
 )
 
+# Generate the experimental metallib reference fixture from the .ll source.
+# This uses the cumetal-air-emitter tool built as part of the project.
+set(_exp_metallib "${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.experimental.metallib")
+set(_air_ll "${CMAKE_SOURCE_DIR}/tests/air_abi/reference/vector_add_air.ll")
+
+add_custom_command(
+    OUTPUT  "${_exp_metallib}"
+    COMMAND $<TARGET_FILE:cumetal-air-emitter>
+            --mode experimental
+            --input  "${_air_ll}"
+            --output "${_exp_metallib}"
+            --overwrite
+    DEPENDS cumetal-air-emitter "${_air_ll}"
+    COMMENT "Generating reference.experimental.metallib"
+    VERBATIM
+)
+add_custom_target(generate_experimental_metallib ALL DEPENDS "${_exp_metallib}")
+
 add_test(
     NAME unit_metallib_parser
     COMMAND cumetal_metallib_parser_test
             ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
-            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.experimental.metallib
+            ${_exp_metallib}
 )
 
 add_test(
