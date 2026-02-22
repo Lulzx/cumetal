@@ -1205,6 +1205,125 @@ cudaError_t launch_kernel(const std::string& metallib_path,
     return cudaSuccess;
 }
 
+cudaError_t launch_kernel_timed(const std::string& metallib_path,
+                                const std::string& kernel_name,
+                                const LaunchConfig& config,
+                                const std::vector<KernelArg>& args,
+                                GpuTimingResult* out_timing,
+                                std::string* error_message) {
+    if (metallib_path.empty() || kernel_name.empty()) {
+        if (error_message != nullptr) {
+            *error_message = "launch_kernel_timed requires metallib path and kernel name";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (args.size() > 31) {
+        if (error_message != nullptr) {
+            *error_message = "kernel argument count exceeds Metal argument index limit (31)";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (config.grid.x == 0 || config.grid.y == 0 || config.grid.z == 0 || config.block.x == 0 ||
+        config.block.y == 0 || config.block.z == 0) {
+        if (error_message != nullptr) {
+            *error_message = "launch dimensions must be non-zero";
+        }
+        return cudaErrorInvalidValue;
+    }
+
+    if (!ensure_initialized(error_message)) {
+        return cudaErrorInitializationError;
+    }
+
+    BackendState& backend = state();
+    id<MTLComputePipelineState> pipeline = nil;
+    id<MTLCommandQueue> queue = nil;
+    {
+        std::lock_guard<std::mutex> lock(backend.mutex);
+        pipeline = load_pipeline_locked(backend, metallib_path, kernel_name, error_message);
+        if (pipeline == nil) {
+            return cudaErrorInvalidValue;
+        }
+        queue = backend.queue;
+    }
+
+    @autoreleasepool {
+        id<MTLCommandBuffer> command_buffer = [queue commandBuffer];
+        if (command_buffer == nil) {
+            if (error_message != nullptr) {
+                *error_message = "launch_kernel_timed failed to create command buffer";
+            }
+            return cudaErrorUnknown;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        if (encoder == nil) {
+            if (error_message != nullptr) {
+                *error_message = "launch_kernel_timed failed to create compute encoder";
+            }
+            return cudaErrorUnknown;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            const KernelArg& arg = args[i];
+            if (arg.kind == KernelArg::Kind::kBuffer) {
+                if (arg.buffer == nullptr) {
+                    [encoder setBuffer:nil offset:0 atIndex:i];
+                    continue;
+                }
+                auto* buffer_impl = dynamic_cast<BufferImpl*>(arg.buffer.get());
+                if (buffer_impl == nullptr) {
+                    if (error_message != nullptr) {
+                        *error_message = "launch_kernel_timed arg " + std::to_string(i) +
+                                         " has unexpected buffer type";
+                    }
+                    return cudaErrorInvalidValue;
+                }
+                [encoder setBuffer:buffer_impl->handle() offset:arg.offset atIndex:i];
+            } else {
+                if (arg.bytes.empty()) {
+                    if (error_message != nullptr) {
+                        *error_message = "launch_kernel_timed arg " + std::to_string(i) +
+                                         " has empty byte payload";
+                    }
+                    return cudaErrorInvalidValue;
+                }
+                if (arg.bytes.size() > 4096) {
+                    if (error_message != nullptr) {
+                        *error_message = "launch_kernel_timed arg " + std::to_string(i) +
+                                         " byte payload exceeds 4KB setBytes limit";
+                    }
+                    return cudaErrorInvalidValue;
+                }
+                [encoder setBytes:arg.bytes.data() length:arg.bytes.size() atIndex:i];
+            }
+        }
+
+        if (config.shared_memory_bytes > 0) {
+            [encoder setThreadgroupMemoryLength:config.shared_memory_bytes atIndex:0];
+        }
+
+        const MTLSize threadgroups = MTLSizeMake(config.grid.x, config.grid.y, config.grid.z);
+        const MTLSize threads_per_threadgroup =
+            MTLSizeMake(config.block.x, config.block.y, config.block.z);
+        [encoder dispatchThreadgroups:threadgroups threadsPerThreadgroup:threads_per_threadgroup];
+        [encoder endEncoding];
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+
+        const cudaError_t status = check_command_buffer_status(command_buffer, error_message);
+        if (status == cudaSuccess && out_timing != nullptr) {
+            out_timing->gpu_start_s = [command_buffer GPUStartTime];
+            out_timing->gpu_end_s   = [command_buffer GPUEndTime];
+        }
+        return status;
+    }
+}
+
 cudaError_t synchronize(std::string* error_message) {
     if (!ensure_initialized(error_message)) {
         return cudaErrorInitializationError;
