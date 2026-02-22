@@ -214,7 +214,32 @@ typedef enum cudaDeviceAttr {
     cudaDevAttrComputeCapabilityMinor = 76,
     cudaDevAttrManagedMemory = 83,
     cudaDevAttrConcurrentManagedAccess = 89,
+    // Additional attributes corresponding to cudaDeviceProp fields.
+    cudaDevAttrMemoryBusWidth = 37,
+    cudaDevAttrL2CacheSize = 38,
+    cudaDevAttrMaxThreadsPerMultiProcessor = 39,
+    cudaDevAttrIntegrated = 18,
+    cudaDevAttrCanMapHostMemory = 19,
+    cudaDevAttrComputeMode = 20,
+    cudaDevAttrConcurrentKernels = 31,
+    cudaDevAttrPciBusId = 33,
+    cudaDevAttrPciDeviceId = 34,
+    cudaDevAttrTccDriver = 35,
+    cudaDevAttrMemoryClockRate = 36,
+    cudaDevAttrKernelExecTimeout = 17,
+    cudaDevAttrAsyncEngineCount = 40,
+    cudaDevAttrPageableMemoryAccess = 92,
+    cudaDevAttrPageableMemoryAccessUsesHostPageTables = 93,
+    cudaDevAttrPciDomainId = 50,
+    cudaDevAttrSharedMemPerBlockOptin = 97,
 } cudaDeviceAttr;
+
+typedef enum cudaComputeMode {
+    cudaComputeModeDefault         = 0,  // Multiple threads can use device simultaneously
+    cudaComputeModeExclusive       = 1,  // Only one thread can use device at a time
+    cudaComputeModeProhibited      = 2,  // No thread can use device
+    cudaComputeModeExclusiveProcess = 3, // Only one process can use device at a time
+} cudaComputeMode;
 
 typedef enum cudaFuncCache {
     cudaFuncCachePreferNone = 0,
@@ -650,6 +675,55 @@ static __device__ __forceinline__ unsigned int atomicXor(unsigned int* ptr, unsi
 
 static __device__ __forceinline__ void __syncwarp(unsigned int mask = 0xffffffffu) {
     __nvvm_bar_warp_sync(mask);
+}
+
+// Warp shuffle intrinsics (spec §5.3).
+// On Apple Silicon the full warp participates; partial masks are conservative no-ops.
+static __device__ __forceinline__ int __shfl_sync(unsigned int mask, int val, int srcLane, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_idx_i32(val, srcLane, 0x1f);
+}
+static __device__ __forceinline__ float __shfl_sync(unsigned int mask, float val, int srcLane, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_idx_f32(val, srcLane, 0x1f);
+}
+static __device__ __forceinline__ int __shfl_down_sync(unsigned int mask, int val, unsigned int delta, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_down_i32(val, delta, 0x1f);
+}
+static __device__ __forceinline__ float __shfl_down_sync(unsigned int mask, float val, unsigned int delta, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_down_f32(val, delta, 0x1f);
+}
+static __device__ __forceinline__ int __shfl_up_sync(unsigned int mask, int val, unsigned int delta, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_up_i32(val, delta, 0);
+}
+static __device__ __forceinline__ float __shfl_up_sync(unsigned int mask, float val, unsigned int delta, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_up_f32(val, delta, 0);
+}
+static __device__ __forceinline__ int __shfl_xor_sync(unsigned int mask, int val, int laneMask, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_bfly_i32(val, laneMask, 0x1f);
+}
+static __device__ __forceinline__ float __shfl_xor_sync(unsigned int mask, float val, int laneMask, int width = 32) {
+    (void)mask; (void)width;
+    return __nvvm_shfl_bfly_f32(val, laneMask, 0x1f);
+}
+
+// Warp vote intrinsics (spec §5.3).
+static __device__ __forceinline__ int __any_sync(unsigned int mask, int predicate) {
+    (void)mask;
+    return __nvvm_vote_any(predicate);
+}
+static __device__ __forceinline__ int __all_sync(unsigned int mask, int predicate) {
+    (void)mask;
+    return __nvvm_vote_all(predicate);
+}
+static __device__ __forceinline__ unsigned int __ballot_sync(unsigned int mask, int predicate) {
+    (void)mask;
+    return __nvvm_vote_ballot(predicate);
 }
 
 static __device__ __forceinline__ void __threadfence(void) { __nvvm_membar_gl(); }
