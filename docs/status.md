@@ -149,6 +149,10 @@ Supported runtime API subset:
 - `cudaStreamCreateWithPriority` (priority ignored; creates regular stream)
 - `cudaDeviceSetLimit` (no-op), `cudaDeviceGetLimit` (returns sensible defaults)
 - `cudaLaunchCooperativeKernel` (forwards to `cudaLaunchKernel`; threadgroup CG works)
+- `cudaDeviceSetCacheConfig`, `cudaDeviceGetCacheConfig` (no-op stubs; all memory is UMA)
+- `cudaDeviceSetSharedMemConfig`, `cudaDeviceGetSharedMemConfig` (no-op stubs)
+- `cudaGetSymbolAddress`, `cudaGetSymbolSize`
+- `cudaMemPrefetchAsync`, `cudaMemAdvise`, `cudaMemRangeGetAttribute` (meaningful no-ops on Apple Silicon UMA)
 
 `cudaDeviceProp` fields now populated per spec §6.8:
 - `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
