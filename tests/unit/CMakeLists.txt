@@ -53,6 +53,10 @@ add_executable(cumetal_cuda_fp16_host_test
     cuda_fp16_host_test.cpp
 )
 
+add_executable(cumetal_cuda_vector_types_test
+    cuda_vector_types_test.cpp
+)
+
 target_include_directories(cumetal_allocation_table_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
@@ -116,6 +120,11 @@ target_link_libraries(cumetal_ptx_lower_to_metal_test
 )
 
 target_include_directories(cumetal_cuda_fp16_host_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/runtime/api
+)
+
+target_include_directories(cumetal_cuda_vector_types_test
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/api
 )
@@ -211,6 +220,13 @@ target_compile_options(cumetal_cuda_fp16_host_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_cuda_vector_types_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_test(
     NAME unit_allocation_table
     COMMAND cumetal_allocation_table_test
@@ -276,6 +292,11 @@ add_test(
 add_test(
     NAME unit_cuda_fp16_host
     COMMAND cumetal_cuda_fp16_host_test
+)
+
+add_test(
+    NAME unit_cuda_vector_types
+    COMMAND cumetal_cuda_vector_types_test
 )
 
 add_test(
