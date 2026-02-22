@@ -259,6 +259,10 @@ add_executable(cumetal_runtime_device_attribute_ext_test
     runtime_device_attribute_ext_test.cpp
 )
 
+add_executable(cumetal_runtime_device_properties_ext_test
+    runtime_device_properties_ext_test.cpp
+)
+
 add_executable(cumetal_runtime_axpy_offset_test
     runtime_axpy_offset_test.cpp
 )
@@ -649,6 +653,11 @@ target_link_libraries(cumetal_driver_launch_host_func_test
 )
 
 target_link_libraries(cumetal_runtime_device_attribute_ext_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_device_properties_ext_test
     PRIVATE
         cumetal_runtime
 )
@@ -1193,6 +1202,13 @@ target_compile_options(cumetal_runtime_device_attribute_ext_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_runtime_device_properties_ext_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_runtime_axpy_offset_test
     PRIVATE
         -Wall
@@ -1727,6 +1743,11 @@ add_test(
 add_test(
     NAME functional_runtime_device_attribute_ext
     COMMAND cumetal_runtime_device_attribute_ext_test
+)
+
+add_test(
+    NAME functional_runtime_device_properties_ext
+    COMMAND cumetal_runtime_device_properties_ext_test
 )
 
 add_test(
