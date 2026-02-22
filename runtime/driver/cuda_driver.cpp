@@ -1621,6 +1621,26 @@ CUresult cuDeviceCanAccessPeer(int* canAccessPeer, CUdevice /*dev*/, CUdevice /*
     return CUDA_SUCCESS;
 }
 
+// Peer context access — Apple Silicon has a single GPU; always rejected.
+CUresult cuCtxEnablePeerAccess(CUcontext /*peerContext*/, unsigned int /*flags*/) {
+    return CUDA_ERROR_INVALID_VALUE;
+}
+
+CUresult cuCtxDisablePeerAccess(CUcontext /*peerContext*/) {
+    return CUDA_ERROR_INVALID_VALUE;
+}
+
+// Pitched 2D allocation — align pitch to 512 bytes (matching texture alignment).
+CUresult cuMemAllocPitch(CUdeviceptr* dptr, size_t* pPitch, size_t WidthInBytes,
+                          size_t Height, unsigned int /*ElementSizeBytes*/) {
+    if (dptr == nullptr || pPitch == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    constexpr size_t kAlign = 512;
+    *pPitch = (WidthInBytes + kAlign - 1) & ~(kAlign - 1);
+    return cuMemAlloc(dptr, *pPitch * Height);
+}
+
 // Occupancy API — conservative estimates (spec §8, driver-API counterparts).
 CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
                                                      CUfunction /*func*/,

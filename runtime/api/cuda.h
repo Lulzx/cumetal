@@ -145,6 +145,7 @@ CUresult cuLaunchKernel(CUfunction f,
 
 CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize);
 CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flags);
+CUresult cuMemAllocPitch(CUdeviceptr* dptr, size_t* pPitch, size_t WidthInBytes, size_t Height, unsigned int ElementSizeBytes);
 CUresult cuMemFree(CUdeviceptr dptr);
 CUresult cuMemAllocHost(void** pp, size_t bytesize);
 CUresult cuMemHostAlloc(void** pp, size_t bytesize, unsigned int flags);
@@ -196,6 +197,8 @@ CUresult cuMemsetD32Async(CUdeviceptr dstDevice, unsigned int ui, size_t N, CUst
 
 CUresult cuDeviceComputeCapability(int* major, int* minor, CUdevice dev);
 CUresult cuDeviceCanAccessPeer(int* canAccessPeer, CUdevice dev, CUdevice peerDev);
+CUresult cuCtxEnablePeerAccess(CUcontext peerContext, unsigned int flags);
+CUresult cuCtxDisablePeerAccess(CUcontext peerContext);
 
 typedef enum CUfunc_attribute {
     CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 0,
