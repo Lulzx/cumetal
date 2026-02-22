@@ -640,6 +640,69 @@ static __device__ __forceinline__ unsigned int __activemask(void) {
     return __nvvm_activemask();
 }
 
+// Lane mask special registers: bitmasks of lanes with index R relative to current lane.
+static __device__ __forceinline__ unsigned int __lanemask_eq(void) {
+    unsigned int laneid;
+    asm("mov.u32 %0, %%laneid;" : "=r"(laneid));
+    return 1u << laneid;
+}
+static __device__ __forceinline__ unsigned int __lanemask_lt(void) {
+    unsigned int laneid;
+    asm("mov.u32 %0, %%laneid;" : "=r"(laneid));
+    return (1u << laneid) - 1u;
+}
+static __device__ __forceinline__ unsigned int __lanemask_le(void) {
+    unsigned int laneid;
+    asm("mov.u32 %0, %%laneid;" : "=r"(laneid));
+    return (2u << laneid) - 1u;
+}
+static __device__ __forceinline__ unsigned int __lanemask_gt(void) {
+    return ~__lanemask_le();
+}
+static __device__ __forceinline__ unsigned int __lanemask_ge(void) {
+    return ~__lanemask_lt();
+}
+
+// Warp-wide reduction intrinsics (Ampere+, __reduce_*_sync).
+// On Apple Silicon, use NVVM simdgroup reduce builtins.
+static __device__ __forceinline__ unsigned int __reduce_add_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_add(val);
+}
+static __device__ __forceinline__ int __reduce_add_sync(unsigned int mask, int val) {
+    (void)mask;
+    return static_cast<int>(__nvvm_redux_sync_add(static_cast<unsigned>(val)));
+}
+static __device__ __forceinline__ unsigned int __reduce_and_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_and(val);
+}
+static __device__ __forceinline__ unsigned int __reduce_or_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_or(val);
+}
+static __device__ __forceinline__ unsigned int __reduce_xor_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_xor(val);
+}
+static __device__ __forceinline__ unsigned int __reduce_min_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_umin(val);
+}
+static __device__ __forceinline__ int __reduce_min_sync(unsigned int mask, int val) {
+    (void)mask;
+    return __nvvm_redux_sync_min(val);
+}
+static __device__ __forceinline__ unsigned int __reduce_max_sync(unsigned int mask, unsigned int val) {
+    (void)mask;
+    return __nvvm_redux_sync_umax(val);
+}
+static __device__ __forceinline__ int __reduce_max_sync(unsigned int mask, int val) {
+    (void)mask;
+    return __nvvm_redux_sync_max(val);
+}
+
+
 // Bit manipulation intrinsics
 static __device__ __forceinline__ int __popc(unsigned int x) {
     return __builtin_popcount(x);
