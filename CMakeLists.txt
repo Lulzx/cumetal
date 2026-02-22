@@ -391,6 +391,7 @@ install(FILES
     runtime/api/cuda.h
     runtime/api/cuda_fp16.h
     runtime/api/cuda_runtime.h
+    runtime/api/cuda_runtime_api.h
     runtime/api/cufft.h
     runtime/api/curand.h
     runtime/api/cooperative_groups.h
