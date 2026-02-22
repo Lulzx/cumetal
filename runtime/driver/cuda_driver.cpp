@@ -1551,6 +1551,13 @@ CUresult cuStreamCreateWithPriority(CUstream* phStream, unsigned int flags, int 
     return cuStreamCreate(phStream, flags);
 }
 
+// Priority range — Metal has no stream priority; both bounds are 0.
+CUresult cuCtxGetStreamPriorityRange(int* leastPriority, int* greatestPriority) {
+    if (leastPriority) *leastPriority = 0;
+    if (greatestPriority) *greatestPriority = 0;
+    return CUDA_SUCCESS;
+}
+
 // Cooperative kernel launch — forwards to cuLaunchKernel (threadgroup CG works; spec §8).
 CUresult cuLaunchCooperativeKernel(CUfunction f,
                                     unsigned int gridDimX, unsigned int gridDimY,

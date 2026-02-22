@@ -176,6 +176,7 @@ CUresult cuProfilerStart(void);
 CUresult cuProfilerStop(void);
 
 CUresult cuStreamCreateWithPriority(CUstream* phStream, unsigned int flags, int priority);
+CUresult cuCtxGetStreamPriorityRange(int* leastPriority, int* greatestPriority);
 CUresult cuLaunchCooperativeKernel(CUfunction f,
                                     unsigned int gridDimX,
                                     unsigned int gridDimY,

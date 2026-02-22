@@ -3243,6 +3243,13 @@ cudaError_t cudaStreamCreateWithPriority(cudaStream_t* stream, unsigned int flag
     return cudaStreamCreateWithFlags(stream, flags);
 }
 
+// Priority range — Metal has no stream priority; both bounds are 0.
+cudaError_t cudaDeviceGetStreamPriorityRange(int* leastPriority, int* greatestPriority) {
+    if (leastPriority) *leastPriority = 0;
+    if (greatestPriority) *greatestPriority = 0;
+    return fail(cudaSuccess);
+}
+
 // Device limits — Metal exposes no equivalent knobs; no-op set, sensible get.
 cudaError_t cudaDeviceSetLimit(cudaLimit /*limit*/, size_t /*value*/) {
     const cudaError_t init_status = ensure_initialized();
