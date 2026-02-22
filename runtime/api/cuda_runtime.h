@@ -652,6 +652,46 @@ static __device__ __forceinline__ double __fma_rn(double x, double y, double z) 
     return __builtin_fma(x, y, z);
 }
 
+// Type-punning intrinsics (reinterpret bit pattern, no conversion).
+static __device__ __forceinline__ float __int_as_float(int x) {
+    float r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+static __device__ __forceinline__ int __float_as_int(float x) {
+    int r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+static __device__ __forceinline__ float __uint_as_float(unsigned int x) {
+    float r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+static __device__ __forceinline__ unsigned int __float_as_uint(float x) {
+    unsigned int r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+static __device__ __forceinline__ double __longlong_as_double(long long x) {
+    double r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+static __device__ __forceinline__ long long __double_as_longlong(double x) {
+    long long r; __builtin_memcpy(&r, &x, sizeof(r)); return r;
+}
+
+// Integer device intrinsics.
+static __device__ __forceinline__ int __mulhi(int a, int b) {
+    return static_cast<int>(static_cast<long long>(a) * b >> 32);
+}
+static __device__ __forceinline__ unsigned int __umulhi(unsigned int a, unsigned int b) {
+    return static_cast<unsigned int>(static_cast<unsigned long long>(a) * b >> 32);
+}
+static __device__ __forceinline__ int __mul24(int a, int b) {
+    return (a & 0xFFFFFF) * (b & 0xFFFFFF);
+}
+static __device__ __forceinline__ unsigned int __umul24(unsigned int a, unsigned int b) {
+    return (a & 0xFFFFFFu) * (b & 0xFFFFFFu);
+}
+static __device__ __forceinline__ int __sad(int a, int b, int c) {
+    return __builtin_abs(a - b) + c;
+}
+static __device__ __forceinline__ unsigned int __usad(unsigned int a, unsigned int b, unsigned int c) {
+    return (a > b ? a - b : b - a) + c;
+}
+
 // Fast (reduced-precision) math intrinsics — on Apple Silicon Metal, these map
 // directly to the standard FP32 hardware operations (no separate fast-math path).
 static __device__ __forceinline__ float __sinf(float x)  { return __builtin_sinf(x); }
