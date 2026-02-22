@@ -287,6 +287,10 @@ add_executable(cumetal_runtime_fp64_ops_test
     runtime_fp64_ops_test.cpp
 )
 
+add_executable(cumetal_runtime_cooperative_launch_test
+    runtime_cooperative_launch_test.cpp
+)
+
 if(CUMETAL_ENABLE_BINARY_SHIM)
     add_executable(cumetal_runtime_registration_path_test
         runtime_registration_path_test.cpp
@@ -668,6 +672,11 @@ target_link_libraries(cumetal_runtime_grid_3d_test
 )
 
 target_link_libraries(cumetal_runtime_fp64_ops_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_cooperative_launch_test
     PRIVATE
         cumetal_runtime
 )
@@ -1200,6 +1209,13 @@ target_compile_options(cumetal_runtime_grid_3d_test
 )
 
 target_compile_options(cumetal_runtime_fp64_ops_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_cooperative_launch_test
     PRIVATE
         -Wall
         -Wextra
@@ -1859,6 +1875,16 @@ add_test(
 )
 
 set_tests_properties(functional_runtime_ptx_lowering_regression PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME functional_runtime_cooperative_launch
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_runtime_vector_add.sh
+            ${CMAKE_SOURCE_DIR}/scripts/generate_reference_metallib.sh
+            $<TARGET_FILE:cumetal_runtime_cooperative_launch_test>
+            ${CMAKE_SOURCE_DIR}/tests/air_abi/reference/reference.metallib
+)
+
+set_tests_properties(functional_runtime_cooperative_launch PROPERTIES SKIP_RETURN_CODE 77)
 
 if(CUMETAL_ENABLE_BINARY_SHIM)
     add_test(
