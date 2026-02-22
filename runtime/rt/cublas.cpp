@@ -1827,4 +1827,41 @@ cublasStatus_t cublasGetMatrixAsync(int rows, int cols, int elem_size,
     return cublasSetMatrix(rows, cols, elem_size, a, lda, b, ldb);
 }
 
+const char* cublasGetStatusName(cublasStatus_t status) {
+    switch (status) {
+        case CUBLAS_STATUS_SUCCESS:          return "CUBLAS_STATUS_SUCCESS";
+        case CUBLAS_STATUS_NOT_INITIALIZED:  return "CUBLAS_STATUS_NOT_INITIALIZED";
+        case CUBLAS_STATUS_ALLOC_FAILED:     return "CUBLAS_STATUS_ALLOC_FAILED";
+        case CUBLAS_STATUS_INVALID_VALUE:    return "CUBLAS_STATUS_INVALID_VALUE";
+        case CUBLAS_STATUS_ARCH_MISMATCH:    return "CUBLAS_STATUS_ARCH_MISMATCH";
+        case CUBLAS_STATUS_MAPPING_ERROR:    return "CUBLAS_STATUS_MAPPING_ERROR";
+        case CUBLAS_STATUS_EXECUTION_FAILED: return "CUBLAS_STATUS_EXECUTION_FAILED";
+        case CUBLAS_STATUS_INTERNAL_ERROR:   return "CUBLAS_STATUS_INTERNAL_ERROR";
+        default:                             return "CUBLAS_STATUS_UNKNOWN";
+    }
+}
+
+const char* cublasGetStatusString(cublasStatus_t status) {
+    switch (status) {
+        case CUBLAS_STATUS_SUCCESS:
+            return "cuBLAS operation completed successfully";
+        case CUBLAS_STATUS_NOT_INITIALIZED:
+            return "cuBLAS library not initialized";
+        case CUBLAS_STATUS_ALLOC_FAILED:
+            return "cuBLAS resource allocation failed";
+        case CUBLAS_STATUS_INVALID_VALUE:
+            return "Invalid value passed to cuBLAS function";
+        case CUBLAS_STATUS_ARCH_MISMATCH:
+            return "Feature not supported on this architecture";
+        case CUBLAS_STATUS_MAPPING_ERROR:
+            return "Memory mapping error";
+        case CUBLAS_STATUS_EXECUTION_FAILED:
+            return "cuBLAS kernel execution failed";
+        case CUBLAS_STATUS_INTERNAL_ERROR:
+            return "cuBLAS internal error";
+        default:
+            return "Unknown cuBLAS status";
+    }
+}
+
 }  // extern "C"

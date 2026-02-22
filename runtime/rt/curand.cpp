@@ -339,4 +339,50 @@ curandStatus_t curandGenerateLongLong(curandGenerator_t generator,
     return CURAND_STATUS_SUCCESS;
 }
 
+curandStatus_t curandGeneratePoisson(curandGenerator_t generator,
+                                     unsigned int* output_ptr,
+                                     size_t num,
+                                     double lambda) {
+    if (generator == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (output_ptr == nullptr && num > 0) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    if (lambda <= 0.0) {
+        return CURAND_STATUS_OUT_OF_RANGE;
+    }
+    if (num == 0) {
+        return CURAND_STATUS_SUCCESS;
+    }
+    if (cumetalRuntimeIsDevicePointer(output_ptr) == 0) {
+        return CURAND_STATUS_TYPE_ERROR;
+    }
+    if (cudaStreamSynchronize(generator->stream) != cudaSuccess) {
+        return CURAND_STATUS_PREEXISTING_FAILURE;
+    }
+
+    std::poisson_distribution<unsigned int> distribution(lambda);
+    std::lock_guard<std::mutex> lock(generator->mutex);
+    for (size_t i = 0; i < num; ++i) {
+        output_ptr[i] = distribution(generator->engine);
+    }
+    generator->offset += static_cast<unsigned long long>(num);
+    return CURAND_STATUS_SUCCESS;
+}
+
+curandStatus_t curandGetProperty(libraryPropertyType type, int* value) {
+    if (value == nullptr) {
+        return CURAND_STATUS_NOT_INITIALIZED;
+    }
+    switch (type) {
+        case MAJOR_VERSION: *value = 12; break;
+        case MINOR_VERSION: *value = 0;  break;
+        case PATCH_LEVEL:   *value = 0;  break;
+        default:
+            return CURAND_STATUS_TYPE_ERROR;
+    }
+    return CURAND_STATUS_SUCCESS;
+}
+
 }  // extern "C"

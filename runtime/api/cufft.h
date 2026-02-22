@@ -56,6 +56,16 @@ typedef enum cufftType {
 #define CUFFT_INVERSE  (1)
 
 cufftResult cufftGetVersion(int* version);
+// SetWorkArea — ignored on UMA (vDSP manages its own scratch buffers).
+cufftResult cufftSetWorkArea(cufftHandle plan, void* workArea);
+// Estimate* — return a conservative scratch-size estimate without building a plan.
+cufftResult cufftEstimate1d(int nx, cufftType type, int batch, size_t* workSize);
+cufftResult cufftEstimate2d(int nx, int ny, cufftType type, size_t* workSize);
+cufftResult cufftEstimate3d(int nx, int ny, int nz, cufftType type, size_t* workSize);
+cufftResult cufftEstimateMany(int rank, int* n,
+                               int* inembed, int istride, int idist,
+                               int* onembed, int ostride, int odist,
+                               cufftType type, int batch, size_t* workSize);
 cufftResult cufftCreate(cufftHandle* plan);
 cufftResult cufftDestroy(cufftHandle plan);
 cufftResult cufftSetStream(cufftHandle plan, cudaStream_t stream);

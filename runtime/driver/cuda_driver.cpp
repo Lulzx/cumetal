@@ -1473,6 +1473,50 @@ CUresult cuMemcpyDtoDAsync(CUdeviceptr dstDevice,
                                           reinterpret_cast<cudaStream_t>(hStream)));
 }
 
+CUresult cuMemcpy3D(const CUDA_MEMCPY3D* pCopy) {
+    if (pCopy == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    // Resolve src / dst to host-accessible pointers (UMA — device pointers are host pointers).
+    const char* src_base =
+        (pCopy->srcMemoryType == CU_MEMORYTYPE_HOST)
+            ? static_cast<const char*>(pCopy->srcHost)
+            : reinterpret_cast<const char*>(static_cast<std::uintptr_t>(pCopy->srcDevice));
+    char* dst_base =
+        (pCopy->dstMemoryType == CU_MEMORYTYPE_HOST)
+            ? static_cast<char*>(pCopy->dstHost)
+            : reinterpret_cast<char*>(static_cast<std::uintptr_t>(pCopy->dstDevice));
+
+    if (src_base == nullptr || dst_base == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const size_t src_pitch  = pCopy->srcPitch  ? pCopy->srcPitch  : pCopy->WidthInBytes;
+    const size_t dst_pitch  = pCopy->dstPitch  ? pCopy->dstPitch  : pCopy->WidthInBytes;
+    const size_t src_height = pCopy->srcHeight ? pCopy->srcHeight : pCopy->Height;
+    const size_t dst_height = pCopy->dstHeight ? pCopy->dstHeight : pCopy->Height;
+
+    for (size_t z = 0; z < pCopy->Depth; ++z) {
+        const size_t sz_off = (pCopy->srcZ + z) * src_pitch * src_height;
+        const size_t dz_off = (pCopy->dstZ + z) * dst_pitch * dst_height;
+        for (size_t y = 0; y < pCopy->Height; ++y) {
+            const char* src_row = src_base + sz_off + (pCopy->srcY + y) * src_pitch
+                                + pCopy->srcXInBytes;
+            char*       dst_row = dst_base + dz_off + (pCopy->dstY + y) * dst_pitch
+                                + pCopy->dstXInBytes;
+            std::memcpy(dst_row, src_row, pCopy->WidthInBytes);
+        }
+    }
+    return CUDA_SUCCESS;
+}
+
+CUresult cuMemcpy3DAsync(const CUDA_MEMCPY3D* pCopy, CUstream /*hStream*/) {
+    return cuMemcpy3D(pCopy);
+}
+
 CUresult cuMemGetInfo(size_t* freeBytes, size_t* totalBytes) {
     const CUresult ready = require_initialized_context();
     if (ready != CUDA_SUCCESS) {

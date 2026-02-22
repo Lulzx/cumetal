@@ -579,4 +579,64 @@ cufftResult cufftExecZ2D(cufftHandle plan, cufftDoubleComplex* idata,
     return exec_z2d(*p, idata, odata);
 }
 
+// SetWorkArea — on UMA, vDSP manages its own scratch; no external workspace is used.
+cufftResult cufftSetWorkArea(cufftHandle /*plan*/, void* /*workArea*/) {
+    return CUFFT_SUCCESS;
+}
+
+// ── Estimate* ────────────────────────────────────────────────────────────────
+// Return a conservative upper-bound on scratch memory without building a full plan.
+// On this implementation vDSP manages scratch internally, so 0 is a valid answer,
+// but we return a small non-zero estimate to satisfy callers that test workSize > 0.
+
+static size_t estimate_work_bytes(size_t total_complex_elements, cufftType type) {
+    // Two split-real buffers of float/double per element, plus vDSP setup overhead.
+    size_t elem_bytes = (type == CUFFT_D2Z || type == CUFFT_Z2D || type == CUFFT_Z2Z)
+                            ? sizeof(double)
+                            : sizeof(float);
+    return total_complex_elements * elem_bytes * 2 + 4096;
+}
+
+cufftResult cufftEstimate1d(int nx, cufftType type, int batch, size_t* workSize) {
+    if (workSize == nullptr || nx <= 0 || batch <= 0) {
+        return CUFFT_INVALID_VALUE;
+    }
+    *workSize = estimate_work_bytes(static_cast<size_t>(nx) * static_cast<size_t>(batch),
+                                    type);
+    return CUFFT_SUCCESS;
+}
+
+cufftResult cufftEstimate2d(int nx, int ny, cufftType type, size_t* workSize) {
+    if (workSize == nullptr || nx <= 0 || ny <= 0) {
+        return CUFFT_INVALID_VALUE;
+    }
+    *workSize = estimate_work_bytes(static_cast<size_t>(nx) * static_cast<size_t>(ny), type);
+    return CUFFT_SUCCESS;
+}
+
+cufftResult cufftEstimate3d(int nx, int ny, int nz, cufftType type, size_t* workSize) {
+    if (workSize == nullptr || nx <= 0 || ny <= 0 || nz <= 0) {
+        return CUFFT_INVALID_VALUE;
+    }
+    *workSize = estimate_work_bytes(
+        static_cast<size_t>(nx) * static_cast<size_t>(ny) * static_cast<size_t>(nz), type);
+    return CUFFT_SUCCESS;
+}
+
+cufftResult cufftEstimateMany(int rank, int* n,
+                               int* /*inembed*/, int /*istride*/, int /*idist*/,
+                               int* /*onembed*/, int /*ostride*/, int /*odist*/,
+                               cufftType type, int batch, size_t* workSize) {
+    if (workSize == nullptr || n == nullptr || rank <= 0 || batch <= 0) {
+        return CUFFT_INVALID_VALUE;
+    }
+    size_t total = static_cast<size_t>(batch);
+    for (int i = 0; i < rank; ++i) {
+        if (n[i] <= 0) return CUFFT_INVALID_VALUE;
+        total *= static_cast<size_t>(n[i]);
+    }
+    *workSize = estimate_work_bytes(total, type);
+    return CUFFT_SUCCESS;
+}
+
 }  // extern "C"

@@ -30,6 +30,13 @@ typedef enum curandRngType {
     CURAND_RNG_PSEUDO_DEFAULT = 100,
 } curandRngType_t;
 
+// libraryPropertyType — used by curandGetProperty (mirrors CUDA library_types.h).
+typedef enum libraryPropertyType_t {
+    MAJOR_VERSION = 0,
+    MINOR_VERSION = 1,
+    PATCH_LEVEL   = 2,
+} libraryPropertyType;
+
 curandStatus_t curandCreateGenerator(curandGenerator_t* generator, curandRngType_t rng_type);
 curandStatus_t curandDestroyGenerator(curandGenerator_t generator);
 curandStatus_t curandGetVersion(int* version);
@@ -66,6 +73,11 @@ curandStatus_t curandGenerate(curandGenerator_t generator, unsigned int* output_
 curandStatus_t curandGenerateLongLong(curandGenerator_t generator,
                                       unsigned long long* output_ptr,
                                       size_t num);
+curandStatus_t curandGeneratePoisson(curandGenerator_t generator,
+                                     unsigned int* output_ptr,
+                                     size_t num,
+                                     double lambda);
+curandStatus_t curandGetProperty(libraryPropertyType type, int* value);
 
 #ifdef __cplusplus
 }

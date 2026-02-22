@@ -145,6 +145,46 @@ CUresult cuLaunchKernel(CUfunction f,
                         void** kernelParams,
                         void** extra);
 
+typedef enum CUmemorytype_enum {
+    CU_MEMORYTYPE_HOST    = 0x01,
+    CU_MEMORYTYPE_DEVICE  = 0x02,
+    CU_MEMORYTYPE_ARRAY   = 0x03,
+    CU_MEMORYTYPE_UNIFIED = 0x04,
+} CUmemorytype;
+
+// Opaque CUDA array handle (not implemented; present for struct compatibility).
+typedef void* CUarray;
+
+typedef struct CUDA_MEMCPY3D_st {
+    size_t          srcXInBytes;
+    size_t          srcY;
+    size_t          srcZ;
+    size_t          srcLOD;
+    CUmemorytype    srcMemoryType;
+    const void*     srcHost;
+    CUdeviceptr     srcDevice;
+    CUarray         srcArray;
+    void*           reserved0;
+    size_t          srcPitch;
+    size_t          srcHeight;
+
+    size_t          dstXInBytes;
+    size_t          dstY;
+    size_t          dstZ;
+    size_t          dstLOD;
+    CUmemorytype    dstMemoryType;
+    void*           dstHost;
+    CUdeviceptr     dstDevice;
+    CUarray         dstArray;
+    void*           reserved1;
+    size_t          dstPitch;
+    size_t          dstHeight;
+
+    size_t          WidthInBytes;
+    size_t          Height;
+    size_t          Depth;
+} CUDA_MEMCPY3D;
+
 CUresult cuMemAlloc(CUdeviceptr* dptr, size_t bytesize);
 CUresult cuMemAllocManaged(CUdeviceptr* dptr, size_t bytesize, unsigned int flags);
 CUresult cuMemAllocPitch(CUdeviceptr* dptr, size_t* pPitch, size_t WidthInBytes, size_t Height, unsigned int ElementSizeBytes);
@@ -190,6 +230,9 @@ CUresult cuLaunchCooperativeKernel(CUfunction f,
                                     unsigned int sharedMemBytes,
                                     CUstream hStream,
                                     void** kernelParams);
+
+CUresult cuMemcpy3D(const CUDA_MEMCPY3D* pCopy);
+CUresult cuMemcpy3DAsync(const CUDA_MEMCPY3D* pCopy, CUstream hStream);
 
 CUresult cuMemsetD16(CUdeviceptr dstDevice, unsigned short us, size_t N);
 CUresult cuMemsetD32(CUdeviceptr dstDevice, unsigned int ui, size_t N);

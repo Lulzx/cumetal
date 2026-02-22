@@ -1,6 +1,6 @@
 # Status
 
-Current status: **Post-Phase 5 — 145/145 tests passing (144 unit/functional + bench_phase5_all_kernels)**
+Current status: **Post-Phase 5 — 146/146 tests passing (145 unit/functional + bench_phase5_all_kernels)**
 
 Phase 4 is fully complete. Phase 5 performance work is complete.
 Intentional non-goals per §2.2 (CUDA Graphs, dynamic parallelism, texture objects,
@@ -68,6 +68,30 @@ Post-Phase 5 work completed (continued, part 2):
   - Async variants (`*Async`) alias to their synchronous counterparts (stream ignored; UMA).
   Test: `functional_cublas_extended_api`.
 
+
+- **Miscellaneous extended APIs** (`runtime/api/`, `runtime/rt/`, `runtime/driver/`):
+  Fills remaining API gaps identified in post-Phase-5 survey.
+  - **cuRAND**: `curandGeneratePoisson(generator, ptr, n, lambda)` — Poisson-distributed
+    uint32 via `std::poisson_distribution`; `curandGetProperty(type, value)` returning
+    major/minor/patch version (mirrors CUDA `libraryPropertyType` enum).
+  - **cuBLAS**: `cublasGetStatusName(status)` — returns enum-name string (e.g.
+    `"CUBLAS_STATUS_SUCCESS"`); `cublasGetStatusString(status)` — returns human-readable
+    description.
+  - **cuFFT**: `cufftSetWorkArea(plan, workArea)` — no-op stub (vDSP manages its own
+    scratch on UMA); `cufftEstimate1d/2d/3d/Many` — returns a conservative upper-bound
+    scratch-size estimate without building a full plan.
+  - **3D pitched memory** (`cuda_runtime.h`/`cuda.h`): Added types `cudaExtent`,
+    `cudaPitchedPtr`, `cudaPos`, `cudaMemcpy3DParms` (with C++ `make_*` helpers) and
+    opaque `cudaArray_t`. New runtime APIs:
+    - `cudaMalloc3D(pitchedDevPtr, extent)` — allocates pitch×height×depth bytes,
+      pitch aligned to 512 bytes.
+    - `cudaMemcpy3D(parms)` / `cudaMemcpy3DAsync(parms, stream)` — 3D pitched copy
+      (plane-by-row stride walk; stream ignored on UMA).
+  - **Driver API 3D copy** (`cuda.h`/`cuda_driver.cpp`): Added `CUmemorytype` enum,
+    `CUarray` opaque typedef, `CUDA_MEMCPY3D` struct, and:
+    - `cuMemcpy3D(pCopy)` / `cuMemcpy3DAsync(pCopy, hStream)` — 3D strided copy
+      resolving host/device ptrs from `CUmemorytype` (UMA: both are host-accessible).
+  Test: `functional_misc_extended_api` (6 sub-tests covering all new APIs).
 
 - **Threadgroup memory tiling hints** (`compiler/passes/src/threadgroup_tiling.cpp`):
   New `analyse_threadgroup_tiling()` pass that scans a PTX kernel's instruction

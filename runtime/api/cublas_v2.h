@@ -77,6 +77,9 @@ typedef enum cublasGemmAlgo_t {
     CUBLAS_GEMM_DEFAULT_TENSOR_OP  = 99,
 } cublasGemmAlgo_t;
 
+const char* cublasGetStatusName(cublasStatus_t status);
+const char* cublasGetStatusString(cublasStatus_t status);
+
 cublasStatus_t cublasCreate(cublasHandle_t* handle);
 cublasStatus_t cublasDestroy(cublasHandle_t handle);
 cublasStatus_t cublasGetVersion(cublasHandle_t handle, int* version);

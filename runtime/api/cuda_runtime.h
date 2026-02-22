@@ -344,11 +344,61 @@ cudaError_t cudaGetDeviceFlags(unsigned int* flags);
 cudaError_t cudaGetDeviceProperties(cudaDeviceProp* prop, int device);
 cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device);
 cudaError_t cudaMemGetInfo(size_t* free_bytes, size_t* total_bytes);
+// ── 3D memory types ──────────────────────────────────────────────────────────
+typedef struct cudaExtent {
+    size_t width;    // Width in bytes (for pitched) or elements (for arrays)
+    size_t height;   // Height in elements
+    size_t depth;    // Depth in elements
+} cudaExtent;
+
+typedef struct cudaPitchedPtr {
+    void*  ptr;
+    size_t pitch;    // Row pitch in bytes
+    size_t xsize;    // Logical width in bytes
+    size_t ysize;    // Logical height in elements
+} cudaPitchedPtr;
+
+typedef struct cudaPos {
+    size_t x;
+    size_t y;
+    size_t z;
+} cudaPos;
+
+// Opaque CUDA array handle (not implemented; present for struct compatibility).
+struct cudaArray;
+typedef struct cudaArray* cudaArray_t;
+
+typedef struct cudaMemcpy3DParms {
+    cudaArray_t      srcArray;
+    struct cudaPos   srcPos;
+    struct cudaPitchedPtr srcPtr;
+    cudaArray_t      dstArray;
+    struct cudaPos   dstPos;
+    struct cudaPitchedPtr dstPtr;
+    struct cudaExtent extent;
+    cudaMemcpyKind   kind;
+} cudaMemcpy3DParms;
+
+#ifdef __cplusplus
+static inline cudaExtent make_cudaExtent(size_t w, size_t h, size_t d) {
+    cudaExtent e; e.width = w; e.height = h; e.depth = d; return e;
+}
+static inline cudaPos make_cudaPos(size_t x, size_t y, size_t z) {
+    cudaPos p; p.x = x; p.y = y; p.z = z; return p;
+}
+static inline cudaPitchedPtr make_cudaPitchedPtr(void* d, size_t p,
+                                                  size_t xsz, size_t ysz) {
+    cudaPitchedPtr pp; pp.ptr = d; pp.pitch = p; pp.xsize = xsz; pp.ysize = ysz; return pp;
+}
+#endif
+
 cudaError_t cudaMalloc(void** dev_ptr, size_t size);
 cudaError_t cudaMallocManaged(void** dev_ptr, size_t size, unsigned int flags);
 // Pitched 2D allocation — on UMA returns a contiguous allocation with pitch = width rounded
 // up to the device's alignment requirement (spec §6.2).
 cudaError_t cudaMallocPitch(void** dev_ptr, size_t* pitch, size_t width, size_t height);
+// 3D pitched allocation.
+cudaError_t cudaMalloc3D(cudaPitchedPtr* pitchedDevPtr, cudaExtent extent);
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags);
 cudaError_t cudaMallocHost(void** ptr, size_t size);
 cudaError_t cudaHostGetDevicePointer(void** dev_ptr, void* host_ptr, unsigned int flags);
@@ -396,6 +446,9 @@ cudaError_t cudaMemcpy2DAsync(void* dst, size_t dpitch,
                                cudaMemcpyKind kind, cudaStream_t stream);
 cudaError_t cudaMemset2D(void* dev_ptr, size_t pitch,
                           int value, size_t width, size_t height);
+// 3D pitched copy — on UMA, copies plane-by-row.
+cudaError_t cudaMemcpy3D(const cudaMemcpy3DParms* p);
+cudaError_t cudaMemcpy3DAsync(const cudaMemcpy3DParms* p, cudaStream_t stream);
 // Unified Memory advisory APIs — no-ops on Apple Silicon UMA (all memory is already managed).
 typedef enum cudaMemoryAdvise {
     cudaMemAdviseSetReadMostly = 1,

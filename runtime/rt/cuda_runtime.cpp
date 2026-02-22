@@ -1883,6 +1883,29 @@ cudaError_t cudaMallocPitch(void** dev_ptr, size_t* pitch, size_t width, size_t 
     return cudaMalloc(dev_ptr, *pitch * height);
 }
 
+cudaError_t cudaMalloc3D(cudaPitchedPtr* pitchedDevPtr, cudaExtent extent) {
+    if (pitchedDevPtr == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    if (extent.width == 0 || extent.height == 0 || extent.depth == 0) {
+        pitchedDevPtr->ptr   = nullptr;
+        pitchedDevPtr->pitch = 0;
+        pitchedDevPtr->xsize = extent.width;
+        pitchedDevPtr->ysize = extent.height;
+        return fail(cudaSuccess);
+    }
+    constexpr size_t kAlign = 512;
+    size_t pitch = (extent.width + kAlign - 1) & ~(kAlign - 1);
+    void* ptr = nullptr;
+    const cudaError_t err = cudaMalloc(&ptr, pitch * extent.height * extent.depth);
+    if (err != cudaSuccess) return err;
+    pitchedDevPtr->ptr   = ptr;
+    pitchedDevPtr->pitch = pitch;
+    pitchedDevPtr->xsize = extent.width;
+    pitchedDevPtr->ysize = extent.height;
+    return fail(cudaSuccess);
+}
+
 cudaError_t cudaHostAlloc(void** ptr, size_t size, unsigned int flags) {
     if (ptr == nullptr || size == 0) {
         return fail(cudaErrorInvalidValue);
@@ -2318,6 +2341,46 @@ cudaError_t cudaMemset2D(void* dev_ptr, size_t pitch,
     }
 
     return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpy3D(const cudaMemcpy3DParms* p) {
+    if (p == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    // Array-backed 3D copies are not supported on this implementation.
+    if (p->srcArray != nullptr || p->dstArray != nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+
+    const cudaError_t init_status = ensure_initialized();
+    if (init_status != cudaSuccess) {
+        return fail(init_status);
+    }
+
+    const char* src_base  = static_cast<const char*>(p->srcPtr.ptr);
+    char*       dst_base  = static_cast<char*>(p->dstPtr.ptr);
+    size_t      src_pitch  = p->srcPtr.pitch  ? p->srcPtr.pitch  : p->extent.width;
+    size_t      dst_pitch  = p->dstPtr.pitch  ? p->dstPtr.pitch  : p->extent.width;
+    size_t      src_height = p->srcPtr.ysize  ? p->srcPtr.ysize  : p->extent.height;
+    size_t      dst_height = p->dstPtr.ysize  ? p->dstPtr.ysize  : p->extent.height;
+
+    for (size_t z = 0; z < p->extent.depth; ++z) {
+        const size_t src_z_off = (p->srcPos.z + z) * src_pitch * src_height;
+        const size_t dst_z_off = (p->dstPos.z + z) * dst_pitch * dst_height;
+        for (size_t y = 0; y < p->extent.height; ++y) {
+            const char* src_row = src_base + src_z_off
+                                + (p->srcPos.y + y) * src_pitch + p->srcPos.x;
+            char*       dst_row = dst_base + dst_z_off
+                                + (p->dstPos.y + y) * dst_pitch + p->dstPos.x;
+            std::memcpy(dst_row, src_row, p->extent.width);
+        }
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpy3DAsync(const cudaMemcpy3DParms* p, cudaStream_t stream) {
+    (void)stream;
+    return cudaMemcpy3D(p);
 }
 
 cudaError_t cudaDeviceReset(void) {
