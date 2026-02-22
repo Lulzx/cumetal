@@ -652,6 +652,23 @@ static __device__ __forceinline__ double __fma_rn(double x, double y, double z) 
     return __builtin_fma(x, y, z);
 }
 
+// Fast (reduced-precision) math intrinsics — on Apple Silicon Metal, these map
+// directly to the standard FP32 hardware operations (no separate fast-math path).
+static __device__ __forceinline__ float __sinf(float x)  { return __builtin_sinf(x); }
+static __device__ __forceinline__ float __cosf(float x)  { return __builtin_cosf(x); }
+static __device__ __forceinline__ float __tanf(float x)  { return __builtin_tanf(x); }
+static __device__ __forceinline__ float __expf(float x)  { return __builtin_expf(x); }
+static __device__ __forceinline__ float __exp2f(float x) { return __builtin_exp2f(x); }
+static __device__ __forceinline__ float __logf(float x)  { return __builtin_logf(x); }
+static __device__ __forceinline__ float __log2f(float x) { return __builtin_log2f(x); }
+static __device__ __forceinline__ float __log10f(float x){ return __builtin_log10f(x); }
+static __device__ __forceinline__ float __powf(float x, float y) { return __builtin_powf(x, y); }
+static __device__ __forceinline__ float __sqrtf(float x) { return __builtin_sqrtf(x); }
+static __device__ __forceinline__ float __rsqrtf(float x){ return 1.0f / __builtin_sqrtf(x); }
+static __device__ __forceinline__ float __fdividef(float x, float y) { return x / y; }
+static __device__ __forceinline__ float __frcp_rn(float x){ return 1.0f / x; }
+static __device__ __forceinline__ float __fsqrt_rn(float x){ return __builtin_sqrtf(x); }
+
 #endif  // !__CLANG_CUDA_DEVICE_FUNCTIONS_H__
 
 #endif  // device code section
