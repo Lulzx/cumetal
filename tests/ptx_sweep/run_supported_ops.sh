@@ -75,10 +75,13 @@ run_case "sweep_call_vprintf" "call.uni (%r0), vprintf, (\"tid=%u\", %r1);"
 run_case "sweep_atom_global_add_f32" "atom.global.add.f32 %f1, [%rd1], %f2;"
 
 # Warp / SIMD-group primitives
-run_case "sweep_shfl_sync_idx"   "shfl.sync.idx.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
-run_case "sweep_shfl_sync_down"  "shfl.sync.down.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
-run_case "sweep_shfl_sync_up"    "shfl.sync.up.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
-run_case "sweep_shfl_sync_bfly"  "shfl.sync.bfly.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_idx"    "shfl.sync.idx.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_down"   "shfl.sync.down.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_up"     "shfl.sync.up.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_bfly"   "shfl.sync.bfly.b32 %r1, %r2, %r3, 0x1f, 0xffffffff;"
+# f32 variants (common in CUDA reduction kernels — same lowering path as b32)
+run_case "sweep_shfl_sync_idx_f32"  "shfl.sync.idx.f32 %f1, %f2, %r1, 0x1f, 0xffffffff;"
+run_case "sweep_shfl_sync_down_f32" "shfl.sync.down.f32 %f1, %f2, %r1, 0x1f, 0xffffffff;"
 run_case "sweep_vote_sync_ballot" "vote.sync.ballot.b32 %r1, %p1, 0xffffffff;"
 run_case "sweep_vote_sync_any"   "vote.sync.any.pred %p1, %p2, 0xffffffff;"
 run_case "sweep_vote_sync_all"   "vote.sync.all.pred %p1, %p2, 0xffffffff;"

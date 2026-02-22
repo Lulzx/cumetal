@@ -60,6 +60,25 @@ ctest --test-dir build -R functional_driver_launch_extra_scalar --output-on-fail
 ctest --test-dir build -R functional_driver_stream_wait_event --output-on-failure
 ctest --test-dir build -R functional_runtime_axpy_offset --output-on-failure
 ctest --test-dir build -R functional_runtime_atomic --output-on-failure
+ctest --test-dir build -R functional_runtime_atomic_shared --output-on-failure
+ctest --test-dir build -R functional_runtime_warp_shuffle --output-on-failure
+ctest --test-dir build -R functional_runtime_warp_vote --output-on-failure
+ctest --test-dir build -R functional_runtime_warp_size_lane --output-on-failure
+ctest --test-dir build -R functional_runtime_warp_partial_mask --output-on-failure
+ctest --test-dir build -R functional_runtime_fp16_ops --output-on-failure
+ctest --test-dir build -R functional_runtime_fp64_ops --output-on-failure
+ctest --test-dir build -R functional_runtime_shared_reduce --output-on-failure
+ctest --test-dir build -R functional_runtime_grid_2d --output-on-failure
+ctest --test-dir build -R functional_runtime_grid_3d --output-on-failure
+ctest --test-dir build -R functional_runtime_cooperative_launch --output-on-failure
+ctest --test-dir build -R functional_runtime_struct_arg --output-on-failure
+ctest --test-dir build -R functional_runtime_barrier_order --output-on-failure
+ctest --test-dir build -R functional_runtime_cp_async_emul --output-on-failure
+ctest --test-dir build -R functional_runtime_device_properties --output-on-failure
+ctest --test-dir build -R functional_runtime_occupancy --output-on-failure
+ctest --test-dir build -R functional_runtime_device_limits --output-on-failure
+ctest --test-dir build -R functional_runtime_printf --output-on-failure
+ctest --test-dir build -R functional_cufft_c2c --output-on-failure
 ctest --test-dir build -R functional_runtime_ptx_lowering_regression --output-on-failure
 # binary-shim-only tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
 ctest --test-dir build -R functional_runtime_registration_path --output-on-failure
@@ -79,7 +98,11 @@ ctest --test-dir build -R unit_addrspace_pass --output-on-failure
 ctest --test-dir build -R unit_metadata_pass --output-on-failure
 ctest --test-dir build -R unit_phase1_pipeline --output-on-failure
 ctest --test-dir build -R unit_ptx_lower_to_llvm --output-on-failure
+ctest --test-dir build -R unit_cuda_fp16_host --output-on-failure
+ctest --test-dir build -R unit_cuda_vector_types --output-on-failure
+ctest --test-dir build -R unit_ptx_lower_to_metal --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_help --output-on-failure
+ctest --test-dir build -R unit_cumetal_bench_invalid_arg --output-on-failure
 ctest --test-dir build -R unit_cumetal_bench_ratio_gate --output-on-failure
 ctest --test-dir build -R unit_runtime_library_aliases --output-on-failure
 # binary-shim-only unit tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
