@@ -263,6 +263,22 @@ add_executable(cumetal_runtime_device_properties_ext_test
     runtime_device_properties_ext_test.cpp
 )
 
+add_executable(cumetal_runtime_malloc_pitch_test
+    runtime_malloc_pitch_test.cpp
+)
+
+add_executable(cumetal_runtime_peer_access_test
+    runtime_peer_access_test.cpp
+)
+
+add_executable(cumetal_runtime_stream_priority_test
+    runtime_stream_priority_test.cpp
+)
+
+add_executable(cumetal_runtime_cooperative_groups_grid_test
+    runtime_cooperative_groups_grid_test.cpp
+)
+
 add_executable(cumetal_runtime_axpy_offset_test
     runtime_axpy_offset_test.cpp
 )
@@ -658,6 +674,26 @@ target_link_libraries(cumetal_runtime_device_attribute_ext_test
 )
 
 target_link_libraries(cumetal_runtime_device_properties_ext_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_malloc_pitch_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_peer_access_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_stream_priority_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_cooperative_groups_grid_test
     PRIVATE
         cumetal_runtime
 )
@@ -1209,6 +1245,34 @@ target_compile_options(cumetal_runtime_device_properties_ext_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_runtime_malloc_pitch_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_peer_access_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_stream_priority_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_cooperative_groups_grid_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_runtime_axpy_offset_test
     PRIVATE
         -Wall
@@ -1748,6 +1812,26 @@ add_test(
 add_test(
     NAME functional_runtime_device_properties_ext
     COMMAND cumetal_runtime_device_properties_ext_test
+)
+
+add_test(
+    NAME functional_runtime_malloc_pitch
+    COMMAND cumetal_runtime_malloc_pitch_test
+)
+
+add_test(
+    NAME functional_runtime_peer_access
+    COMMAND cumetal_runtime_peer_access_test
+)
+
+add_test(
+    NAME functional_runtime_stream_priority
+    COMMAND cumetal_runtime_stream_priority_test
+)
+
+add_test(
+    NAME functional_runtime_cooperative_groups_grid
+    COMMAND cumetal_runtime_cooperative_groups_grid_test
 )
 
 add_test(
