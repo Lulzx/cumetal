@@ -3106,6 +3106,16 @@ cudaError_t cudaFuncSetSharedMemConfig(const void* /*func*/, cudaSharedMemConfig
     return fail(cudaSuccess);
 }
 
+// No-op: Metal has no per-function attribute knobs corresponding to CUDA's.
+// cudaFuncAttributeMaxDynamicSharedMemorySize is validated at launch time instead.
+cudaError_t cudaFuncSetAttribute(const void* /*func*/, cudaFuncAttribute attr, int /*value*/) {
+    if (attr != cudaFuncAttributeMaxDynamicSharedMemorySize &&
+        attr != cudaFuncAttributePreferredSharedMemoryCarveout) {
+        return fail(cudaErrorInvalidValue);
+    }
+    return fail(cudaSuccess);
+}
+
 // Pointer attribute query — classifies a pointer as host, device, or managed.
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr) {
     if (attributes == nullptr) {

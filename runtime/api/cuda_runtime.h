@@ -383,6 +383,13 @@ cudaError_t cudaProfilerStop(void);
 cudaError_t cudaFuncGetAttributes(cudaFuncAttributes* attr, const void* func);
 cudaError_t cudaFuncSetCacheConfig(const void* func, cudaFuncCache cacheConfig);
 cudaError_t cudaFuncSetSharedMemConfig(const void* func, cudaSharedMemConfig config);
+// cudaFuncAttribute: per-function attributes that programs may set.
+// Metal has no per-function register limits; accepted as no-ops.
+typedef enum cudaFuncAttribute {
+    cudaFuncAttributeMaxDynamicSharedMemorySize = 8,
+    cudaFuncAttributePreferredSharedMemoryCarveout = 9,
+} cudaFuncAttribute;
+cudaError_t cudaFuncSetAttribute(const void* func, cudaFuncAttribute attr, int value);
 cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
                                                           const void* func,
                                                           int blockSize,
