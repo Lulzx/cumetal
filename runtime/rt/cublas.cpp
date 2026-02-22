@@ -1009,6 +1009,69 @@ cublasStatus_t cublasDgemm(cublasHandle_t handle,
     return CUBLAS_STATUS_SUCCESS;
 }
 
+cublasStatus_t cublasDgemmStridedBatched(cublasHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m,
+                                         int n,
+                                         int k,
+                                         const double* alpha,
+                                         const double* a,
+                                         int lda,
+                                         long long int stridea,
+                                         const double* b,
+                                         int ldb,
+                                         long long int strideb,
+                                         const double* beta,
+                                         double* c,
+                                         int ldc,
+                                         long long int stridec,
+                                         int batch_count) {
+    if (handle == nullptr) {
+        return CUBLAS_STATUS_NOT_INITIALIZED;
+    }
+    if (!is_valid_operation(transa) || !is_valid_operation(transb)) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (m < 0 || n < 0 || k < 0 || batch_count < 0 || alpha == nullptr || beta == nullptr ||
+        stridea < 0 || strideb < 0 || stridec < 0) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+    if (batch_count == 0 || m == 0 || n == 0) {
+        return CUBLAS_STATUS_SUCCESS;
+    }
+    if (a == nullptr || b == nullptr || c == nullptr) {
+        return CUBLAS_STATUS_INVALID_VALUE;
+    }
+
+    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
+    if (sync_status != CUBLAS_STATUS_SUCCESS) {
+        return sync_status;
+    }
+
+    const double alpha_value = *alpha;
+    const double beta_value = *beta;
+    for (int batch = 0; batch < batch_count; ++batch) {
+        const double* a_batch = a + batch * stridea;
+        const double* b_batch = b + batch * strideb;
+        double* c_batch = c + batch * stridec;
+        for (int col = 0; col < n; ++col) {
+            for (int row = 0; row < m; ++row) {
+                double sum = 0.0;
+                for (int p = 0; p < k; ++p) {
+                    const double a_val = (transa == CUBLAS_OP_N) ? a_batch[row + p * lda]
+                                                                  : a_batch[p + row * lda];
+                    const double b_val = (transb == CUBLAS_OP_N) ? b_batch[p + col * ldb]
+                                                                  : b_batch[col + p * ldb];
+                    sum += a_val * b_val;
+                }
+                c_batch[row + col * ldc] = alpha_value * sum + beta_value * c_batch[row + col * ldc];
+            }
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
 cublasStatus_t cublasSgemv(cublasHandle_t handle,
                            cublasOperation_t trans,
                            int m,

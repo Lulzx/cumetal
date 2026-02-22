@@ -80,6 +80,10 @@ ctest --test-dir build -R functional_runtime_device_limits --output-on-failure
 ctest --test-dir build -R functional_runtime_printf --output-on-failure
 ctest --test-dir build -R functional_cufft_c2c --output-on-failure
 ctest --test-dir build -R functional_runtime_ptx_lowering_regression --output-on-failure
+ctest --test-dir build -R functional_runtime_matrix_mul_tiled --output-on-failure
+ctest --test-dir build -R functional_runtime_dynamic_shared --output-on-failure
+ctest --test-dir build -R functional_runtime_registration_printf --output-on-failure
+ctest --test-dir build -R functional_driver_extended_api --output-on-failure
 # binary-shim-only tests (`CUMETAL_ENABLE_BINARY_SHIM=ON`):
 ctest --test-dir build -R functional_runtime_registration_path --output-on-failure
 ctest --test-dir build -R functional_runtime_call_config_registration --output-on-failure
