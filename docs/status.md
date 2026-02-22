@@ -153,6 +153,28 @@ Supported runtime API subset:
 - `cudaDeviceSetSharedMemConfig`, `cudaDeviceGetSharedMemConfig` (no-op stubs)
 - `cudaGetSymbolAddress`, `cudaGetSymbolSize`
 - `cudaMemPrefetchAsync`, `cudaMemAdvise`, `cudaMemRangeGetAttribute` (meaningful no-ops on Apple Silicon UMA)
+- `cudaDeviceGetStreamPriorityRange` (returns 0,0 — Metal has no priority queues)
+- `cudaMemcpy2D`, `cudaMemcpy2DAsync`, `cudaMemset2D` (row-by-row on UMA)
+- `cudaMallocPitch` (aligned 2D allocation; pitch rounded to 512 bytes)
+- `cudaDeviceCanAccessPeer`, `cudaDeviceEnablePeerAccess`, `cudaDeviceDisablePeerAccess` (no-op stubs; single GPU)
+- `cuda_runtime_api.h` forwarding header (programs that include this directly)
+
+Device intrinsics added to `cuda_runtime.h`:
+- Type-punning: `__int_as_float`, `__float_as_int`, `__uint_as_float`, `__float_as_uint`, `__longlong_as_double`, `__double_as_longlong`
+- Integer: `__mulhi`, `__umulhi`, `__mul24`, `__umul24`, `__sad`, `__usad`
+- Fast math: `__sinf`, `__cosf`, `__tanf`, `__expf`, `__exp2f`, `__logf`, `__log2f`, `__log10f`, `__powf`, `__sqrtf`, `__rsqrtf`, `__fdividef`, `__frcp_rn`, `__fsqrt_rn`
+- Lane masks: `__lanemask_eq`, `__lanemask_lt`, `__lanemask_le`, `__lanemask_gt`, `__lanemask_ge`
+- Warp reductions: `__reduce_add_sync`, `__reduce_and_sync`, `__reduce_or_sync`, `__reduce_xor_sync`, `__reduce_min_sync`, `__reduce_max_sync`
+- Double atomics: `atomicAdd(double*, double)` via 64-bit CAS loop
+
+`cuda_fp16.h` expanded:
+- Comparison: `__hge`, `__hle`
+- Math: `__hfma`, `__hneg`, `__habs`, `__hmax`, `__hmin`
+- Conversions: `__half2int_rn`, `__half2uint_rn`, `__half2short_rn`, `__half2ll_rn`, `__int2half_rn`, `__uint2half_rn`, `__short2half_rn`, `__ll2half_rn`
+
+Driver API additions:
+- `cuMemAllocPitch`, `cuCtxEnablePeerAccess`, `cuCtxDisablePeerAccess`
+- `cuCtxGetStreamPriorityRange` (returns 0,0)
 
 `cudaDeviceProp` fields now populated per spec §6.8:
 - `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
