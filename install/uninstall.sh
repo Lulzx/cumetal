@@ -2,10 +2,18 @@
 set -euo pipefail
 
 PREFIX="${1:-/opt/cumetal}"
-SHELL_RC="${CUMETAL_SHELL_RC:-${HOME}/.zshrc}"
 
 MARKER_BEGIN="# >>> cumetal >>>"
 MARKER_END="# <<< cumetal <<<"
+
+# Mirror the shell detection logic from install.sh.
+if [[ -n "${CUMETAL_SHELL_RC:-}" ]]; then
+  SHELL_RC="$CUMETAL_SHELL_RC"
+elif [[ "${SHELL:-}" == */fish ]]; then
+  SHELL_RC="${HOME}/.config/fish/config.fish"
+else
+  SHELL_RC="${HOME}/.zshrc"
+fi
 
 rm -f "$PREFIX/bin/air_inspect"
 rm -f "$PREFIX/bin/air_validate"

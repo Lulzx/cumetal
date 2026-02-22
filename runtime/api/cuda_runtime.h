@@ -96,10 +96,64 @@ typedef struct __align__(16) float4 {
     float w;
 } float4;
 
+// ── CUDA vector types ────────────────────────────────────────────────────────
+// Signed integer vectors
+typedef struct { char x, y; }             char2;
+typedef struct { char x, y, z; }          char3;
+typedef struct { char x, y, z, w; }       char4;
+typedef struct { short x, y; }            short2;
+typedef struct { short x, y, z; }         short3;
+typedef struct { short x, y, z, w; }      short4;
+typedef struct { int x, y; }              int2;
+typedef struct { int x, y, z; }           int3;
+typedef struct __align__(16) { int x, y, z, w; } int4;
+typedef struct { long int x, y; }         long2;
+typedef struct { long int x, y, z, w; }   long4;
+typedef struct { long long int x, y; }    longlong2;
+typedef struct { long long int x, y, z, w; } longlong4;
+// Unsigned integer vectors
+typedef struct { unsigned char x, y; }           uchar2;
+typedef struct { unsigned char x, y, z; }         uchar3;
+typedef struct { unsigned char x, y, z, w; }      uchar4;
+typedef struct { unsigned short x, y; }           ushort2;
+typedef struct { unsigned short x, y, z; }        ushort3;
+typedef struct { unsigned short x, y, z, w; }     ushort4;
+typedef struct { unsigned int x, y; }                        uint2;
+typedef struct __align__(16) { unsigned int x, y, z, w; }   uint4;  // uint3 already defined above
+typedef struct { unsigned long int x, y; }        ulong2;
+typedef struct { unsigned long int x, y, z, w; }  ulong4;
+typedef struct { unsigned long long int x, y; }   ulonglong2;
+typedef struct { unsigned long long int x, y, z, w; } ulonglong4;
+// Floating-point vectors
+typedef struct { float x, y; }   float2;
+typedef struct { float x, y, z; } float3;
+typedef struct { double x, y; }  double2;
+typedef struct { double x, y, z; } double3;
+typedef struct { double x, y, z, w; } double4;
+
 #ifdef __cplusplus
-static inline constexpr float4 make_float4(float x, float y, float z, float w) {
-    return float4{x, y, z, w};
-}
+static inline constexpr char2   make_char2(char x, char y)   { return {x, y}; }
+static inline constexpr char4   make_char4(char x, char y, char z, char w) { return {x,y,z,w}; }
+static inline constexpr short2  make_short2(short x, short y) { return {x, y}; }
+static inline constexpr short4  make_short4(short x, short y, short z, short w) { return {x,y,z,w}; }
+static inline constexpr int2    make_int2(int x, int y)       { return {x, y}; }
+static inline constexpr int3    make_int3(int x, int y, int z) { return {x, y, z}; }
+static inline constexpr int4    make_int4(int x, int y, int z, int w) { return {x,y,z,w}; }
+static inline constexpr long2   make_long2(long int x, long int y) { return {x, y}; }
+static inline constexpr longlong2 make_longlong2(long long int x, long long int y) { return {x, y}; }
+static inline constexpr uchar2  make_uchar2(unsigned char x, unsigned char y) { return {x, y}; }
+static inline constexpr uchar4  make_uchar4(unsigned char x, unsigned char y, unsigned char z, unsigned char w) { return {x,y,z,w}; }
+static inline constexpr ushort2 make_ushort2(unsigned short x, unsigned short y) { return {x, y}; }
+static inline constexpr ushort4 make_ushort4(unsigned short x, unsigned short y, unsigned short z, unsigned short w) { return {x,y,z,w}; }
+static inline constexpr uint2   make_uint2(unsigned int x, unsigned int y) { return {x, y}; }
+static inline constexpr uint4   make_uint4(unsigned int x, unsigned int y, unsigned int z, unsigned int w) { return {x,y,z,w}; }
+static inline constexpr ulong2  make_ulong2(unsigned long int x, unsigned long int y) { return {x, y}; }
+static inline constexpr ulonglong2 make_ulonglong2(unsigned long long int x, unsigned long long int y) { return {x, y}; }
+static inline constexpr float2  make_float2(float x, float y) { return {x, y}; }
+static inline constexpr float3  make_float3(float x, float y, float z) { return {x, y, z}; }
+static inline constexpr float4  make_float4(float x, float y, float z, float w) { return {x,y,z,w}; }
+static inline constexpr double2 make_double2(double x, double y) { return {x, y}; }
+static inline constexpr double4 make_double4(double x, double y, double z, double w) { return {x,y,z,w}; }
 #endif
 
 typedef struct cudaDeviceProp {
@@ -410,21 +464,135 @@ static __device__ __forceinline__ void __stcs(T* ptr, T value) {
     *ptr = value;
 }
 
+// ── Atomic operations ────────────────────────────────────────────────────────
+
 static __device__ __forceinline__ float atomicAdd(float* ptr, float val) {
     return __fAtomicAdd(ptr, val);
 }
-
 static __device__ __forceinline__ int atomicAdd(int* ptr, int val) {
     return __iAtomicAdd(ptr, val);
 }
-
 static __device__ __forceinline__ unsigned int atomicAdd(unsigned int* ptr, unsigned int val) {
     return __uAtomicAdd(ptr, val);
 }
-
 static __device__ __forceinline__ unsigned long long atomicAdd(unsigned long long* ptr,
                                                                 unsigned long long val) {
     return __ullAtomicAdd(ptr, val);
 }
 
-#endif
+static __device__ __forceinline__ int atomicSub(int* ptr, int val) {
+    return __iAtomicAdd(ptr, -val);
+}
+static __device__ __forceinline__ unsigned int atomicSub(unsigned int* ptr, unsigned int val) {
+    return __uAtomicAdd(ptr, static_cast<unsigned int>(-static_cast<int>(val)));
+}
+
+static __device__ __forceinline__ int atomicExch(int* ptr, int val) {
+    return __iAtomicExch(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicExch(unsigned int* ptr, unsigned int val) {
+    return __uAtomicExch(ptr, val);
+}
+static __device__ __forceinline__ float atomicExch(float* ptr, float val) {
+    return __fAtomicExch(ptr, val);
+}
+
+static __device__ __forceinline__ int atomicMin(int* ptr, int val) {
+    return __iAtomicMin(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicMin(unsigned int* ptr, unsigned int val) {
+    return __uAtomicMin(ptr, val);
+}
+
+static __device__ __forceinline__ int atomicMax(int* ptr, int val) {
+    return __iAtomicMax(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicMax(unsigned int* ptr, unsigned int val) {
+    return __uAtomicMax(ptr, val);
+}
+
+static __device__ __forceinline__ unsigned int atomicCAS(unsigned int* ptr,
+                                                          unsigned int cmp,
+                                                          unsigned int val) {
+    return __uAtomicCAS(ptr, cmp, val);
+}
+static __device__ __forceinline__ int atomicCAS(int* ptr, int cmp, int val) {
+    return __iAtomicCAS(ptr, cmp, val);
+}
+static __device__ __forceinline__ unsigned long long atomicCAS(unsigned long long* ptr,
+                                                                unsigned long long cmp,
+                                                                unsigned long long val) {
+    return __ullAtomicCAS(ptr, cmp, val);
+}
+
+static __device__ __forceinline__ int atomicAnd(int* ptr, int val) {
+    return __iAtomicAnd(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicAnd(unsigned int* ptr, unsigned int val) {
+    return __uAtomicAnd(ptr, val);
+}
+
+static __device__ __forceinline__ int atomicOr(int* ptr, int val) {
+    return __iAtomicOr(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicOr(unsigned int* ptr, unsigned int val) {
+    return __uAtomicOr(ptr, val);
+}
+
+static __device__ __forceinline__ int atomicXor(int* ptr, int val) {
+    return __iAtomicXor(ptr, val);
+}
+static __device__ __forceinline__ unsigned int atomicXor(unsigned int* ptr, unsigned int val) {
+    return __uAtomicXor(ptr, val);
+}
+
+// ── Synchronization, memory fences, bit ops, FMA ────────────────────────────
+// Only define when clang's __clang_cuda_device_functions.h hasn't already
+// provided these (it uses the guard __CLANG_CUDA_DEVICE_FUNCTIONS_H__).
+#ifndef __CLANG_CUDA_DEVICE_FUNCTIONS_H__
+
+static __device__ __forceinline__ void __syncwarp(unsigned int mask = 0xffffffffu) {
+    __nvvm_bar_warp_sync(mask);
+}
+
+static __device__ __forceinline__ void __threadfence(void) { __nvvm_membar_gl(); }
+static __device__ __forceinline__ void __threadfence_block(void) { __nvvm_membar_cta(); }
+static __device__ __forceinline__ void __threadfence_system(void) { __nvvm_membar_sys(); }
+
+static __device__ __forceinline__ unsigned int __activemask(void) {
+    return __nvvm_activemask();
+}
+
+// Bit manipulation intrinsics
+static __device__ __forceinline__ int __popc(unsigned int x) {
+    return __builtin_popcount(x);
+}
+static __device__ __forceinline__ int __popcll(unsigned long long x) {
+    return __builtin_popcountll(x);
+}
+static __device__ __forceinline__ int __clz(int x) {
+    return x == 0 ? 32 : __builtin_clz(static_cast<unsigned int>(x));
+}
+static __device__ __forceinline__ int __clzll(long long x) {
+    return x == 0 ? 64 : __builtin_clzll(static_cast<unsigned long long>(x));
+}
+static __device__ __forceinline__ unsigned int __brev(unsigned int x) {
+    return __builtin_bitreverse32(x);
+}
+static __device__ __forceinline__ unsigned long long __brevll(unsigned long long x) {
+    return __builtin_bitreverse64(x);
+}
+static __device__ __forceinline__ int __ffs(int x) { return __builtin_ffs(x); }
+static __device__ __forceinline__ int __ffsll(long long x) { return __builtin_ffsll(x); }
+
+// FMA helpers
+static __device__ __forceinline__ float __fmaf_rn(float x, float y, float z) {
+    return __builtin_fmaf(x, y, z);
+}
+static __device__ __forceinline__ double __fma_rn(double x, double y, double z) {
+    return __builtin_fma(x, y, z);
+}
+
+#endif  // !__CLANG_CUDA_DEVICE_FUNCTIONS_H__
+
+#endif  // device code section

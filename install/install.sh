@@ -3,10 +3,23 @@ set -euo pipefail
 
 BUILD_DIR="${1:-build}"
 PREFIX="${2:-/opt/cumetal}"
-SHELL_RC="${CUMETAL_SHELL_RC:-${HOME}/.zshrc}"
 
 MARKER_BEGIN="# >>> cumetal >>>"
 MARKER_END="# <<< cumetal <<<"
+
+# Detect shell and pick the right config file + syntax.
+# CUMETAL_SHELL_RC overrides auto-detection.
+if [[ -n "${CUMETAL_SHELL_RC:-}" ]]; then
+  SHELL_RC="$CUMETAL_SHELL_RC"
+  IS_FISH=0
+  if [[ "$SHELL_RC" == *config.fish ]]; then IS_FISH=1; fi
+elif [[ "${SHELL:-}" == */fish ]]; then
+  SHELL_RC="${HOME}/.config/fish/config.fish"
+  IS_FISH=1
+else
+  SHELL_RC="${HOME}/.zshrc"
+  IS_FISH=0
+fi
 
 if [[ ! -d "$BUILD_DIR" ]]; then
   echo "build directory not found: $BUILD_DIR" >&2
@@ -30,12 +43,21 @@ if grep -qF "$MARKER_BEGIN" "$SHELL_RC"; then
   mv "$tmp" "$SHELL_RC"
 fi
 
-cat >> "$SHELL_RC" <<EOF
+if [[ "$IS_FISH" -eq 1 ]]; then
+  cat >> "$SHELL_RC" <<EOF
+$MARKER_BEGIN
+set -gx PATH "$PREFIX/bin" \$PATH
+set -gx DYLD_FALLBACK_LIBRARY_PATH "$PREFIX/lib" \$DYLD_FALLBACK_LIBRARY_PATH
+$MARKER_END
+EOF
+else
+  cat >> "$SHELL_RC" <<EOF
 $MARKER_BEGIN
 export PATH="$PREFIX/bin:\$PATH"
 export DYLD_FALLBACK_LIBRARY_PATH="$PREFIX/lib:\${DYLD_FALLBACK_LIBRARY_PATH:-}"
 $MARKER_END
 EOF
+fi
 
 echo "Installed CuMetal to $PREFIX"
 echo "Updated $SHELL_RC with CuMetal environment settings"
