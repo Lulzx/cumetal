@@ -337,6 +337,25 @@ cudaError_t cudaMemcpyFromSymbolAsync(void* dst,
                                       cudaStream_t stream);
 cudaError_t cudaMemset(void* dev_ptr, int value, size_t count);
 cudaError_t cudaMemsetAsync(void* dev_ptr, int value, size_t count, cudaStream_t stream);
+// Unified Memory advisory APIs — no-ops on Apple Silicon UMA (all memory is already managed).
+typedef enum cudaMemoryAdvise {
+    cudaMemAdviseSetReadMostly = 1,
+    cudaMemAdviseUnsetReadMostly = 2,
+    cudaMemAdviseSetPreferredLocation = 3,
+    cudaMemAdviseUnsetPreferredLocation = 4,
+    cudaMemAdviseSetAccessedBy = 5,
+    cudaMemAdviseUnsetAccessedBy = 6,
+} cudaMemoryAdvise;
+typedef enum cudaMemRangeAttribute {
+    cudaMemRangeAttributeReadMostly = 1,
+    cudaMemRangeAttributePreferredLocation = 2,
+    cudaMemRangeAttributeAccessedBy = 3,
+    cudaMemRangeAttributeLastPrefetchLocation = 4,
+} cudaMemRangeAttribute;
+cudaError_t cudaMemPrefetchAsync(const void* devPtr, size_t count, int dstDevice, cudaStream_t stream);
+cudaError_t cudaMemAdvise(const void* devPtr, size_t count, cudaMemoryAdvise advice, int device);
+cudaError_t cudaMemRangeGetAttribute(void* data, size_t dataSize, cudaMemRangeAttribute attribute,
+                                     const void* devPtr, size_t count);
 cudaError_t cudaDeviceReset(void);
 cudaError_t cudaStreamCreate(cudaStream_t* stream);
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flags);

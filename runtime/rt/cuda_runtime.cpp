@@ -3163,6 +3163,44 @@ cudaError_t cudaGetSymbolSize(size_t* /*size*/, const void* symbol) {
     return fail(cudaErrorInvalidValue);
 }
 
+// Unified Memory advisory APIs — no-ops on Apple Silicon UMA.
+// Prefetch hints, locality advice, and access pattern hints have no effect when
+// CPU and GPU share the same physical memory (UMA).
+cudaError_t cudaMemPrefetchAsync(const void* /*devPtr*/,
+                                  size_t /*count*/,
+                                  int /*dstDevice*/,
+                                  cudaStream_t /*stream*/) {
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemAdvise(const void* /*devPtr*/,
+                           size_t /*count*/,
+                           cudaMemoryAdvise /*advice*/,
+                           int /*device*/) {
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemRangeGetAttribute(void* data,
+                                      size_t dataSize,
+                                      cudaMemRangeAttribute attribute,
+                                      const void* /*devPtr*/,
+                                      size_t /*count*/) {
+    if (data == nullptr || dataSize == 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+    // On UMA: read-mostly is effectively always on; preferred location is device 0.
+    if (attribute == cudaMemRangeAttributeReadMostly && dataSize >= sizeof(int)) {
+        *reinterpret_cast<int*>(data) = 1;
+    } else if (attribute == cudaMemRangeAttributePreferredLocation && dataSize >= sizeof(int)) {
+        *reinterpret_cast<int*>(data) = 0;  // device 0
+    } else if (attribute == cudaMemRangeAttributeLastPrefetchLocation && dataSize >= sizeof(int)) {
+        *reinterpret_cast<int*>(data) = 0;
+    } else if (dataSize >= sizeof(int)) {
+        *reinterpret_cast<int*>(data) = 0;
+    }
+    return fail(cudaSuccess);
+}
+
 // Pointer attribute query — classifies a pointer as host, device, or managed.
 cudaError_t cudaPointerGetAttributes(cudaPointerAttributes* attributes, const void* ptr) {
     if (attributes == nullptr) {
