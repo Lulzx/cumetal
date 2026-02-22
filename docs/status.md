@@ -154,6 +154,23 @@ Supported runtime API subset:
 - `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
 - `maxBufferArguments = 31` (Metal buffer argument limit)
 
+CUDA vector types added to `cuda_runtime.h`:
+- All standard types: `char2/3/4`, `short2/3/4`, `int2/3/4`, `uint2/4`,
+  `long2/4`, `longlong2/4`, `ulong2/4`, `ulonglong2/4`,
+  `float2/3`, `double2/3/4` with `__align__` annotations and `make_*` constructors
+
+Device atomics added (CUDA device code path, spec §6.7):
+- `atomicSub`, `atomicExch` (int/uint/float), `atomicMin`/`atomicMax` (int/uint),
+  `atomicCAS` (uint/int/ull), `atomicAnd`/`atomicOr`/`atomicXor` (int/uint)
+
+Device intrinsics added (guarded by `#ifndef __CLANG_CUDA_DEVICE_FUNCTIONS_H__`):
+- `__syncwarp`, `__threadfence`, `__threadfence_block`, `__threadfence_system`
+- `__activemask`, `__popc`/`__popcll`, `__clz`/`__clzll`, `__brev`/`__brevll`
+- `__ffs`/`__ffsll`, `__fmaf_rn`, `__fma_rn`
+
+`install.sh` / `uninstall.sh` now detect fish shell (`$SHELL=*/fish`) and write
+`set -gx` syntax to `~/.config/fish/config.fish`; `CUMETAL_SHELL_RC` overrides.
+
 Supported driver API subset:
 
 - `cuInit`, `cuDriverGetVersion`, `cuDeviceGetCount`, `cuDeviceGet`, `cuDeviceGetName`, `cuDeviceTotalMem`, `cuDeviceGetAttribute`
