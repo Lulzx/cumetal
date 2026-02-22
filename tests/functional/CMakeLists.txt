@@ -251,6 +251,14 @@ add_executable(cumetal_driver_stream_wait_event_test
     driver_stream_wait_event_test.cpp
 )
 
+add_executable(cumetal_driver_launch_host_func_test
+    driver_launch_host_func_test.cpp
+)
+
+add_executable(cumetal_runtime_device_attribute_ext_test
+    runtime_device_attribute_ext_test.cpp
+)
+
 add_executable(cumetal_runtime_axpy_offset_test
     runtime_axpy_offset_test.cpp
 )
@@ -631,6 +639,16 @@ target_link_libraries(cumetal_driver_launch_extra_scalar_test
 )
 
 target_link_libraries(cumetal_driver_stream_wait_event_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_driver_launch_host_func_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_runtime_device_attribute_ext_test
     PRIVATE
         cumetal_runtime
 )
@@ -1161,6 +1179,20 @@ target_compile_options(cumetal_driver_stream_wait_event_test
         -Wpedantic
 )
 
+target_compile_options(cumetal_driver_launch_host_func_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_runtime_device_attribute_ext_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 target_compile_options(cumetal_runtime_axpy_offset_test
     PRIVATE
         -Wall
@@ -1685,6 +1717,16 @@ set_tests_properties(functional_driver_stream_per_thread PROPERTIES SKIP_RETURN_
 add_test(
     NAME functional_driver_stream_callback
     COMMAND cumetal_driver_stream_callback_test
+)
+
+add_test(
+    NAME functional_driver_launch_host_func
+    COMMAND cumetal_driver_launch_host_func_test
+)
+
+add_test(
+    NAME functional_runtime_device_attribute_ext
+    COMMAND cumetal_runtime_device_attribute_ext_test
 )
 
 add_test(

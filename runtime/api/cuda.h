@@ -66,6 +66,7 @@ typedef enum CUresult {
 } CUresult;
 
 typedef void (*CUstreamCallback)(CUstream hStream, CUresult status, void* userData);
+typedef void (*CUhostFn)(void* userData);
 
 typedef enum CUdevice_attribute {
     CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 1,
@@ -113,6 +114,7 @@ CUresult cuStreamAddCallback(CUstream hStream,
                              void* userData,
                              unsigned int flags);
 CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags);
+CUresult cuLaunchHostFunc(CUstream hStream, CUhostFn fn, void* userData);
 
 CUresult cuEventCreate(CUevent* phEvent, unsigned int flags);
 CUresult cuEventDestroy(CUevent hEvent);

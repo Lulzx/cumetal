@@ -922,6 +922,34 @@ CUresult cuStreamWaitEvent(CUstream hStream, CUevent hEvent, unsigned int flags)
                                               flags));
 }
 
+CUresult cuLaunchHostFunc(CUstream hStream, CUhostFn fn, void* userData) {
+    if (fn == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    const CUresult ready = require_initialized_context();
+    if (ready != CUDA_SUCCESS) {
+        return ready;
+    }
+    // Wrap CUhostFn as a stream callback.
+    struct Payload {
+        CUhostFn fn;
+        void* userData;
+    };
+    auto* payload = new Payload{fn, userData};
+    auto wrapper = [](cudaStream_t, cudaError_t, void* arg) {
+        auto* p = static_cast<Payload*>(arg);
+        p->fn(p->userData);
+        delete p;
+    };
+    cudaError_t status = cudaStreamAddCallback(reinterpret_cast<cudaStream_t>(hStream),
+                                               wrapper, payload, 0);
+    if (status != cudaSuccess) {
+        delete payload;
+        return map_cuda_error(status);
+    }
+    return CUDA_SUCCESS;
+}
+
 CUresult cuEventCreate(CUevent* phEvent, unsigned int flags) {
     const CUresult ready = require_initialized_context();
     if (ready != CUDA_SUCCESS) {
