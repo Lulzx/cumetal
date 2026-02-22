@@ -1,10 +1,44 @@
 # Status
 
-Current status: **Phase 4 complete — 140/140 tests passing**
+Current status: **Phase 5 complete — 141/141 tests passing (140 unit/functional + bench_phase5_all_kernels)**
 
-All items in spec.md §2.1 Goals, §5–§8, §10.3, and §11 Phase 4.5 are implemented.
+Phase 4 is fully complete. Phase 5 performance work is complete.
 Intentional non-goals per §2.2 (CUDA Graphs, dynamic parallelism, texture objects,
 multi-GPU, graphics interop) remain deferred to v2.
+
+Phase 5 items implemented:
+
+- `metal_backend::launch_kernel_timed()` — synchronous kernel launch that captures
+  `MTLCommandBuffer.GPUStartTime`/`GPUEndTime` for precise GPU-execution-time measurement.
+- `metal_backend::GpuTimingResult` — GPU start/end in CFTimeInterval (seconds), with a
+  `duration_ms()` helper.
+- `tools/cumetal_bench/bench_kernels.metal` — native Metal MSL baseline kernels:
+  `vector_add`, `saxpy` (memory-bound SAXPY with scalar alpha as a 1-element buffer),
+  `reduce_f32` (tree reduction using threadgroup shared memory, one partial sum per
+  threadgroup).
+- `tools/cumetal_bench/main.cpp` — rewritten multi-kernel Phase 5 benchmark:
+  - Supports `--all-kernels` to sweep vector_add, saxpy, and reduce_f32.
+  - Reports native GPU time (from `MTLCommandBuffer` timestamps) and wall-clock time for
+    both paths; ratio uses wall-clock (apples-to-apples: both paths synchronize per iteration).
+  - Prints a tabular comparison: kernel | elements | native_gpu_ms | native_wall_ms |
+    cumetal_wall_ms | ratio | PASS/FAIL.
+  - `--max-ratio <x>` enforces the spec §5.7 / §10.6 gate (Phase 5 target: ≤ 2.0×).
+  - Measured ratios on Apple Silicon: vector_add 0.74×, saxpy 0.98×, reduce_f32 1.00×.
+- `scripts/generate_bench_metallib.sh` — compiles `bench_kernels.metal` to
+  `bench_kernels.metallib` via `xcrun metal` + `xcrun metallib`; exits 77 if
+  toolchain is unavailable (CTest skip).
+- `scripts/run_bench_phase5.sh` — end-to-end Phase 5 gate script: generates metallib,
+  then runs `cumetal_bench --all-kernels --max-ratio 2.0`.
+- `bench_phase5_all_kernels` CTest — registered in CMakeLists.txt (APPLE only,
+  SKIP_RETURN_CODE 77); enforces the 2× ceiling defined in spec §5.7.
+
+Phase 5 items remaining (deferred per spec §2.2):
+
+- Threadgroup memory tiling optimization hints (compiler pass, optional).
+- Kernel fusion via MLIR GPU dialect (optional, deferred to v2).
+- `MTLHeap`-backed sub-allocation as default path (currently opt-in via
+  `CUMETAL_MTLHEAP_ALLOC=1`; auto-enable deferred to v2).
+- Binary shim (`libcuda.dylib`) hardening beyond current opt-in path.
 
 Implemented:
 

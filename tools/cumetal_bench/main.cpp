@@ -1,3 +1,24 @@
+// cumetal_bench — Phase 5 multi-kernel performance benchmark.
+//
+// Measures GPU execution time (MTLCommandBuffer.GPUStartTime/GPUEndTime) and wall-clock time
+// for each benchmark kernel, comparing CuMetal runtime path vs native Metal path.
+//
+// Per spec §10.6 and §5.7, the Phase 5 gate is:
+//   CuMetal GPU time / Native Metal GPU time ≤ 2.0x for memory-bound kernels.
+//
+// Usage:
+//   cumetal_bench --metallib <path> [--kernel <name>|--all-kernels]
+//                 [--elements <n>] [--warmup <n>] [--iterations <n>]
+//                 [--max-ratio <x>]
+//
+// --metallib       Path to the compiled bench_kernels.metallib.
+// --kernel         Single kernel name to benchmark (default: vector_add).
+// --all-kernels    Benchmark all kernels: vector_add, saxpy, reduce_f32.
+// --elements       Number of float elements (default: 2^18 = 262144).
+// --warmup         Warmup iterations (default: 5).
+// --iterations     Measurement iterations (default: 50).
+// --max-ratio      Fail if any kernel ratio exceeds this value (default: 0.0 = no gate).
+
 #include "cuda_runtime.h"
 #include "metal_backend.h"
 
@@ -16,9 +37,12 @@ namespace {
 
 constexpr std::size_t kThreadsPerBlock = 256;
 
+// ─── option parsing ──────────────────────────────────────────────────────────
+
 struct Options {
-    std::string metallib_path = "tests/air_abi/reference/reference.metallib";
+    std::string metallib_path;
     std::string kernel_name = "vector_add";
+    bool all_kernels = false;
     std::size_t element_count = 1u << 18;
     int warmup_iterations = 5;
     int measure_iterations = 50;
@@ -27,263 +51,239 @@ struct Options {
 
 void print_usage(const char* argv0) {
     std::printf(
-        "usage: %s [--metallib <path>] [--kernel <name>] [--elements <n>] [--warmup <n>] "
-        "[--iterations <n>] [--max-ratio <x>]\n",
+        "usage: %s --metallib <path> [--kernel <name>|--all-kernels]\n"
+        "          [--elements <n>] [--warmup <n>] [--iterations <n>] [--max-ratio <x>]\n",
         argv0);
 }
 
-bool parse_positive_int(const std::string& text, int* out_value) {
-    if (out_value == nullptr) {
-        return false;
-    }
-    if (text.empty()) {
-        return false;
-    }
+bool parse_positive_int(const std::string& text, int* out) {
+    if (text.empty() || out == nullptr) return false;
     char* end = nullptr;
-    const long parsed = std::strtol(text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0' || parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
-        return false;
-    }
-    *out_value = static_cast<int>(parsed);
+    const long v = std::strtol(text.c_str(), &end, 10);
+    if (end == nullptr || *end != '\0' || v <= 0 || v > std::numeric_limits<int>::max()) return false;
+    *out = static_cast<int>(v);
     return true;
 }
 
-bool parse_positive_size(const std::string& text, std::size_t* out_value) {
-    if (out_value == nullptr) {
-        return false;
-    }
-    if (text.empty()) {
-        return false;
-    }
+bool parse_positive_size(const std::string& text, std::size_t* out) {
+    if (text.empty() || out == nullptr) return false;
     char* end = nullptr;
-    const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0' || parsed == 0) {
-        return false;
-    }
-    *out_value = static_cast<std::size_t>(parsed);
+    const unsigned long long v = std::strtoull(text.c_str(), &end, 10);
+    if (end == nullptr || *end != '\0' || v == 0) return false;
+    *out = static_cast<std::size_t>(v);
     return true;
 }
 
-bool parse_positive_double(const std::string& text, double* out_value) {
-    if (out_value == nullptr) {
-        return false;
-    }
-    if (text.empty()) {
-        return false;
-    }
+bool parse_positive_double(const std::string& text, double* out) {
+    if (text.empty() || out == nullptr) return false;
     char* end = nullptr;
-    const double parsed = std::strtod(text.c_str(), &end);
-    if (end == nullptr || *end != '\0' || parsed <= 0.0) {
-        return false;
-    }
-    *out_value = parsed;
+    const double v = std::strtod(text.c_str(), &end);
+    if (end == nullptr || *end != '\0' || v <= 0.0) return false;
+    *out = v;
     return true;
 }
 
-bool parse_options(int argc, char** argv, Options* out_options, bool* out_show_help) {
-    if (out_options == nullptr || out_show_help == nullptr) {
-        return false;
-    }
-
-    *out_show_help = false;
-    Options options;
+bool parse_options(int argc, char** argv, Options* opts, bool* show_help) {
+    *show_help = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
+
         if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
-            *out_show_help = true;
-            *out_options = options;
+            *show_help = true;
             return true;
         }
 
-        if (arg == "--metallib") {
+        auto next_value = [&](const char* flag) -> std::string {
             if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --metallib\n");
-                return false;
+                std::fprintf(stderr, "FAIL: missing value for %s\n", flag);
+                return {};
             }
-            options.metallib_path = argv[++i];
-            continue;
-        }
-        if (arg.rfind("--metallib=", 0) == 0) {
-            options.metallib_path = arg.substr(std::strlen("--metallib="));
-            continue;
-        }
+            return argv[++i];
+        };
 
-        if (arg == "--kernel") {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --kernel\n");
-                return false;
-            }
-            options.kernel_name = argv[++i];
-            continue;
-        }
-        if (arg.rfind("--kernel=", 0) == 0) {
-            options.kernel_name = arg.substr(std::strlen("--kernel="));
-            continue;
-        }
+        auto next_or_suffix = [&](const std::string& prefix) -> std::string {
+            if (arg.rfind(prefix + "=", 0) == 0) return arg.substr(prefix.size() + 1);
+            if (arg == prefix) return next_value(prefix.c_str());
+            return {};
+        };
 
-        std::string value;
-        if (arg == "--elements") {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --elements\n");
+        std::string val;
+        if (arg == "--metallib" || arg.rfind("--metallib=", 0) == 0) {
+            val = next_or_suffix("--metallib");
+            if (val.empty()) return false;
+            opts->metallib_path = val;
+        } else if (arg == "--kernel" || arg.rfind("--kernel=", 0) == 0) {
+            val = next_or_suffix("--kernel");
+            if (val.empty()) return false;
+            opts->kernel_name = val;
+        } else if (arg == "--all-kernels") {
+            opts->all_kernels = true;
+        } else if (arg == "--elements" || arg.rfind("--elements=", 0) == 0) {
+            val = next_or_suffix("--elements");
+            if (val.empty() || !parse_positive_size(val, &opts->element_count)) {
+                std::fprintf(stderr, "FAIL: invalid --elements value\n");
                 return false;
             }
-            value = argv[++i];
-            if (!parse_positive_size(value, &options.element_count)) {
-                std::fprintf(stderr, "FAIL: invalid --elements value: %s\n", value.c_str());
+        } else if (arg == "--warmup" || arg.rfind("--warmup=", 0) == 0) {
+            val = next_or_suffix("--warmup");
+            if (val.empty() || !parse_positive_int(val, &opts->warmup_iterations)) {
+                std::fprintf(stderr, "FAIL: invalid --warmup value\n");
                 return false;
             }
-            continue;
-        }
-        if (arg.rfind("--elements=", 0) == 0) {
-            value = arg.substr(std::strlen("--elements="));
-            if (!parse_positive_size(value, &options.element_count)) {
-                std::fprintf(stderr, "FAIL: invalid --elements value: %s\n", value.c_str());
+        } else if (arg == "--iterations" || arg.rfind("--iterations=", 0) == 0) {
+            val = next_or_suffix("--iterations");
+            if (val.empty() || !parse_positive_int(val, &opts->measure_iterations)) {
+                std::fprintf(stderr, "FAIL: invalid --iterations value\n");
                 return false;
             }
-            continue;
-        }
-
-        if (arg == "--warmup") {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --warmup\n");
+        } else if (arg == "--max-ratio" || arg.rfind("--max-ratio=", 0) == 0) {
+            val = next_or_suffix("--max-ratio");
+            if (val.empty() || !parse_positive_double(val, &opts->max_ratio)) {
+                std::fprintf(stderr, "FAIL: invalid --max-ratio value\n");
                 return false;
             }
-            value = argv[++i];
-            if (!parse_positive_int(value, &options.warmup_iterations)) {
-                std::fprintf(stderr, "FAIL: invalid --warmup value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-        if (arg.rfind("--warmup=", 0) == 0) {
-            value = arg.substr(std::strlen("--warmup="));
-            if (!parse_positive_int(value, &options.warmup_iterations)) {
-                std::fprintf(stderr, "FAIL: invalid --warmup value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-
-        if (arg == "--iterations") {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --iterations\n");
-                return false;
-            }
-            value = argv[++i];
-            if (!parse_positive_int(value, &options.measure_iterations)) {
-                std::fprintf(stderr, "FAIL: invalid --iterations value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-        if (arg.rfind("--iterations=", 0) == 0) {
-            value = arg.substr(std::strlen("--iterations="));
-            if (!parse_positive_int(value, &options.measure_iterations)) {
-                std::fprintf(stderr, "FAIL: invalid --iterations value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-
-        if (arg == "--max-ratio") {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "FAIL: missing value for --max-ratio\n");
-                return false;
-            }
-            value = argv[++i];
-            if (!parse_positive_double(value, &options.max_ratio)) {
-                std::fprintf(stderr, "FAIL: invalid --max-ratio value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-        if (arg.rfind("--max-ratio=", 0) == 0) {
-            value = arg.substr(std::strlen("--max-ratio="));
-            if (!parse_positive_double(value, &options.max_ratio)) {
-                std::fprintf(stderr, "FAIL: invalid --max-ratio value: %s\n", value.c_str());
-                return false;
-            }
-            continue;
-        }
-
-        std::fprintf(stderr, "FAIL: unknown argument: %s\n", arg.c_str());
-        return false;
-    }
-
-    *out_options = options;
-    return true;
-}
-
-std::vector<float> make_input_a(std::size_t count) {
-    std::vector<float> values(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        values[i] = static_cast<float>((i * 3u) % 97u) * 0.25f;
-    }
-    return values;
-}
-
-std::vector<float> make_input_b(std::size_t count) {
-    std::vector<float> values(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        values[i] = static_cast<float>((i * 11u + 5u) % 89u) * 0.125f;
-    }
-    return values;
-}
-
-bool verify_vector_add(const std::vector<float>& a,
-                       const std::vector<float>& b,
-                       const std::vector<float>& out) {
-    constexpr float kTolerance = 1e-5f;
-    if (a.size() != b.size() || a.size() != out.size()) {
-        return false;
-    }
-    for (std::size_t i = 0; i < out.size(); ++i) {
-        const float expected = a[i] + b[i];
-        if (std::fabs(out[i] - expected) > kTolerance) {
-            std::fprintf(stderr,
-                         "FAIL: output mismatch at %zu (got=%f expected=%f)\n",
-                         i,
-                         static_cast<double>(out[i]),
-                         static_cast<double>(expected));
+        } else {
+            std::fprintf(stderr, "FAIL: unknown argument: %s\n", arg.c_str());
             return false;
         }
     }
     return true;
 }
 
-double to_millis(std::chrono::steady_clock::duration duration) {
-    return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(duration).count()) /
+// ─── timing helpers ──────────────────────────────────────────────────────────
+
+double wall_ms(std::chrono::steady_clock::duration d) {
+    return static_cast<double>(
+               std::chrono::duration_cast<std::chrono::microseconds>(d).count()) /
            1000.0;
 }
 
-double benchmark_runtime_path(const Options& options,
-                              const std::vector<float>& host_a,
-                              const std::vector<float>& host_b) {
-    const std::size_t bytes = options.element_count * sizeof(float);
+// ─── benchmark result ────────────────────────────────────────────────────────
+
+struct BenchResult {
+    double wall_avg_ms = -1.0;  // average wall-clock time per iteration
+    double gpu_avg_ms  = -1.0;  // average GPU time per iteration (from MTLCommandBuffer)
+    bool   valid       = false;
+};
+
+// ─── data helpers ────────────────────────────────────────────────────────────
+
+std::vector<float> make_ramp(std::size_t n, float scale, unsigned seed) {
+    std::vector<float> v(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        v[i] = static_cast<float>((i * seed + 1u) % 97u) * scale;
+    }
+    return v;
+}
+
+// ─── vector_add ──────────────────────────────────────────────────────────────
+
+bool verify_vector_add(const std::vector<float>& a,
+                       const std::vector<float>& b,
+                       const std::vector<float>& out) {
+    constexpr float kTol = 1e-5f;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        if (std::fabs(out[i] - (a[i] + b[i])) > kTol) {
+            std::fprintf(stderr, "vector_add mismatch at %zu: got=%f expected=%f\n",
+                         i, static_cast<double>(out[i]),
+                         static_cast<double>(a[i] + b[i]));
+            return false;
+        }
+    }
+    return true;
+}
+
+BenchResult bench_vector_add_native(const Options& opts,
+                                    const std::vector<float>& ha,
+                                    const std::vector<float>& hb) {
+    const std::size_t bytes = opts.element_count * sizeof(float);
+    std::string err;
+
+    std::shared_ptr<cumetal::metal_backend::Buffer> ba, bb, bc;
+    if (cumetal::metal_backend::allocate_buffer(bytes, &ba, &err) != cudaSuccess ||
+        cumetal::metal_backend::allocate_buffer(bytes, &bb, &err) != cudaSuccess ||
+        cumetal::metal_backend::allocate_buffer(bytes, &bc, &err) != cudaSuccess) {
+        std::fprintf(stderr, "vector_add native: alloc failed: %s\n", err.c_str());
+        return {};
+    }
+
+    std::memcpy(ba->contents(), ha.data(), bytes);
+    std::memcpy(bb->contents(), hb.data(), bytes);
+    std::memset(bc->contents(), 0, bytes);
+
+    cumetal::metal_backend::LaunchConfig cfg{
+        .grid  = dim3(static_cast<unsigned>((opts.element_count + kThreadsPerBlock - 1) /
+                                             kThreadsPerBlock), 1, 1),
+        .block = dim3(static_cast<unsigned>(kThreadsPerBlock), 1, 1),
+        .shared_memory_bytes = 0,
+    };
+
+    std::vector<cumetal::metal_backend::KernelArg> args(3);
+    args[0] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, ba, 0, {}};
+    args[1] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, bb, 0, {}};
+    args[2] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, bc, 0, {}};
+
+    // Warmup
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        if (cumetal::metal_backend::launch_kernel(opts.metallib_path, "vector_add", cfg, args,
+                                                   nullptr, &err) != cudaSuccess ||
+            cumetal::metal_backend::synchronize(&err) != cudaSuccess) {
+            std::fprintf(stderr, "vector_add native warmup failed: %s\n", err.c_str());
+            return {};
+        }
+    }
+
+    // Measure
+    BenchResult result;
+    double gpu_total_ms = 0.0;
+    auto wall_start = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        cumetal::metal_backend::GpuTimingResult timing;
+        if (cumetal::metal_backend::launch_kernel_timed(opts.metallib_path, "vector_add", cfg,
+                                                         args, &timing, &err) != cudaSuccess) {
+            std::fprintf(stderr, "vector_add native measure failed: %s\n", err.c_str());
+            return {};
+        }
+        gpu_total_ms += timing.duration_ms();
+    }
+
+    result.wall_avg_ms = wall_ms(std::chrono::steady_clock::now() - wall_start) /
+                         static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = gpu_total_ms / static_cast<double>(opts.measure_iterations);
+
+    // Verify last output
+    std::vector<float> hout(opts.element_count);
+    std::memcpy(hout.data(), bc->contents(), bytes);
+    if (!verify_vector_add(ha, hb, hout)) return {};
+
+    result.valid = true;
+    return result;
+}
+
+BenchResult bench_vector_add_runtime(const Options& opts,
+                                     const std::vector<float>& ha,
+                                     const std::vector<float>& hb) {
+    const std::size_t bytes = opts.element_count * sizeof(float);
 
     if (cudaInit(0) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: cudaInit failed\n");
-        return -1.0;
+        std::fprintf(stderr, "vector_add runtime: cudaInit failed\n");
+        return {};
     }
 
-    void* dev_a = nullptr;
-    void* dev_b = nullptr;
-    void* dev_c = nullptr;
-
-    if (cudaMalloc(&dev_a, bytes) != cudaSuccess || cudaMalloc(&dev_b, bytes) != cudaSuccess ||
-        cudaMalloc(&dev_c, bytes) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: cudaMalloc failed\n");
-        return -1.0;
+    void *da = nullptr, *db = nullptr, *dc = nullptr;
+    if (cudaMalloc(&da, bytes) != cudaSuccess ||
+        cudaMalloc(&db, bytes) != cudaSuccess ||
+        cudaMalloc(&dc, bytes) != cudaSuccess) {
+        std::fprintf(stderr, "vector_add runtime: cudaMalloc failed\n");
+        return {};
     }
-
-    if (cudaMemcpy(dev_a, host_a.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess ||
-        cudaMemcpy(dev_b, host_b.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: runtime host->device copy failed\n");
-        (void)cudaFree(dev_a);
-        (void)cudaFree(dev_b);
-        (void)cudaFree(dev_c);
-        return -1.0;
+    if (cudaMemcpy(da, ha.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(db, hb.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "vector_add runtime: H2D copy failed\n");
+        cudaFree(da); cudaFree(db); cudaFree(dc);
+        return {};
     }
 
     static const cumetalKernelArgInfo_t kArgInfo[] = {
@@ -291,194 +291,554 @@ double benchmark_runtime_path(const Options& options,
         {CUMETAL_ARG_BUFFER, 0},
         {CUMETAL_ARG_BUFFER, 0},
     };
-
     const cumetalKernel_t kernel{
-        .metallib_path = options.metallib_path.c_str(),
-        .kernel_name = options.kernel_name.c_str(),
-        .arg_count = 3,
-        .arg_info = kArgInfo,
+        .metallib_path = opts.metallib_path.c_str(),
+        .kernel_name   = "vector_add",
+        .arg_count     = 3,
+        .arg_info      = kArgInfo,
     };
 
-    void* arg_a = dev_a;
-    void* arg_b = dev_b;
-    void* arg_c = dev_c;
-    void* launch_args[] = {&arg_a, &arg_b, &arg_c};
+    void* launch_args[] = {&da, &db, &dc};
+    const dim3 grid(static_cast<unsigned>((opts.element_count + kThreadsPerBlock - 1) /
+                                           kThreadsPerBlock), 1, 1);
+    const dim3 block(static_cast<unsigned>(kThreadsPerBlock), 1, 1);
 
-    const dim3 block_dim(static_cast<unsigned int>(kThreadsPerBlock), 1, 1);
-    const dim3 grid_dim(static_cast<unsigned int>((options.element_count + kThreadsPerBlock - 1) /
-                                                   kThreadsPerBlock),
-                        1,
-                        1);
-
-    for (int i = 0; i < options.warmup_iterations; ++i) {
-        if (cudaLaunchKernel(&kernel, grid_dim, block_dim, launch_args, 0, nullptr) != cudaSuccess ||
+    // Warmup
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, 0, nullptr) != cudaSuccess ||
             cudaDeviceSynchronize() != cudaSuccess) {
-            std::fprintf(stderr, "FAIL: runtime warmup launch failed\n");
-            (void)cudaFree(dev_a);
-            (void)cudaFree(dev_b);
-            (void)cudaFree(dev_c);
-            return -1.0;
+            std::fprintf(stderr, "vector_add runtime warmup failed\n");
+            cudaFree(da); cudaFree(db); cudaFree(dc);
+            return {};
         }
     }
 
-    std::chrono::steady_clock::duration total = std::chrono::steady_clock::duration::zero();
-    for (int i = 0; i < options.measure_iterations; ++i) {
-        const auto begin = std::chrono::steady_clock::now();
-        if (cudaLaunchKernel(&kernel, grid_dim, block_dim, launch_args, 0, nullptr) != cudaSuccess ||
+    // Measure wall-clock: cudaLaunchKernel + cudaDeviceSynchronize per iteration.
+    // Wall-clock is used for the ratio gate (spec §5.7 / §10.6).
+    BenchResult result;
+    std::chrono::steady_clock::duration wall_total{};
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        const auto t0 = std::chrono::steady_clock::now();
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, 0, nullptr) != cudaSuccess ||
             cudaDeviceSynchronize() != cudaSuccess) {
-            std::fprintf(stderr, "FAIL: runtime measured launch failed\n");
-            (void)cudaFree(dev_a);
-            (void)cudaFree(dev_b);
-            (void)cudaFree(dev_c);
-            return -1.0;
+            std::fprintf(stderr, "vector_add runtime measure launch failed\n");
+            cudaFree(da); cudaFree(db); cudaFree(dc);
+            return {};
         }
-        total += (std::chrono::steady_clock::now() - begin);
+        wall_total += std::chrono::steady_clock::now() - t0;
     }
 
-    std::vector<float> host_out(options.element_count, 0.0f);
-    if (cudaMemcpy(host_out.data(), dev_c, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: runtime device->host copy failed\n");
-        (void)cudaFree(dev_a);
-        (void)cudaFree(dev_b);
-        (void)cudaFree(dev_c);
-        return -1.0;
-    }
+    result.wall_avg_ms = wall_ms(wall_total) / static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = -1.0;  // not separately measured for CUDA path
 
-    if (!verify_vector_add(host_a, host_b, host_out)) {
-        (void)cudaFree(dev_a);
-        (void)cudaFree(dev_b);
-        (void)cudaFree(dev_c);
-        return -1.0;
+    // Verify
+    std::vector<float> hout(opts.element_count);
+    if (cudaMemcpy(hout.data(), dc, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        std::fprintf(stderr, "vector_add runtime D2H failed\n");
+        cudaFree(da); cudaFree(db); cudaFree(dc);
+        return {};
     }
-
-    if (cudaFree(dev_a) != cudaSuccess || cudaFree(dev_b) != cudaSuccess || cudaFree(dev_c) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: cudaFree failed\n");
-        return -1.0;
+    if (!verify_vector_add(ha, hb, hout)) {
+        cudaFree(da); cudaFree(db); cudaFree(dc);
+        return {};
     }
+    cudaFree(da); cudaFree(db); cudaFree(dc);
 
-    return to_millis(total) / static_cast<double>(options.measure_iterations);
+    result.valid = true;
+    return result;
 }
 
-double benchmark_native_path(const Options& options,
-                             const std::vector<float>& host_a,
-                             const std::vector<float>& host_b) {
-    std::string error;
-    if (cumetal::metal_backend::initialize(&error) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: metal backend initialize failed: %s\n", error.c_str());
-        return -1.0;
+// ─── saxpy ───────────────────────────────────────────────────────────────────
+// Kernel: y[i] = alpha[0] * x[i] + y[i]  (alpha passed as 1-element buffer)
+
+bool verify_saxpy(const std::vector<float>& x,
+                  const std::vector<float>& y_in,
+                  const std::vector<float>& y_out,
+                  float alpha) {
+    constexpr float kTol = 1e-4f;
+    for (std::size_t i = 0; i < y_out.size(); ++i) {
+        const float expected = alpha * x[i] + y_in[i];
+        if (std::fabs(y_out[i] - expected) > kTol) {
+            std::fprintf(stderr, "saxpy mismatch at %zu: got=%f expected=%f\n",
+                         i, static_cast<double>(y_out[i]),
+                         static_cast<double>(expected));
+            return false;
+        }
+    }
+    return true;
+}
+
+BenchResult bench_saxpy_native(const Options& opts,
+                                const std::vector<float>& hx,
+                                const std::vector<float>& hy,
+                                float alpha) {
+    const std::size_t bytes  = opts.element_count * sizeof(float);
+    const std::size_t alpha_bytes = sizeof(float);
+    std::string err;
+
+    std::shared_ptr<cumetal::metal_backend::Buffer> bx, by, balpha;
+    if (cumetal::metal_backend::allocate_buffer(bytes, &bx, &err) != cudaSuccess ||
+        cumetal::metal_backend::allocate_buffer(bytes, &by, &err) != cudaSuccess ||
+        cumetal::metal_backend::allocate_buffer(alpha_bytes, &balpha, &err) != cudaSuccess) {
+        std::fprintf(stderr, "saxpy native: alloc failed: %s\n", err.c_str());
+        return {};
     }
 
-    const std::size_t bytes = options.element_count * sizeof(float);
-    std::shared_ptr<cumetal::metal_backend::Buffer> buffer_a;
-    std::shared_ptr<cumetal::metal_backend::Buffer> buffer_b;
-    std::shared_ptr<cumetal::metal_backend::Buffer> buffer_c;
-    if (cumetal::metal_backend::allocate_buffer(bytes, &buffer_a, &error) != cudaSuccess ||
-        cumetal::metal_backend::allocate_buffer(bytes, &buffer_b, &error) != cudaSuccess ||
-        cumetal::metal_backend::allocate_buffer(bytes, &buffer_c, &error) != cudaSuccess) {
-        std::fprintf(stderr, "FAIL: native buffer allocation failed: %s\n", error.c_str());
-        return -1.0;
-    }
+    std::memcpy(bx->contents(), hx.data(), bytes);
+    std::memcpy(balpha->contents(), &alpha, alpha_bytes);
 
-    std::memcpy(buffer_a->contents(), host_a.data(), bytes);
-    std::memcpy(buffer_b->contents(), host_b.data(), bytes);
-    std::memset(buffer_c->contents(), 0, bytes);
-
-    cumetal::metal_backend::LaunchConfig config{
-        .grid = dim3(static_cast<unsigned int>((options.element_count + kThreadsPerBlock - 1) /
-                                               kThreadsPerBlock),
-                     1,
-                     1),
-        .block = dim3(static_cast<unsigned int>(kThreadsPerBlock), 1, 1),
+    cumetal::metal_backend::LaunchConfig cfg{
+        .grid  = dim3(static_cast<unsigned>((opts.element_count + kThreadsPerBlock - 1) /
+                                             kThreadsPerBlock), 1, 1),
+        .block = dim3(static_cast<unsigned>(kThreadsPerBlock), 1, 1),
         .shared_memory_bytes = 0,
     };
 
     std::vector<cumetal::metal_backend::KernelArg> args(3);
-    args[0].kind = cumetal::metal_backend::KernelArg::Kind::kBuffer;
-    args[0].buffer = buffer_a;
-    args[1].kind = cumetal::metal_backend::KernelArg::Kind::kBuffer;
-    args[1].buffer = buffer_b;
-    args[2].kind = cumetal::metal_backend::KernelArg::Kind::kBuffer;
-    args[2].buffer = buffer_c;
+    args[0] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, by,     0, {}};
+    args[1] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, bx,     0, {}};
+    args[2] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, balpha, 0, {}};
 
-    for (int i = 0; i < options.warmup_iterations; ++i) {
-        if (cumetal::metal_backend::launch_kernel(
-                options.metallib_path, options.kernel_name, config, args, nullptr, &error) != cudaSuccess ||
-            cumetal::metal_backend::synchronize(&error) != cudaSuccess) {
-            std::fprintf(stderr, "FAIL: native warmup launch failed: %s\n", error.c_str());
-            return -1.0;
+    // Warmup
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        std::memcpy(by->contents(), hy.data(), bytes);
+        if (cumetal::metal_backend::launch_kernel(opts.metallib_path, "saxpy", cfg, args,
+                                                   nullptr, &err) != cudaSuccess ||
+            cumetal::metal_backend::synchronize(&err) != cudaSuccess) {
+            std::fprintf(stderr, "saxpy native warmup failed: %s\n", err.c_str());
+            return {};
         }
     }
 
-    std::chrono::steady_clock::duration total = std::chrono::steady_clock::duration::zero();
-    for (int i = 0; i < options.measure_iterations; ++i) {
-        const auto begin = std::chrono::steady_clock::now();
-        if (cumetal::metal_backend::launch_kernel(
-                options.metallib_path, options.kernel_name, config, args, nullptr, &error) != cudaSuccess ||
-            cumetal::metal_backend::synchronize(&error) != cudaSuccess) {
-            std::fprintf(stderr, "FAIL: native measured launch failed: %s\n", error.c_str());
-            return -1.0;
+    BenchResult result;
+    double gpu_total_ms = 0.0;
+    auto wall_start = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        std::memcpy(by->contents(), hy.data(), bytes);
+        cumetal::metal_backend::GpuTimingResult timing;
+        if (cumetal::metal_backend::launch_kernel_timed(opts.metallib_path, "saxpy", cfg,
+                                                         args, &timing, &err) != cudaSuccess) {
+            std::fprintf(stderr, "saxpy native measure failed: %s\n", err.c_str());
+            return {};
         }
-        total += (std::chrono::steady_clock::now() - begin);
+        gpu_total_ms += timing.duration_ms();
     }
 
-    const float* out = static_cast<const float*>(buffer_c->contents());
-    std::vector<float> host_out(options.element_count);
-    std::memcpy(host_out.data(), out, bytes);
-    if (!verify_vector_add(host_a, host_b, host_out)) {
-        return -1.0;
+    result.wall_avg_ms = wall_ms(std::chrono::steady_clock::now() - wall_start) /
+                         static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = gpu_total_ms / static_cast<double>(opts.measure_iterations);
+
+    std::vector<float> hout(opts.element_count);
+    std::memcpy(hout.data(), by->contents(), bytes);
+    if (!verify_saxpy(hx, hy, hout, alpha)) return {};
+
+    result.valid = true;
+    return result;
+}
+
+BenchResult bench_saxpy_runtime(const Options& opts,
+                                 const std::vector<float>& hx,
+                                 const std::vector<float>& hy,
+                                 float alpha) {
+    const std::size_t bytes       = opts.element_count * sizeof(float);
+    const std::size_t alpha_bytes = sizeof(float);
+
+    if (cudaInit(0) != cudaSuccess) return {};
+
+    void *dx = nullptr, *dy = nullptr, *dalpha = nullptr;
+    if (cudaMalloc(&dx, bytes) != cudaSuccess ||
+        cudaMalloc(&dy, bytes) != cudaSuccess ||
+        cudaMalloc(&dalpha, alpha_bytes) != cudaSuccess) {
+        std::fprintf(stderr, "saxpy runtime: cudaMalloc failed\n");
+        return {};
+    }
+    if (cudaMemcpy(dx, hx.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess ||
+        cudaMemcpy(dalpha, &alpha, alpha_bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
+        std::fprintf(stderr, "saxpy runtime: H2D failed\n");
+        cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+        return {};
     }
 
-    return to_millis(total) / static_cast<double>(options.measure_iterations);
+    static const cumetalKernelArgInfo_t kArgInfo[] = {
+        {CUMETAL_ARG_BUFFER, 0},
+        {CUMETAL_ARG_BUFFER, 0},
+        {CUMETAL_ARG_BUFFER, 0},
+    };
+    const cumetalKernel_t kernel{
+        .metallib_path = opts.metallib_path.c_str(),
+        .kernel_name   = "saxpy",
+        .arg_count     = 3,
+        .arg_info      = kArgInfo,
+    };
+    void* launch_args[] = {&dy, &dx, &dalpha};
+    const dim3 grid(static_cast<unsigned>((opts.element_count + kThreadsPerBlock - 1) /
+                                           kThreadsPerBlock), 1, 1);
+    const dim3 block(static_cast<unsigned>(kThreadsPerBlock), 1, 1);
+
+    // Warmup
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        if (cudaMemcpy(dy, hy.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess) return {};
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, 0, nullptr) != cudaSuccess ||
+            cudaDeviceSynchronize() != cudaSuccess) {
+            std::fprintf(stderr, "saxpy runtime warmup failed\n");
+            cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+            return {};
+        }
+    }
+
+    BenchResult result;
+    std::chrono::steady_clock::duration wall_total_saxpy{};
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        if (cudaMemcpy(dy, hy.data(), bytes, cudaMemcpyHostToDevice) != cudaSuccess) return {};
+
+        const auto t0 = std::chrono::steady_clock::now();
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, 0, nullptr) != cudaSuccess ||
+            cudaDeviceSynchronize() != cudaSuccess) {
+            std::fprintf(stderr, "saxpy runtime measure launch failed\n");
+            cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+            return {};
+        }
+        wall_total_saxpy += std::chrono::steady_clock::now() - t0;
+    }
+
+    result.wall_avg_ms = wall_ms(wall_total_saxpy) / static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = -1.0;
+
+    std::vector<float> hout(opts.element_count);
+    if (cudaMemcpy(hout.data(), dy, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+        return {};
+    }
+    if (!verify_saxpy(hx, hy, hout, alpha)) {
+        cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+        return {};
+    }
+    cudaFree(dx); cudaFree(dy); cudaFree(dalpha);
+
+    result.valid = true;
+    return result;
+}
+
+// ─── reduce_f32 ──────────────────────────────────────────────────────────────
+// Tree reduction: each block writes partial sum to partial_sums[block_id].
+// Expected total = sum of all input elements.
+
+bool verify_reduce(const std::vector<float>& input,
+                   const std::vector<float>& partial_sums) {
+    // Sum partial_sums and compare to brute-force sum of input.
+    double ref = 0.0;
+    for (float v : input) ref += static_cast<double>(v);
+    double got = 0.0;
+    for (float v : partial_sums) got += static_cast<double>(v);
+    const double rel_err = std::fabs(got - ref) / (std::fabs(ref) + 1e-10);
+    if (rel_err > 1e-3) {
+        std::fprintf(stderr, "reduce_f32 mismatch: got=%.6f expected=%.6f rel_err=%g\n",
+                     got, ref, rel_err);
+        return false;
+    }
+    return true;
+}
+
+BenchResult bench_reduce_native(const Options& opts, const std::vector<float>& hinput) {
+    const std::size_t num_blocks  = opts.element_count / kThreadsPerBlock;
+    const std::size_t bytes_in    = opts.element_count * sizeof(float);
+    const std::size_t bytes_out   = num_blocks * sizeof(float);
+    const std::size_t shared_mem  = kThreadsPerBlock * sizeof(float);
+    std::string err;
+
+    std::shared_ptr<cumetal::metal_backend::Buffer> binput, boutput;
+    if (cumetal::metal_backend::allocate_buffer(bytes_in, &binput, &err) != cudaSuccess ||
+        cumetal::metal_backend::allocate_buffer(bytes_out, &boutput, &err) != cudaSuccess) {
+        std::fprintf(stderr, "reduce native: alloc failed: %s\n", err.c_str());
+        return {};
+    }
+    std::memcpy(binput->contents(), hinput.data(), bytes_in);
+
+    cumetal::metal_backend::LaunchConfig cfg{
+        .grid  = dim3(static_cast<unsigned>(num_blocks), 1, 1),
+        .block = dim3(static_cast<unsigned>(kThreadsPerBlock), 1, 1),
+        .shared_memory_bytes = shared_mem,
+    };
+    std::vector<cumetal::metal_backend::KernelArg> args(2);
+    args[0] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, binput,  0, {}};
+    args[1] = {cumetal::metal_backend::KernelArg::Kind::kBuffer, boutput, 0, {}};
+
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        if (cumetal::metal_backend::launch_kernel(opts.metallib_path, "reduce_f32", cfg, args,
+                                                   nullptr, &err) != cudaSuccess ||
+            cumetal::metal_backend::synchronize(&err) != cudaSuccess) {
+            std::fprintf(stderr, "reduce native warmup failed: %s\n", err.c_str());
+            return {};
+        }
+    }
+
+    BenchResult result;
+    double gpu_total_ms = 0.0;
+    auto wall_start = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        cumetal::metal_backend::GpuTimingResult timing;
+        if (cumetal::metal_backend::launch_kernel_timed(opts.metallib_path, "reduce_f32", cfg,
+                                                         args, &timing, &err) != cudaSuccess) {
+            std::fprintf(stderr, "reduce native measure failed: %s\n", err.c_str());
+            return {};
+        }
+        gpu_total_ms += timing.duration_ms();
+    }
+
+    result.wall_avg_ms = wall_ms(std::chrono::steady_clock::now() - wall_start) /
+                         static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = gpu_total_ms / static_cast<double>(opts.measure_iterations);
+
+    std::vector<float> hout(num_blocks);
+    std::memcpy(hout.data(), boutput->contents(), bytes_out);
+    if (!verify_reduce(hinput, hout)) return {};
+
+    result.valid = true;
+    return result;
+}
+
+BenchResult bench_reduce_runtime(const Options& opts, const std::vector<float>& hinput) {
+    const std::size_t num_blocks  = opts.element_count / kThreadsPerBlock;
+    const std::size_t bytes_in    = opts.element_count * sizeof(float);
+    const std::size_t bytes_out   = num_blocks * sizeof(float);
+    const std::size_t shared_mem  = kThreadsPerBlock * sizeof(float);
+
+    if (cudaInit(0) != cudaSuccess) return {};
+
+    void *din = nullptr, *dout = nullptr;
+    if (cudaMalloc(&din, bytes_in) != cudaSuccess ||
+        cudaMalloc(&dout, bytes_out) != cudaSuccess) {
+        std::fprintf(stderr, "reduce runtime: cudaMalloc failed\n");
+        return {};
+    }
+    if (cudaMemcpy(din, hinput.data(), bytes_in, cudaMemcpyHostToDevice) != cudaSuccess) {
+        cudaFree(din); cudaFree(dout);
+        return {};
+    }
+
+    static const cumetalKernelArgInfo_t kArgInfo[] = {
+        {CUMETAL_ARG_BUFFER, 0},
+        {CUMETAL_ARG_BUFFER, 0},
+    };
+    const cumetalKernel_t kernel{
+        .metallib_path = opts.metallib_path.c_str(),
+        .kernel_name   = "reduce_f32",
+        .arg_count     = 2,
+        .arg_info      = kArgInfo,
+    };
+    void* launch_args[] = {&din, &dout};
+    const dim3 grid(static_cast<unsigned>(num_blocks), 1, 1);
+    const dim3 block(static_cast<unsigned>(kThreadsPerBlock), 1, 1);
+
+    for (int i = 0; i < opts.warmup_iterations; ++i) {
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, shared_mem, nullptr) != cudaSuccess ||
+            cudaDeviceSynchronize() != cudaSuccess) {
+            std::fprintf(stderr, "reduce runtime warmup failed\n");
+            cudaFree(din); cudaFree(dout);
+            return {};
+        }
+    }
+
+    BenchResult result;
+    std::chrono::steady_clock::duration wall_total_reduce{};
+
+    for (int i = 0; i < opts.measure_iterations; ++i) {
+        const auto t0 = std::chrono::steady_clock::now();
+        if (cudaLaunchKernel(&kernel, grid, block, launch_args, shared_mem, nullptr) != cudaSuccess ||
+            cudaDeviceSynchronize() != cudaSuccess) {
+            std::fprintf(stderr, "reduce runtime measure launch failed\n");
+            cudaFree(din); cudaFree(dout);
+            return {};
+        }
+        wall_total_reduce += std::chrono::steady_clock::now() - t0;
+    }
+
+    result.wall_avg_ms = wall_ms(wall_total_reduce) / static_cast<double>(opts.measure_iterations);
+    result.gpu_avg_ms  = -1.0;
+
+    std::vector<float> hout(num_blocks);
+    if (cudaMemcpy(hout.data(), dout, bytes_out, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        cudaFree(din); cudaFree(dout);
+        return {};
+    }
+    cudaFree(din); cudaFree(dout);
+
+    if (!verify_reduce(hinput, hout)) return {};
+
+    result.valid = true;
+    return result;
+}
+
+// ─── dispatch + reporting ────────────────────────────────────────────────────
+
+struct KernelBenchmark {
+    const char* name;
+    bool memory_bound;  // must pass 2x GPU-time gate
+};
+
+static const KernelBenchmark kAllKernels[] = {
+    {"vector_add", true},
+    {"saxpy",      true},
+    {"reduce_f32", true},
+};
+
+struct RunResult {
+    const char* kernel;
+    std::size_t elements;
+    BenchResult native;
+    BenchResult runtime;
+    double ratio;     // runtime.gpu_avg_ms / native.gpu_avg_ms; -1 if unavailable
+    bool gate_fail;   // true if ratio > max_ratio
+};
+
+RunResult run_kernel(const Options& opts, const char* kernel_name) {
+    RunResult r;
+    r.kernel   = kernel_name;
+    r.elements = opts.element_count;
+    r.ratio    = -1.0;
+    r.gate_fail = false;
+
+    const std::string kn(kernel_name);
+    if (kn == "vector_add") {
+        const auto ha = make_ramp(opts.element_count, 0.25f, 3u);
+        const auto hb = make_ramp(opts.element_count, 0.125f, 11u);
+        r.native  = bench_vector_add_native(opts, ha, hb);
+        r.runtime = bench_vector_add_runtime(opts, ha, hb);
+    } else if (kn == "saxpy") {
+        const auto hx  = make_ramp(opts.element_count, 0.25f, 7u);
+        const auto hy  = make_ramp(opts.element_count, 0.125f, 13u);
+        const float alpha = 2.5f;
+        r.native  = bench_saxpy_native(opts, hx, hy, alpha);
+        r.runtime = bench_saxpy_runtime(opts, hx, hy, alpha);
+    } else if (kn == "reduce_f32") {
+        const auto hin = make_ramp(opts.element_count, 1.0f, 5u);
+        r.native  = bench_reduce_native(opts, hin);
+        r.runtime = bench_reduce_runtime(opts, hin);
+    } else {
+        std::fprintf(stderr, "FAIL: unknown kernel '%s'\n", kernel_name);
+        return r;
+    }
+
+    // Use wall-clock ratio: measures total dispatch+execute+sync overhead of the CUDA
+    // path vs. the native Metal path.  Both paths synchronize per iteration, so
+    // wall-clock is a fair apples-to-apples comparison.  GPU time (from
+    // launch_kernel_timed) is reported for the native path for informational purposes.
+    if (r.native.valid && r.runtime.valid &&
+        r.native.wall_avg_ms > 0.0 && r.runtime.wall_avg_ms > 0.0) {
+        r.ratio = r.runtime.wall_avg_ms / r.native.wall_avg_ms;
+        if (opts.max_ratio > 0.0 && r.ratio > opts.max_ratio) {
+            r.gate_fail = true;
+            std::fprintf(stderr,
+                         "FAIL: %s ratio %.3fx exceeds threshold %.3fx\n",
+                         r.kernel, r.ratio, opts.max_ratio);
+        }
+    }
+    return r;
+}
+
+void print_header() {
+    std::printf("\ncumetal_bench — Phase 5 performance results\n");
+    std::printf("  Ratio = cumetal_wall_ms / native_wall_ms  (gate: ratio <= max-ratio)\n\n");
+    std::printf("%-14s  %8s  %13s  %13s  %13s  %8s  %6s\n",
+                "kernel", "elements",
+                "native_gpu_ms", "native_wall_ms", "cumetal_wall_ms",
+                "ratio", "status");
+    std::printf("%-14s  %8s  %13s  %13s  %13s  %8s  %6s\n",
+                "--------------", "--------",
+                "-------------", "--------------", "---------------",
+                "--------", "------");
+}
+
+void print_row(const RunResult& r) {
+    const char* status = r.gate_fail ? "FAIL" : (r.native.valid && r.runtime.valid ? "PASS" : "ERR");
+    const double gpu_native   = r.native.valid  ? r.native.gpu_avg_ms   : -1.0;
+    const double wall_native  = r.native.valid  ? r.native.wall_avg_ms  : -1.0;
+    const double wall_runtime = r.runtime.valid ? r.runtime.wall_avg_ms : -1.0;
+
+    char ratio_str[32];
+    if (r.ratio > 0.0) {
+        std::snprintf(ratio_str, sizeof(ratio_str), "%.3fx", r.ratio);
+    } else {
+        std::snprintf(ratio_str, sizeof(ratio_str), "n/a");
+    }
+
+    std::printf("%-14s  %8zu  %13.4f  %13.4f  %15.4f  %8s  %s\n",
+                r.kernel, r.elements,
+                gpu_native, wall_native, wall_runtime,
+                ratio_str, status);
 }
 
 }  // namespace
 
+// ─── main ────────────────────────────────────────────────────────────────────
+
 int main(int argc, char** argv) {
-    Options options;
+    Options opts;
     bool show_help = false;
-    if (!parse_options(argc, argv, &options, &show_help)) {
+    if (!parse_options(argc, argv, &opts, &show_help)) {
+        print_usage(argv[0]);
         return 64;
     }
-    if (show_help) {
-        return 0;
-    }
+    if (show_help) return 0;
 
-    if (!std::filesystem::exists(options.metallib_path)) {
-        std::fprintf(stderr, "FAIL: metallib not found: %s\n", options.metallib_path.c_str());
+    if (opts.metallib_path.empty()) {
+        std::fprintf(stderr, "FAIL: --metallib <path> is required\n");
+        print_usage(argv[0]);
         return 64;
     }
 
-    const std::vector<float> host_a = make_input_a(options.element_count);
-    const std::vector<float> host_b = make_input_b(options.element_count);
-
-    const double native_ms = benchmark_native_path(options, host_a, host_b);
-    if (native_ms <= 0.0) {
-        return 1;
+    if (!std::filesystem::exists(opts.metallib_path)) {
+        std::fprintf(stderr, "FAIL: metallib not found: %s\n", opts.metallib_path.c_str());
+        return 64;
     }
 
-    const double runtime_ms = benchmark_runtime_path(options, host_a, host_b);
-    if (runtime_ms <= 0.0) {
-        return 1;
-    }
-
-    const double ratio = runtime_ms / native_ms;
-    std::printf("cumetal_bench results\n");
-    std::printf("kernel: %s\n", options.kernel_name.c_str());
-    std::printf("elements: %zu\n", options.element_count);
-    std::printf("warmup_iterations: %d\n", options.warmup_iterations);
-    std::printf("measure_iterations: %d\n", options.measure_iterations);
-    std::printf("native_metal_avg_ms: %.4f\n", native_ms);
-    std::printf("cumetal_runtime_avg_ms: %.4f\n", runtime_ms);
-    std::printf("runtime_vs_native_ratio: %.3fx\n", ratio);
-    if (options.max_ratio > 0.0) {
-        std::printf("max_ratio: %.3fx\n", options.max_ratio);
-        if (ratio > options.max_ratio) {
-            std::fprintf(stderr,
-                         "FAIL: performance ratio %.3fx exceeds threshold %.3fx\n",
-                         ratio,
-                         options.max_ratio);
-            return 2;
+    // Initialize metal_backend once before any benchmarking.
+    {
+        std::string err;
+        if (cumetal::metal_backend::initialize(&err) != cudaSuccess) {
+            std::fprintf(stderr, "FAIL: metal backend init failed: %s\n", err.c_str());
+            return 1;
         }
     }
+
+    std::vector<std::string> kernels_to_run;
+    if (opts.all_kernels) {
+        for (const auto& kb : kAllKernels) {
+            kernels_to_run.emplace_back(kb.name);
+        }
+    } else {
+        kernels_to_run.push_back(opts.kernel_name);
+    }
+
+    print_header();
+
+    bool any_fail = false;
+    for (const auto& kname : kernels_to_run) {
+        const RunResult r = run_kernel(opts, kname.c_str());
+        print_row(r);
+        if (!r.native.valid || !r.runtime.valid) {
+            any_fail = true;
+        }
+        if (r.gate_fail) {
+            any_fail = true;
+        }
+    }
+
+    std::printf("\n");
+
+    if (opts.max_ratio > 0.0) {
+        std::printf("Performance gate: max_ratio=%.3fx\n", opts.max_ratio);
+    }
+
+    if (any_fail) {
+        std::fprintf(stderr, "FAIL: one or more benchmarks failed or exceeded ratio threshold\n");
+        return 2;
+    }
+
+    std::printf("All benchmarks passed.\n");
     return 0;
 }

@@ -72,6 +72,23 @@ cudaError_t launch_kernel(const std::string& metallib_path,
                           const std::vector<KernelArg>& args,
                           const std::shared_ptr<Stream>& stream,
                           std::string* error_message);
+
+// GPU timing result from MTLCommandBuffer.GPUStartTime / GPUEndTime.
+// Both fields are in seconds (CFTimeInterval). Duration = gpu_end_s - gpu_start_s.
+struct GpuTimingResult {
+    double gpu_start_s = 0.0;
+    double gpu_end_s = 0.0;
+    double duration_ms() const { return (gpu_end_s - gpu_start_s) * 1000.0; }
+};
+
+// Synchronous kernel launch that captures GPU execution time.
+// Runs on the default queue; does not accept a stream.
+cudaError_t launch_kernel_timed(const std::string& metallib_path,
+                                const std::string& kernel_name,
+                                const LaunchConfig& config,
+                                const std::vector<KernelArg>& args,
+                                GpuTimingResult* out_timing,
+                                std::string* error_message);
 cudaError_t gemm_f32(bool transa,
                      bool transb,
                      int m,

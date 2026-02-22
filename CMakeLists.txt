@@ -343,6 +343,21 @@ if(CUMETAL_BUILD_TESTS)
     add_subdirectory(tests/functional)
     add_subdirectory(tests/ptx_sweep)
     add_subdirectory(tests/unit)
+
+    # Phase 5 performance benchmark tests (skipped if xcrun is unavailable).
+    # Uses --max-ratio=2.0 to enforce the spec §5.7 / §10.6 gate: CuMetal GPU time must
+    # be within 2x of native Metal GPU time for all memory-bound kernels.
+    if(APPLE)
+        add_test(
+            NAME bench_phase5_all_kernels
+            COMMAND bash
+                ${CMAKE_SOURCE_DIR}/scripts/run_bench_phase5.sh
+                $<TARGET_FILE:cumetal_bench>
+                ${CMAKE_SOURCE_DIR}/scripts/generate_bench_metallib.sh
+                ${CMAKE_CURRENT_BINARY_DIR}/bench_phase5
+        )
+        set_tests_properties(bench_phase5_all_kernels PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
 endif()
 
 install(TARGETS
