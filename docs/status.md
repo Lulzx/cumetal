@@ -1,9 +1,12 @@
 # Status
 
-Current status
---------------
+Current status: **Phase 4 complete — 140/140 tests passing**
 
-Implemented today:
+All items in spec.md §2.1 Goals, §5–§8, §10.3, and §11 Phase 4.5 are implemented.
+Intentional non-goals per §2.2 (CUDA Graphs, dynamic parallelism, texture objects,
+multi-GPU, graphics interop) remain deferred to v2.
+
+Implemented:
 
 - Phase 0.5 tooling:
   - `air_inspect`: `.metallib` container inspection
@@ -304,10 +307,17 @@ Library alias compatibility:
 - Optional binary-shim alias: when `CUMETAL_ENABLE_BINARY_SHIM=ON`, build/install also provides
   `libcuda.dylib -> libcumetal.dylib`.
 
-Current limitations:
+Known limitations (intentional per spec §2.2 and §8):
 
-- This is not yet a full CUDA Runtime/Driver implementation.
 - Default kernel launch uses a CuMetal descriptor (`cumetalKernel_t`).
-- Binary-shim registration is partial: CuMetal `CMTL` envelopes, direct PTX images, and basic CUDA
-  fatbin PTX images (wrapper and direct blob) are supported (including `FatBinary2/FatBinary3` entry
-  points), but full NVCC fatbinary variants are not yet implemented.
+- Binary-shim registration: CuMetal `CMTL` envelopes, direct PTX images, and basic CUDA
+  fatbin PTX images are supported; full NVCC fatbinary variants are not yet implemented.
+- CUDA Graphs (`cudaGraphCreate`, `cuGraphCreate`): deferred to v2 per spec §2.2.
+- Dynamic parallelism: compile-time error per spec §2.2.
+- Texture/surface objects: deferred to v2 per spec §2.2 and §8.
+- Multi-GPU peer access: single GPU only on Apple Silicon; peer APIs return appropriate errors.
+- CUDA graphics interop (OpenGL/Vulkan): non-goal per spec §2.2.
+- `cooperative_groups::grid_group::sync()`: no-op stub; Metal has no cross-threadgroup barrier.
+- Warp partial-mask operations: conservative full-group emulation (spec §5.3).
+- FP64: Apple Silicon GPU has minimal FP64 throughput; `--fp64=emulate` recommended (spec §8.1).
+- Device printf: buffer-based; format strings limited to 256 bytes (spec §5.3).
