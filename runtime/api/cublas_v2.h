@@ -674,6 +674,106 @@ cublasStatus_t cublasZgemv(cublasHandle_t handle,
                             const cuDoubleComplex* beta,
                             cuDoubleComplex* y, int incy);
 
+// Complex Hermitian GEMV — y = alpha * A * x + beta * y, A Hermitian.
+cublasStatus_t cublasChemv(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuComplex* alpha,
+                            const cuComplex* A, int lda,
+                            const cuComplex* x, int incx,
+                            const cuComplex* beta,
+                            cuComplex* y, int incy);
+cublasStatus_t cublasZhemv(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* A, int lda,
+                            const cuDoubleComplex* x, int incx,
+                            const cuDoubleComplex* beta,
+                            cuDoubleComplex* y, int incy);
+
+// Hermitian rank-1 update — A = alpha * x * x^H + A. alpha is real.
+cublasStatus_t cublasCher(cublasHandle_t handle, cublasFillMode_t uplo,
+                           int n, const float* alpha,
+                           const cuComplex* x, int incx,
+                           cuComplex* A, int lda);
+cublasStatus_t cublasZher(cublasHandle_t handle, cublasFillMode_t uplo,
+                           int n, const double* alpha,
+                           const cuDoubleComplex* x, int incx,
+                           cuDoubleComplex* A, int lda);
+
+// Hermitian rank-2 update — A = alpha * x * y^H + conj(alpha) * y * x^H + A.
+cublasStatus_t cublasCher2(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuComplex* alpha,
+                            const cuComplex* x, int incx,
+                            const cuComplex* y, int incy,
+                            cuComplex* A, int lda);
+cublasStatus_t cublasZher2(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* x, int incx,
+                            const cuDoubleComplex* y, int incy,
+                            cuDoubleComplex* A, int lda);
+
+// Hermitian rank-k update — C = alpha * op(A) * op(A)^H + beta * C. alpha,beta real.
+cublasStatus_t cublasCherk(cublasHandle_t handle, cublasFillMode_t uplo,
+                            cublasOperation_t trans,
+                            int n, int k,
+                            const float* alpha, const cuComplex* A, int lda,
+                            const float* beta,  cuComplex* C, int ldc);
+cublasStatus_t cublasZherk(cublasHandle_t handle, cublasFillMode_t uplo,
+                            cublasOperation_t trans,
+                            int n, int k,
+                            const double* alpha, const cuDoubleComplex* A, int lda,
+                            const double* beta,  cuDoubleComplex* C, int ldc);
+
+// Hermitian rank-2k update — C = alpha*op(A)*op(B)^H + conj(alpha)*op(B)*op(A)^H + beta*C. beta real.
+cublasStatus_t cublasCher2k(cublasHandle_t handle, cublasFillMode_t uplo,
+                             cublasOperation_t trans,
+                             int n, int k,
+                             const cuComplex* alpha,
+                             const cuComplex* A, int lda,
+                             const cuComplex* B, int ldb,
+                             const float* beta, cuComplex* C, int ldc);
+cublasStatus_t cublasZher2k(cublasHandle_t handle, cublasFillMode_t uplo,
+                             cublasOperation_t trans,
+                             int n, int k,
+                             const cuDoubleComplex* alpha,
+                             const cuDoubleComplex* A, int lda,
+                             const cuDoubleComplex* B, int ldb,
+                             const double* beta, cuDoubleComplex* C, int ldc);
+
+// Hermitian matrix-matrix multiply — C = alpha * A * B + beta * C (or B * A), A Hermitian.
+cublasStatus_t cublasChemm(cublasHandle_t handle, cublasSideMode_t side, cublasFillMode_t uplo,
+                            int m, int n,
+                            const cuComplex* alpha,
+                            const cuComplex* A, int lda,
+                            const cuComplex* B, int ldb,
+                            const cuComplex* beta,
+                            cuComplex* C, int ldc);
+cublasStatus_t cublasZhemm(cublasHandle_t handle, cublasSideMode_t side, cublasFillMode_t uplo,
+                            int m, int n,
+                            const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* A, int lda,
+                            const cuDoubleComplex* B, int ldb,
+                            const cuDoubleComplex* beta,
+                            cuDoubleComplex* C, int ldc);
+
+// Complex strided-batched GEMM.
+cublasStatus_t cublasCgemmStridedBatched(cublasHandle_t handle,
+                                          cublasOperation_t transa, cublasOperation_t transb,
+                                          int m, int n, int k,
+                                          const cuComplex* alpha,
+                                          const cuComplex* A, int lda, long long int strideA,
+                                          const cuComplex* B, int ldb, long long int strideB,
+                                          const cuComplex* beta,
+                                          cuComplex* C, int ldc, long long int strideC,
+                                          int batchCount);
+cublasStatus_t cublasZgemmStridedBatched(cublasHandle_t handle,
+                                          cublasOperation_t transa, cublasOperation_t transb,
+                                          int m, int n, int k,
+                                          const cuDoubleComplex* alpha,
+                                          const cuDoubleComplex* A, int lda, long long int strideA,
+                                          const cuDoubleComplex* B, int ldb, long long int strideB,
+                                          const cuDoubleComplex* beta,
+                                          cuDoubleComplex* C, int ldc, long long int strideC,
+                                          int batchCount);
+
 #ifdef __cplusplus
 }
 #endif

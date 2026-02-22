@@ -163,6 +163,10 @@ add_executable(cumetal_extended_api_v5_test
     extended_api_v5_test.cpp
 )
 
+add_executable(cumetal_extended_api_v6_test
+    extended_api_v6_test.cpp
+)
+
 add_executable(cumetal_cufft_c2c_test
     cufft_c2c_test.cpp
 )
@@ -577,6 +581,11 @@ target_link_libraries(cumetal_extended_api_v4_test
 )
 
 target_link_libraries(cumetal_extended_api_v5_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_extended_api_v6_test
     PRIVATE
         cumetal_runtime
 )
@@ -1127,6 +1136,13 @@ target_compile_options(cumetal_extended_api_v4_test
 )
 
 target_compile_options(cumetal_extended_api_v5_test
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+target_compile_options(cumetal_extended_api_v6_test
     PRIVATE
         -Wall
         -Wextra
@@ -1844,6 +1860,11 @@ add_test(
 add_test(
     NAME functional_extended_api_v5
     COMMAND cumetal_extended_api_v5_test
+)
+
+add_test(
+    NAME functional_extended_api_v6
+    COMMAND cumetal_extended_api_v6_test
 )
 
 add_test(

@@ -75,6 +75,17 @@ static inline T symm_elem(const T* a, int lda, int i, int j, bool upper) {
                  : (i >= j ? a[i + j * lda] : a[j + i * lda]);
 }
 
+// Helper: read element of complex Hermitian n×n matrix (col-major, upper or lower stored).
+// Off-diagonal elements in the non-stored triangle are conj of the stored triangle.
+static inline cuComplex herm_elem_f(const cuComplex* a, int lda, int i, int j, bool upper) {
+    if (upper) return (i <= j) ? a[i + j * lda] : cuComplex{a[j + i * lda].x, -a[j + i * lda].y};
+    return         (i >= j) ? a[i + j * lda] : cuComplex{a[j + i * lda].x, -a[j + i * lda].y};
+}
+static inline cuDoubleComplex herm_elem_d(const cuDoubleComplex* a, int lda, int i, int j, bool upper) {
+    if (upper) return (i <= j) ? a[i + j * lda] : cuDoubleComplex{a[j + i * lda].x, -a[j + i * lda].y};
+    return         (i >= j) ? a[i + j * lda] : cuDoubleComplex{a[j + i * lda].x, -a[j + i * lda].y};
+}
+
 }  // namespace
 
 extern "C" {
@@ -2870,6 +2881,481 @@ cublasStatus_t cublasZgemv(cublasHandle_t handle,
         for (int j = 0; j < cols_x; ++j)
             dot = cadd_d(dot, cmul_d(celem_d(A, lda, trans, i, j), x[(size_t)j * incx]));
         y[(size_t)i * incy] = cadd_d(cmul_d(al, dot), cmul_d(be, y[(size_t)i * incy]));
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// ── Complex Hermitian operations (batch 6) ────────────────────────────────────
+
+// Chemv / Zhemv — y = alpha * A * x + beta * y, A Hermitian n×n.
+cublasStatus_t cublasChemv(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuComplex* alpha,
+                            const cuComplex* A, int lda,
+                            const cuComplex* x, int incx,
+                            const cuComplex* beta,
+                            cuComplex* y, int incy) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || x == nullptr || y == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const cuComplex al = *alpha, be = *beta;
+    for (int i = 0; i < n; ++i) {
+        cuComplex dot = {0.0f, 0.0f};
+        for (int j = 0; j < n; ++j)
+            dot = cadd_f(dot, cmul_f(herm_elem_f(A, lda, i, j, upper), x[(size_t)j * incx]));
+        y[(size_t)i * incy] = cadd_f(cmul_f(al, dot), cmul_f(be, y[(size_t)i * incy]));
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZhemv(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* A, int lda,
+                            const cuDoubleComplex* x, int incx,
+                            const cuDoubleComplex* beta,
+                            cuDoubleComplex* y, int incy) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || x == nullptr || y == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const cuDoubleComplex al = *alpha, be = *beta;
+    for (int i = 0; i < n; ++i) {
+        cuDoubleComplex dot = {0.0, 0.0};
+        for (int j = 0; j < n; ++j)
+            dot = cadd_d(dot, cmul_d(herm_elem_d(A, lda, i, j, upper), x[(size_t)j * incx]));
+        y[(size_t)i * incy] = cadd_d(cmul_d(al, dot), cmul_d(be, y[(size_t)i * incy]));
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// Cher / Zher — A = alpha * x * x^H + A.  alpha is real.
+cublasStatus_t cublasCher(cublasHandle_t handle, cublasFillMode_t uplo,
+                           int n, const float* alpha,
+                           const cuComplex* x, int incx,
+                           cuComplex* A, int lda) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || n < 0 || alpha == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (x == nullptr || A == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const float av = *alpha;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            // A[i,j] += av * x[i] * conj(x[j])
+            cuComplex xj_c = {x[(size_t)j * incx].x, -x[(size_t)j * incx].y};
+            cuComplex prod = cmul_f(x[(size_t)i * incx], xj_c);
+            A[i + (size_t)j * lda].x += av * prod.x;
+            A[i + (size_t)j * lda].y += av * prod.y;
+        }
+        // Force diagonal imaginary to zero (Hermitian invariant).
+        A[j + (size_t)j * lda].y = 0.0f;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZher(cublasHandle_t handle, cublasFillMode_t uplo,
+                           int n, const double* alpha,
+                           const cuDoubleComplex* x, int incx,
+                           cuDoubleComplex* A, int lda) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || n < 0 || alpha == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (x == nullptr || A == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const double av = *alpha;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuDoubleComplex xj_c = {x[(size_t)j * incx].x, -x[(size_t)j * incx].y};
+            cuDoubleComplex prod = cmul_d(x[(size_t)i * incx], xj_c);
+            A[i + (size_t)j * lda].x += av * prod.x;
+            A[i + (size_t)j * lda].y += av * prod.y;
+        }
+        A[j + (size_t)j * lda].y = 0.0;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// Cher2 / Zher2 — A = alpha * x * y^H + conj(alpha) * y * x^H + A.
+cublasStatus_t cublasCher2(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuComplex* alpha,
+                            const cuComplex* x, int incx,
+                            const cuComplex* y, int incy,
+                            cuComplex* A, int lda) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || n < 0 || alpha == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (x == nullptr || y == nullptr || A == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuComplex al = *alpha, al_c = {al.x, -al.y};
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            // al * x[i] * conj(y[j]) + conj(al) * y[i] * conj(x[j])
+            cuComplex yj_c = {y[(size_t)j * incy].x, -y[(size_t)j * incy].y};
+            cuComplex xj_c = {x[(size_t)j * incx].x, -x[(size_t)j * incx].y};
+            cuComplex t1 = cmul_f(al,   cmul_f(x[(size_t)i * incx], yj_c));
+            cuComplex t2 = cmul_f(al_c, cmul_f(y[(size_t)i * incy], xj_c));
+            A[i + (size_t)j * lda] = cadd_f(A[i + (size_t)j * lda], cadd_f(t1, t2));
+        }
+        A[j + (size_t)j * lda].y = 0.0f;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZher2(cublasHandle_t handle, cublasFillMode_t uplo,
+                            int n, const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* x, int incx,
+                            const cuDoubleComplex* y, int incy,
+                            cuDoubleComplex* A, int lda) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || n < 0 || alpha == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (x == nullptr || y == nullptr || A == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuDoubleComplex al = *alpha, al_c = {al.x, -al.y};
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuDoubleComplex yj_c = {y[(size_t)j * incy].x, -y[(size_t)j * incy].y};
+            cuDoubleComplex xj_c = {x[(size_t)j * incx].x, -x[(size_t)j * incx].y};
+            cuDoubleComplex t1 = cmul_d(al,   cmul_d(x[(size_t)i * incx], yj_c));
+            cuDoubleComplex t2 = cmul_d(al_c, cmul_d(y[(size_t)i * incy], xj_c));
+            A[i + (size_t)j * lda] = cadd_d(A[i + (size_t)j * lda], cadd_d(t1, t2));
+        }
+        A[j + (size_t)j * lda].y = 0.0;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// Cherk / Zherk — C = alpha * op(A) * op(A)^H + beta * C.  alpha, beta real.
+// trans=N: op(A)=A (n×k); trans=C: op(A)=A^H (k×n → result n×n).
+cublasStatus_t cublasCherk(cublasHandle_t handle, cublasFillMode_t uplo,
+                            cublasOperation_t trans,
+                            int n, int k,
+                            const float* alpha, const cuComplex* A, int lda,
+                            const float* beta,  cuComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || !is_valid_operation(trans)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || k < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0 || k == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const float av = *alpha, bv = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool no_trans = (trans == CUBLAS_OP_N);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuComplex sum = {0.0f, 0.0f};
+            for (int l = 0; l < k; ++l) {
+                // no_trans: A is n×k → ai = A[i,l], aj = A[j,l]
+                const cuComplex ai = no_trans ? A[i + (size_t)l * lda]
+                                              : cuComplex{A[l + (size_t)i * lda].x, -A[l + (size_t)i * lda].y};
+                const cuComplex aj_c = no_trans ? cuComplex{A[j + (size_t)l * lda].x, -A[j + (size_t)l * lda].y}
+                                                : A[l + (size_t)j * lda];
+                sum = cadd_f(sum, cmul_f(ai, aj_c));
+            }
+            cuComplex& cij = C[i + (size_t)j * ldc];
+            cij.x = av * sum.x + bv * cij.x;
+            cij.y = av * sum.y + bv * cij.y;
+        }
+        // Force diagonal imaginary to zero.
+        C[j + (size_t)j * ldc].y = 0.0f;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZherk(cublasHandle_t handle, cublasFillMode_t uplo,
+                            cublasOperation_t trans,
+                            int n, int k,
+                            const double* alpha, const cuDoubleComplex* A, int lda,
+                            const double* beta,  cuDoubleComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || !is_valid_operation(trans)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || k < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0 || k == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const double av = *alpha, bv = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool no_trans = (trans == CUBLAS_OP_N);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuDoubleComplex sum = {0.0, 0.0};
+            for (int l = 0; l < k; ++l) {
+                const cuDoubleComplex ai = no_trans ? A[i + (size_t)l * lda]
+                                                    : cuDoubleComplex{A[l + (size_t)i * lda].x, -A[l + (size_t)i * lda].y};
+                const cuDoubleComplex aj_c = no_trans ? cuDoubleComplex{A[j + (size_t)l * lda].x, -A[j + (size_t)l * lda].y}
+                                                      : A[l + (size_t)j * lda];
+                sum = cadd_d(sum, cmul_d(ai, aj_c));
+            }
+            cuDoubleComplex& cij = C[i + (size_t)j * ldc];
+            cij.x = av * sum.x + bv * cij.x;
+            cij.y = av * sum.y + bv * cij.y;
+        }
+        C[j + (size_t)j * ldc].y = 0.0;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// Cher2k / Zher2k — C = alpha * op(A) * op(B)^H + conj(alpha) * op(B) * op(A)^H + beta * C.
+// beta is real.
+cublasStatus_t cublasCher2k(cublasHandle_t handle, cublasFillMode_t uplo,
+                             cublasOperation_t trans,
+                             int n, int k,
+                             const cuComplex* alpha,
+                             const cuComplex* A, int lda,
+                             const cuComplex* B, int ldb,
+                             const float* beta, cuComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || !is_valid_operation(trans)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || k < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0 || k == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || B == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuComplex al = *alpha, al_c = {al.x, -al.y};
+    const float bv = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool no_trans = (trans == CUBLAS_OP_N);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuComplex s1 = {0, 0}, s2 = {0, 0};
+            for (int l = 0; l < k; ++l) {
+                const cuComplex ai = no_trans ? A[i + (size_t)l * lda]
+                                              : cuComplex{A[l + (size_t)i * lda].x, -A[l + (size_t)i * lda].y};
+                const cuComplex bj_c = no_trans ? cuComplex{B[j + (size_t)l * ldb].x, -B[j + (size_t)l * ldb].y}
+                                                : B[l + (size_t)j * ldb];
+                const cuComplex bi = no_trans ? B[i + (size_t)l * ldb]
+                                              : cuComplex{B[l + (size_t)i * ldb].x, -B[l + (size_t)i * ldb].y};
+                const cuComplex aj_c = no_trans ? cuComplex{A[j + (size_t)l * lda].x, -A[j + (size_t)l * lda].y}
+                                                : A[l + (size_t)j * lda];
+                s1 = cadd_f(s1, cmul_f(ai, bj_c));
+                s2 = cadd_f(s2, cmul_f(bi, aj_c));
+            }
+            cuComplex update = cadd_f(cmul_f(al, s1), cmul_f(al_c, s2));
+            cuComplex& cij = C[i + (size_t)j * ldc];
+            cij.x = update.x + bv * cij.x;
+            cij.y = update.y + bv * cij.y;
+        }
+        C[j + (size_t)j * ldc].y = 0.0f;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZher2k(cublasHandle_t handle, cublasFillMode_t uplo,
+                             cublasOperation_t trans,
+                             int n, int k,
+                             const cuDoubleComplex* alpha,
+                             const cuDoubleComplex* A, int lda,
+                             const cuDoubleComplex* B, int ldb,
+                             const double* beta, cuDoubleComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo) || !is_valid_operation(trans)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n < 0 || k < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (n == 0 || k == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || B == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuDoubleComplex al = *alpha, al_c = {al.x, -al.y};
+    const double bv = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool no_trans = (trans == CUBLAS_OP_N);
+    for (int j = 0; j < n; ++j) {
+        const int i_lo = upper ? 0 : j;
+        const int i_hi = upper ? j : n - 1;
+        for (int i = i_lo; i <= i_hi; ++i) {
+            cuDoubleComplex s1 = {0, 0}, s2 = {0, 0};
+            for (int l = 0; l < k; ++l) {
+                const cuDoubleComplex ai = no_trans ? A[i + (size_t)l * lda]
+                                                    : cuDoubleComplex{A[l + (size_t)i * lda].x, -A[l + (size_t)i * lda].y};
+                const cuDoubleComplex bj_c = no_trans ? cuDoubleComplex{B[j + (size_t)l * ldb].x, -B[j + (size_t)l * ldb].y}
+                                                      : B[l + (size_t)j * ldb];
+                const cuDoubleComplex bi = no_trans ? B[i + (size_t)l * ldb]
+                                                    : cuDoubleComplex{B[l + (size_t)i * ldb].x, -B[l + (size_t)i * ldb].y};
+                const cuDoubleComplex aj_c = no_trans ? cuDoubleComplex{A[j + (size_t)l * lda].x, -A[j + (size_t)l * lda].y}
+                                                      : A[l + (size_t)j * lda];
+                s1 = cadd_d(s1, cmul_d(ai, bj_c));
+                s2 = cadd_d(s2, cmul_d(bi, aj_c));
+            }
+            cuDoubleComplex update = cadd_d(cmul_d(al, s1), cmul_d(al_c, s2));
+            cuDoubleComplex& cij = C[i + (size_t)j * ldc];
+            cij.x = update.x + bv * cij.x;
+            cij.y = update.y + bv * cij.y;
+        }
+        C[j + (size_t)j * ldc].y = 0.0;
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// Chemm / Zhemm — C = alpha * A * B + beta * C (or B * A), A Hermitian.
+cublasStatus_t cublasChemm(cublasHandle_t handle, cublasSideMode_t side, cublasFillMode_t uplo,
+                            int m, int n,
+                            const cuComplex* alpha,
+                            const cuComplex* A, int lda,
+                            const cuComplex* B, int ldb,
+                            const cuComplex* beta,
+                            cuComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m < 0 || n < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m == 0 || n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || B == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuComplex al = *alpha, be = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool left  = (side == CUBLAS_SIDE_LEFT);
+    const int ka = left ? m : n;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+            cuComplex sum = {0.0f, 0.0f};
+            for (int l = 0; l < ka; ++l) {
+                const cuComplex h = left ? herm_elem_f(A, lda, i, l, upper)
+                                         : herm_elem_f(A, lda, l, j, upper);
+                const cuComplex b = left ? B[l + (size_t)j * ldb]
+                                         : B[i + (size_t)l * ldb];
+                sum = cadd_f(sum, cmul_f(h, b));
+            }
+            C[i + (size_t)j * ldc] = cadd_f(cmul_f(al, sum), cmul_f(be, C[i + (size_t)j * ldc]));
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZhemm(cublasHandle_t handle, cublasSideMode_t side, cublasFillMode_t uplo,
+                            int m, int n,
+                            const cuDoubleComplex* alpha,
+                            const cuDoubleComplex* A, int lda,
+                            const cuDoubleComplex* B, int ldb,
+                            const cuDoubleComplex* beta,
+                            cuDoubleComplex* C, int ldc) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_fill_mode(uplo)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m < 0 || n < 0 || alpha == nullptr || beta == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m == 0 || n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (A == nullptr || B == nullptr || C == nullptr) return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuDoubleComplex al = *alpha, be = *beta;
+    const bool upper = (uplo == CUBLAS_FILL_MODE_UPPER);
+    const bool left  = (side == CUBLAS_SIDE_LEFT);
+    const int ka = left ? m : n;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+            cuDoubleComplex sum = {0.0, 0.0};
+            for (int l = 0; l < ka; ++l) {
+                const cuDoubleComplex h = left ? herm_elem_d(A, lda, i, l, upper)
+                                               : herm_elem_d(A, lda, l, j, upper);
+                const cuDoubleComplex b = left ? B[l + (size_t)j * ldb]
+                                               : B[i + (size_t)l * ldb];
+                sum = cadd_d(sum, cmul_d(h, b));
+            }
+            C[i + (size_t)j * ldc] = cadd_d(cmul_d(al, sum), cmul_d(be, C[i + (size_t)j * ldc]));
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+// CgemmStridedBatched / ZgemmStridedBatched — batched complex GEMM with stride offsets.
+// Iterates over batchCount instances, each offset by strideA/B/C elements.
+cublasStatus_t cublasCgemmStridedBatched(cublasHandle_t handle,
+                                          cublasOperation_t transa, cublasOperation_t transb,
+                                          int m, int n, int k,
+                                          const cuComplex* alpha,
+                                          const cuComplex* A, int lda, long long int strideA,
+                                          const cuComplex* B, int ldb, long long int strideB,
+                                          const cuComplex* beta,
+                                          cuComplex* C, int ldc, long long int strideC,
+                                          int batchCount) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_operation(transa) || !is_valid_operation(transb)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m < 0 || n < 0 || k < 0 || batchCount < 0) return CUBLAS_STATUS_INVALID_VALUE;
+    if (batchCount == 0 || m == 0 || n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (alpha == nullptr || beta == nullptr || A == nullptr || B == nullptr || C == nullptr)
+        return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuComplex al = *alpha, be = *beta;
+    for (int b = 0; b < batchCount; ++b) {
+        const cuComplex* Ab = A + (size_t)b * strideA;
+        const cuComplex* Bb = B + (size_t)b * strideB;
+        cuComplex*       Cb = C + (size_t)b * strideC;
+        for (int j = 0; j < n; ++j) {
+            for (int i = 0; i < m; ++i) {
+                cuComplex sum = {0.0f, 0.0f};
+                for (int l = 0; l < k; ++l)
+                    sum = cadd_f(sum, cmul_f(celem_f(Ab, lda, transa, i, l),
+                                             celem_f(Bb, ldb, transb, l, j)));
+                cuComplex& cij = Cb[(size_t)j * ldc + i];
+                cij = cadd_f(cmul_f(al, sum), cmul_f(be, cij));
+            }
+        }
+    }
+    return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasZgemmStridedBatched(cublasHandle_t handle,
+                                          cublasOperation_t transa, cublasOperation_t transb,
+                                          int m, int n, int k,
+                                          const cuDoubleComplex* alpha,
+                                          const cuDoubleComplex* A, int lda, long long int strideA,
+                                          const cuDoubleComplex* B, int ldb, long long int strideB,
+                                          const cuDoubleComplex* beta,
+                                          cuDoubleComplex* C, int ldc, long long int strideC,
+                                          int batchCount) {
+    if (handle == nullptr) return CUBLAS_STATUS_NOT_INITIALIZED;
+    if (!is_valid_operation(transa) || !is_valid_operation(transb)) return CUBLAS_STATUS_INVALID_VALUE;
+    if (m < 0 || n < 0 || k < 0 || batchCount < 0) return CUBLAS_STATUS_INVALID_VALUE;
+    if (batchCount == 0 || m == 0 || n == 0) return CUBLAS_STATUS_SUCCESS;
+    if (alpha == nullptr || beta == nullptr || A == nullptr || B == nullptr || C == nullptr)
+        return CUBLAS_STATUS_INVALID_VALUE;
+    const cublasStatus_t ss = synchronize_handle_stream(handle);
+    if (ss != CUBLAS_STATUS_SUCCESS) return ss;
+    const cuDoubleComplex al = *alpha, be = *beta;
+    for (int b = 0; b < batchCount; ++b) {
+        const cuDoubleComplex* Ab = A + (size_t)b * strideA;
+        const cuDoubleComplex* Bb = B + (size_t)b * strideB;
+        cuDoubleComplex*       Cb = C + (size_t)b * strideC;
+        for (int j = 0; j < n; ++j) {
+            for (int i = 0; i < m; ++i) {
+                cuDoubleComplex sum = {0.0, 0.0};
+                for (int l = 0; l < k; ++l)
+                    sum = cadd_d(sum, cmul_d(celem_d(Ab, lda, transa, i, l),
+                                             celem_d(Bb, ldb, transb, l, j)));
+                cuDoubleComplex& cij = Cb[(size_t)j * ldc + i];
+                cij = cadd_d(cmul_d(al, sum), cmul_d(be, cij));
+            }
+        }
     }
     return CUBLAS_STATUS_SUCCESS;
 }
