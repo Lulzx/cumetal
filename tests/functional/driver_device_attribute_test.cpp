@@ -44,6 +44,29 @@ int main() {
         return 1;
     }
 
+    if (cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, 0) != CUDA_SUCCESS ||
+        value != 8) {
+        std::fprintf(stderr, "FAIL: compute capability major should be 8 (spec §6.8)\n");
+        return 1;
+    }
+
+    if (cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, 0) != CUDA_SUCCESS ||
+        value != 0) {
+        std::fprintf(stderr, "FAIL: compute capability minor should be 0 (spec §6.8)\n");
+        return 1;
+    }
+
+    if (cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK, 0) != CUDA_SUCCESS ||
+        value <= 0) {
+        std::fprintf(stderr, "FAIL: max registers per block should be positive\n");
+        return 1;
+    }
+
+    if (cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_CLOCK_RATE, 0) != CUDA_SUCCESS || value <= 0) {
+        std::fprintf(stderr, "FAIL: clock rate should be positive\n");
+        return 1;
+    }
+
     if (cuDeviceGetAttribute(nullptr, CU_DEVICE_ATTRIBUTE_WARP_SIZE, 0) != CUDA_ERROR_INVALID_VALUE) {
         std::fprintf(stderr, "FAIL: null output pointer should be rejected\n");
         return 1;

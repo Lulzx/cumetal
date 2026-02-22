@@ -660,6 +660,21 @@ CUresult cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev) 
         case CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT:
             *pi = prop.multiProcessorCount;
             break;
+        case CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK:
+            *pi = 65536;
+            break;
+        case CU_DEVICE_ATTRIBUTE_CLOCK_RATE:
+            *pi = 1296000;  // kHz — conservative estimate for M-series GPU
+            break;
+        case CU_DEVICE_ATTRIBUTE_GPU_OVERLAP:
+            *pi = 1;  // Metal supports async compute + copy overlap
+            break;
+        case CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR:
+            *pi = 8;  // Ampere-equivalent feature set (spec §6.8)
+            break;
+        case CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR:
+            *pi = 0;  // Ampere-equivalent feature set (spec §6.8)
+            break;
         case CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING:
         case CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY:
         case CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS:
