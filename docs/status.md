@@ -165,6 +165,8 @@ Device intrinsics added to `cuda_runtime.h`:
 - Fast math: `__sinf`, `__cosf`, `__tanf`, `__expf`, `__exp2f`, `__logf`, `__log2f`, `__log10f`, `__powf`, `__sqrtf`, `__rsqrtf`, `__fdividef`, `__frcp_rn`, `__fsqrt_rn`
 - Lane masks: `__lanemask_eq`, `__lanemask_lt`, `__lanemask_le`, `__lanemask_gt`, `__lanemask_ge`
 - Warp reductions: `__reduce_add_sync`, `__reduce_and_sync`, `__reduce_or_sync`, `__reduce_xor_sync`, `__reduce_min_sync`, `__reduce_max_sync`
+- Warp shuffle: `__shfl_sync`, `__shfl_down_sync`, `__shfl_up_sync`, `__shfl_xor_sync` (int + float overloads; partial masks map to full-group on Apple Silicon)
+- Warp vote: `__any_sync`, `__all_sync`, `__ballot_sync` (mask parameter accepted but Apple Silicon is always full-group)
 - Double atomics: `atomicAdd(double*, double)` via 64-bit CAS loop
 
 `cuda_fp16.h` expanded:
@@ -175,10 +177,20 @@ Device intrinsics added to `cuda_runtime.h`:
 Driver API additions:
 - `cuMemAllocPitch`, `cuCtxEnablePeerAccess`, `cuCtxDisablePeerAccess`
 - `cuCtxGetStreamPriorityRange` (returns 0,0)
+- `cuLaunchHostFunc` (launches a CPU callback asynchronously on a stream; implemented via `cudaStreamAddCallback`)
 
 `cudaDeviceProp` fields now populated per spec §6.8:
 - `unifiedAddressing = 1`, `managedMemory = 1`, `concurrentManagedAccess = 1` (UMA)
 - `maxBufferArguments = 31` (Metal buffer argument limit)
+- `clockRate`, `memoryClockRate` (1296000 kHz), `memoryBusWidth` (128-bit)
+- `totalConstMem` (64 KB), `sharedMemPerMultiprocessor`, `maxThreadsPerMultiProcessor` (2048)
+- `l2CacheSize` (4 MB), `canMapHostMemory = 1`, `integrated = 1`, `concurrentKernels = 1`
+- `asyncEngineCount = 0`, `computeMode = cudaComputeModeDefault`
+- `pciBusID`, `pciDeviceID`, `pciDomainID` (all 0 — no discrete PCI GPU)
+- `tccDriver = 0`, `kernelExecTimeoutEnabled = 0`
+- `pageableMemoryAccess = 1`, `pageableMemoryAccessUsesHostPageTables = 1`
+
+`cudaComputeMode` enum added: `cudaComputeModeDefault`, `cudaComputeModeExclusive`, `cudaComputeModeProhibited`, `cudaComputeModeExclusiveProcess`
 
 `cudaDeviceGetAttribute` and `cuDeviceGetAttribute` now support additional attributes:
 - `cudaDevAttrComputeCapabilityMajor` / `CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR` → 8
@@ -187,6 +199,14 @@ Driver API additions:
 - `cudaDevAttrClockRate` / `CU_DEVICE_ATTRIBUTE_CLOCK_RATE` → 1296000 kHz
 - `cudaDevAttrTextureAlignment` → 512 bytes
 - `cudaDevAttrGpuOverlap` / `CU_DEVICE_ATTRIBUTE_GPU_OVERLAP` → 1
+- `cudaDevAttrMemoryBusWidth` → 128, `cudaDevAttrL2CacheSize` → 4 MB
+- `cudaDevAttrMaxThreadsPerMultiProcessor` → 2048, `cudaDevAttrMemoryClockRate` → 1296000
+- `cudaDevAttrIntegrated` → 1, `cudaDevAttrCanMapHostMemory` → 1
+- `cudaDevAttrComputeMode` → 0, `cudaDevAttrConcurrentKernels` → 1
+- `cudaDevAttrPciBusId`, `cudaDevAttrPciDeviceId`, `cudaDevAttrPciDomainId` → 0
+- `cudaDevAttrTccDriver` → 0, `cudaDevAttrKernelExecTimeout` → 0, `cudaDevAttrAsyncEngineCount` → 0
+- `cudaDevAttrPageableMemoryAccess` → 1, `cudaDevAttrPageableMemoryAccessUsesHostPageTables` → 1
+- `cudaDevAttrSharedMemPerBlockOptin` → sharedMemPerBlock
 
 `cooperative_groups::thread_block_tile<N>` extended with:
 - `shfl(val, src_rank)`, `shfl_down(val, delta)`, `shfl_xor(val, mask)`
