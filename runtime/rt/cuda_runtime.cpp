@@ -1765,8 +1765,40 @@ cudaError_t cudaDeviceGetAttribute(int* value, int attr, int device) {
         case cudaDevAttrUnifiedAddressing:
         case cudaDevAttrManagedMemory:
         case cudaDevAttrConcurrentManagedAccess:
+        case cudaDevAttrCanMapHostMemory:
+        case cudaDevAttrIntegrated:
+        case cudaDevAttrConcurrentKernels:
+        case cudaDevAttrPageableMemoryAccess:
+        case cudaDevAttrPageableMemoryAccessUsesHostPageTables:
             *value = 1;
             break;
+        case cudaDevAttrMemoryBusWidth:
+            *value = 128;
+            break;
+        case cudaDevAttrL2CacheSize:
+            *value = 4 * 1024 * 1024;
+            break;
+        case cudaDevAttrMaxThreadsPerMultiProcessor:
+            *value = 2048;
+            break;
+        case cudaDevAttrMemoryClockRate:
+            *value = 1296000;
+            break;
+        case cudaDevAttrComputeMode:
+        case cudaDevAttrPciBusId:
+        case cudaDevAttrPciDeviceId:
+        case cudaDevAttrPciDomainId:
+        case cudaDevAttrTccDriver:
+        case cudaDevAttrKernelExecTimeout:
+        case cudaDevAttrAsyncEngineCount:
+            *value = 0;
+            break;
+        case cudaDevAttrSharedMemPerBlockOptin: {
+            cudaDeviceProp prop{};
+            cudaGetDeviceProperties(&prop, device);
+            *value = static_cast<int>(prop.sharedMemPerBlock);
+            break;
+        }
         default:
             return fail(cudaErrorInvalidValue);
     }
