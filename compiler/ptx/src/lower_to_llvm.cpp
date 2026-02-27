@@ -1575,11 +1575,42 @@ class GenericLlvmEmitter {
         if (instr.operands.size() < 2 || !is_register_name(instr.operands[0])) {
             return fail(instr, "cvt requires dst, src");
         }
+        const std::string& dst = instr.operands[0];
+
+        // PTX: cvt.rn.f16x2.f32 dst, a, b
+        // Pack two f32 values into one 32-bit register carrying two IEEE fp16 lanes.
+        if (instr.opcode.find("f16x2.f32") != std::string::npos) {
+            if (instr.operands.size() < 3) {
+                return fail(instr, "cvt.f16x2.f32 requires dst, a, b");
+            }
+            auto a = decode_float_operand(os, instr.operands[1], 32);
+            auto b = decode_float_operand(os, instr.operands[2], 32);
+            if (!a || !b) {
+                return fail(instr, "cvt.f16x2.f32 sources unsupported");
+            }
+            const std::string a_h = next_tmp("cvtf16x2_a_h");
+            const std::string b_h = next_tmp("cvtf16x2_b_h");
+            os << "  " << a_h << " = fptrunc float " << a->ir << " to half\n";
+            os << "  " << b_h << " = fptrunc float " << b->ir << " to half\n";
+            const std::string a_i16 = next_tmp("cvtf16x2_a_i16");
+            const std::string b_i16 = next_tmp("cvtf16x2_b_i16");
+            os << "  " << a_i16 << " = bitcast half " << a_h << " to i16\n";
+            os << "  " << b_i16 << " = bitcast half " << b_h << " to i16\n";
+            const std::string lo_i32 = next_tmp("cvtf16x2_lo");
+            const std::string hi_i32 = next_tmp("cvtf16x2_hi");
+            os << "  " << lo_i32 << " = zext i16 " << a_i16 << " to i32\n";
+            os << "  " << hi_i32 << " = zext i16 " << b_i16 << " to i32\n";
+            const std::string hi_sh = next_tmp("cvtf16x2_hish");
+            os << "  " << hi_sh << " = shl i32 " << hi_i32 << ", 16\n";
+            const std::string packed = next_tmp("cvtf16x2_pack");
+            os << "  " << packed << " = or i32 " << lo_i32 << ", " << hi_sh << "\n";
+            return emit_store_reg_bits(os, dst, ensure_reg_slot(dst).bits, packed, 32);
+        }
+
         const ParsedCvtTypes cvt = parse_cvt_types(instr.opcode);
         if (!cvt.ok) {
             return fail(instr, "unable to parse cvt types");
         }
-        const std::string& dst = instr.operands[0];
         const std::string& src = instr.operands[1];
 
         Value src_value;

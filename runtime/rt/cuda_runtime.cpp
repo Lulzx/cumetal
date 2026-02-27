@@ -3387,6 +3387,26 @@ cudaError_t cudaLaunchKernel(const void* func,
                             registered_kernel.printf_formats);
     }
 
+    // Optional debug barrier: force stream completion after every launch.
+    // This is off by default and intended for isolating ordering/synchronization bugs.
+    if (status == cudaSuccess) {
+        static int sync_each_launch = -1;
+        if (sync_each_launch < 0) {
+            const char* v = std::getenv("CUMETAL_SYNC_EACH_LAUNCH");
+            sync_each_launch = (v != nullptr && v[0] != '\0' && v[0] != '0') ? 1 : 0;
+        }
+        if (sync_each_launch) {
+            std::string sync_error;
+            const cudaError_t sync_status =
+                (backend_stream != nullptr)
+                    ? cumetal::metal_backend::stream_synchronize(backend_stream, &sync_error)
+                    : cumetal::metal_backend::synchronize(&sync_error);
+            if (sync_status != cudaSuccess) {
+                return launch_fail(sync_status, "post-launch debug sync");
+            }
+        }
+    }
+
     return launch_fail(status, "metal_backend::launch_kernel");
 }
 
