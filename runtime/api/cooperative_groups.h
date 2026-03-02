@@ -119,6 +119,10 @@ struct grid_group {
 
 __device__ __forceinline__ grid_group this_grid() { return {}; }
 
+// Free-function sync — matches cg::sync(group) usage in CUDA code.
+template <typename Group>
+__device__ __forceinline__ void sync(Group& g) { g.sync(); }
+
 template <typename T>
 struct plus {
     __device__ __forceinline__ T operator()(const T& a, const T& b) const { return a + b; }

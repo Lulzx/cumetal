@@ -179,6 +179,7 @@ struct RegistrationModule {
     std::unordered_map<std::string, std::vector<cumetalKernelArgInfo_t>> kernel_arg_info_index;
     std::unordered_map<std::string, std::string> emitted_kernel_metallibs;
     std::unordered_map<std::string, std::vector<std::string>> emitted_kernel_printf_formats;
+    std::unordered_map<std::string, std::size_t> emitted_kernel_static_shared_bytes;
     std::vector<std::string> owned_metallibs;
 };
 
@@ -188,6 +189,7 @@ struct RegistrationRecord {
     std::string kernel_name;
     std::vector<cumetalKernelArgInfo_t> arg_info;
     std::vector<std::string> printf_formats;
+    std::size_t static_shared_bytes = 0;
 };
 
 struct RegistrationSymbolRecord {
@@ -655,7 +657,8 @@ bool emit_ptx_entry_to_temp_metallib(const std::string& ptx_source,
 
 std::string resolve_metallib_path_for_kernel(void* module_handle,
                                               const std::string& kernel_name,
-                                              std::vector<std::string>* out_printf_formats) {
+                                              std::vector<std::string>* out_printf_formats,
+                                              std::size_t* out_static_shared_bytes) {
     if (module_handle == nullptr || kernel_name.empty()) {
         return fallback_metallib_path_from_env();
     }
@@ -686,6 +689,12 @@ std::string resolve_metallib_path_for_kernel(void* module_handle,
                     *out_printf_formats = pf_it->second;
                 }
             }
+            if (out_static_shared_bytes != nullptr) {
+                const auto ssb_it = module.emitted_kernel_static_shared_bytes.find(kernel_name);
+                if (ssb_it != module.emitted_kernel_static_shared_bytes.end()) {
+                    *out_static_shared_bytes = ssb_it->second;
+                }
+            }
             return cached->second;
         }
 
@@ -697,7 +706,11 @@ std::string resolve_metallib_path_for_kernel(void* module_handle,
         return fallback_metallib_path_from_env();
     }
 
-    REG_DEBUG("resolve_metallib '%s': JIT compiling...", kernel_name.c_str());
+    // Compute static shared memory size from the PTX source before JIT compilation.
+    const std::size_t static_shared = cumetal::ptx::compute_static_shared_bytes(ptx_source);
+
+    REG_DEBUG("resolve_metallib '%s': JIT compiling... (static_shared=%zu)",
+              kernel_name.c_str(), static_shared);
     std::string emitted_path;
     std::vector<std::string> local_printf_formats;
     bool is_persistent = false;
@@ -733,12 +746,22 @@ std::string resolve_metallib_path_for_kernel(void* module_handle,
                 *out_printf_formats = pf_it->second;
             }
         }
+        if (out_static_shared_bytes != nullptr) {
+            const auto ssb_it = module.emitted_kernel_static_shared_bytes.find(kernel_name);
+            if (ssb_it != module.emitted_kernel_static_shared_bytes.end()) {
+                *out_static_shared_bytes = ssb_it->second;
+            }
+        }
         return inserted.first->second;
     }
 
     module.emitted_kernel_printf_formats.emplace(kernel_name, local_printf_formats);
+    module.emitted_kernel_static_shared_bytes.emplace(kernel_name, static_shared);
     if (out_printf_formats != nullptr) {
         *out_printf_formats = std::move(local_printf_formats);
+    }
+    if (out_static_shared_bytes != nullptr) {
+        *out_static_shared_bytes = static_shared;
     }
     // Persistent cache files (in registration-jit/) survive process exit and
     // __cudaUnregisterFatBinary — do not track them for deletion.
@@ -783,8 +806,10 @@ bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out) 
 
     if (record.metallib_path.empty()) {
         std::vector<std::string> printf_formats;
+        std::size_t static_shared_bytes = 0;
         std::string metallib_path =
-            resolve_metallib_path_for_kernel(record.module_handle, record.kernel_name, &printf_formats);
+            resolve_metallib_path_for_kernel(record.module_handle, record.kernel_name,
+                                             &printf_formats, &static_shared_bytes);
         if (metallib_path.empty()) {
             metallib_path = fallback_metallib_path_from_env();
         }
@@ -800,6 +825,9 @@ bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out) 
             if (!printf_formats.empty()) {
                 found->second.printf_formats = std::move(printf_formats);
             }
+            if (static_shared_bytes > 0) {
+                found->second.static_shared_bytes = static_shared_bytes;
+            }
         }
         record = found->second;
     }
@@ -808,6 +836,7 @@ bool lookup_registered_kernel(const void* host_function, RegisteredKernel* out) 
     out->kernel_name = record.kernel_name;
     out->arg_info = record.arg_info;
     out->printf_formats = record.printf_formats;
+    out->static_shared_bytes = record.static_shared_bytes;
     return true;
 }
 

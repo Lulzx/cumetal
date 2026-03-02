@@ -107,6 +107,8 @@ set +e
     --prompt "${PROMPT}" \
     --no-mmap \
     --log-disable \
+    --single-turn \
+    < /dev/null \
     2>&1 | tee "${OUTPUT_FILE}"
 EXIT_CODE=$?
 set -e

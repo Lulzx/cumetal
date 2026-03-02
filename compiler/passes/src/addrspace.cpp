@@ -102,6 +102,16 @@ bool rewrite_cvta(const cumetal::ptx::EntryFunction::Instruction& instruction, A
     } else if (starts_with(instruction.opcode, "cvta.to.local")) {
         out->opcode = "llvm.addrspacecast.to.as5";
         out->address_space = 5;
+    } else if (starts_with(instruction.opcode, "cvta.global") ||
+               starts_with(instruction.opcode, "cvta.shared") ||
+               starts_with(instruction.opcode, "cvta.local")  ||
+               starts_with(instruction.opcode, "cvta.const")) {
+        // Reverse-direction cvta: convert FROM a specific address space TO generic/flat (AS0).
+        // On Apple Silicon UMA all memory is flat, so this is an identity operation.
+        // lower_to_llvm.cpp (emit_cvta_instruction) already emits it as a plain copy.
+        out->opcode = instruction.opcode;
+        out->address_space = 0;
+        out->rewritten = false;
     } else {
         return false;
     }

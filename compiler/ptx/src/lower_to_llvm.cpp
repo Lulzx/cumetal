@@ -488,6 +488,11 @@ struct ConstSymbolInfo {
     std::size_t byte_count = 0;
 };
 
+struct SharedSymbolInfo {
+    std::size_t offset_bytes = 0;  // byte offset within the threadgroup buffer
+    std::size_t size_bytes   = 0;  // size of this symbol in bytes
+};
+
 std::string quote_llvm_global_name(const std::string& symbol) {
     std::string out;
     out.reserve(symbol.size() + 4);
@@ -585,6 +590,83 @@ std::vector<ParsedConstB8Array> parse_ptx_const_b8_arrays(std::string_view ptx_t
         });
     }
 
+    return out;
+}
+
+// Parse .shared declarations (non-extern) from PTX to build a symbol→byte-offset map.
+// Each static __shared__ variable gets a contiguous region in the threadgroup buffer.
+// .extern .shared symbols (unknown size) are skipped; they remain at offset 0.
+std::unordered_map<std::string, SharedSymbolInfo> parse_ptx_shared_symbols(std::string_view ptx_text) {
+    struct Entry { std::size_t size_bytes; std::size_t align_bytes; };
+    std::vector<std::pair<std::string, Entry>> ordered;
+    std::unordered_set<std::string> seen;
+    std::istringstream lines{std::string(ptx_text)};
+    std::string line;
+    while (std::getline(lines, line)) {
+        const std::string t = trim(line);
+        if (t.find(".shared") == std::string::npos) continue;
+        // Skip extern declarations — pointer arithmetic by user handles sub-regions.
+        if (t.find(".extern") != std::string::npos) continue;
+
+        // Determine element byte-size from type token (.b8=1, .b16=2, .b32=4, .b64=8).
+        std::size_t b_pos = std::string::npos;
+        int elem_bytes = 1;
+        for (const auto& p : std::vector<std::pair<std::string, int>>{
+                {".b64", 8}, {".b32", 4}, {".b16", 2}, {".b8", 1}}) {
+            const auto pos = t.find(p.first);
+            if (pos != std::string::npos) { b_pos = pos; elem_bytes = p.second; break; }
+        }
+        if (b_pos == std::string::npos) continue;
+
+        // Parse .align N
+        std::size_t align_bytes = static_cast<std::size_t>(elem_bytes);
+        if (const std::size_t ap = t.find(".align"); ap != std::string::npos) {
+            std::size_t pos = ap + 6;
+            while (pos < t.size() && std::isspace(static_cast<unsigned char>(t[pos])) != 0) ++pos;
+            std::size_t end = pos;
+            while (end < t.size() && std::isdigit(static_cast<unsigned char>(t[end])) != 0) ++end;
+            if (end > pos) {
+                try { align_bytes = static_cast<std::size_t>(std::max(1, std::stoi(t.substr(pos, end - pos)))); }
+                catch (...) {}
+            }
+        }
+
+        // Symbol name: from end of ".bN" token to '['.
+        // ".b8" = 3 chars, ".b16/.b32/.b64" = 4 chars.
+        const std::size_t type_len = (elem_bytes == 1) ? 3u : 4u;
+        std::size_t sym_begin = b_pos + type_len;
+        while (sym_begin < t.size() && std::isspace(static_cast<unsigned char>(t[sym_begin])) != 0) ++sym_begin;
+        const std::size_t bracket_open = t.find('[', sym_begin);
+        if (bracket_open == std::string::npos) continue;
+        const std::string symbol = trim(t.substr(sym_begin, bracket_open - sym_begin));
+        if (symbol.empty() || seen.count(symbol) != 0) continue;
+        seen.insert(symbol);
+
+        // Element count inside brackets.
+        const std::size_t bracket_close = t.find(']', bracket_open + 1);
+        std::size_t elem_count = 0;
+        if (bracket_close != std::string::npos) {
+            const std::string cnt = trim(t.substr(bracket_open + 1, bracket_close - bracket_open - 1));
+            if (!cnt.empty()) {
+                try { elem_count = static_cast<std::size_t>(std::stoull(cnt)); } catch (...) {}
+            }
+        }
+        const std::size_t size_bytes = elem_count * static_cast<std::size_t>(elem_bytes);
+        if (size_bytes == 0) continue;
+        ordered.push_back({symbol, Entry{size_bytes, align_bytes}});
+    }
+
+    // If only one symbol, it stays at offset 0 — no remapping needed.
+    if (ordered.size() <= 1) return {};
+
+    // Assign contiguous byte offsets, respecting alignment.
+    std::unordered_map<std::string, SharedSymbolInfo> out;
+    std::size_t cursor = 0;
+    for (const auto& [sym, e] : ordered) {
+        if (e.align_bytes > 1) cursor = (cursor + e.align_bytes - 1) & ~(e.align_bytes - 1);
+        out.emplace(sym, SharedSymbolInfo{.offset_bytes = cursor, .size_bytes = e.size_bytes});
+        cursor += e.size_bytes;
+    }
     return out;
 }
 
@@ -798,8 +880,10 @@ class GenericLlvmEmitter {
     GenericLlvmEmitter(const cumetal::ptx::EntryFunction& entry,
                       std::vector<ParamInfo>* params,
                       std::vector<std::string>* arg_decls,
-                      const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols)
-        : entry_(entry), params_(params), arg_decls_(arg_decls), const_symbols_(const_symbols) {
+                      const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols,
+                      const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols)
+        : entry_(entry), params_(params), arg_decls_(arg_decls), const_symbols_(const_symbols),
+          shared_symbols_(shared_symbols) {
         if (params_ != nullptr) {
             for (std::size_t i = 0; i < params_->size(); ++i) {
                 param_by_raw_[(*params_)[i].raw_name] = static_cast<int>(i);
@@ -886,6 +970,7 @@ class GenericLlvmEmitter {
     std::vector<ParamInfo>* params_ = nullptr;
     std::vector<std::string>* arg_decls_ = nullptr;
     const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols_ = nullptr;
+    const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols_ = nullptr;
 
     std::unordered_map<std::string, int> param_by_raw_;
     std::unordered_map<std::string, std::string> builtin_vector_arg_name_;
@@ -1374,6 +1459,15 @@ class GenericLlvmEmitter {
         }
         const std::string tmp = next_tmp("tg_p2i");
         os << "  " << tmp << " = ptrtoint i8 addrspace(3)* %" << threadgroup_buffer_arg_name_ << " to i64\n";
+        // Apply per-symbol byte offset for multiple static __shared__ arrays.
+        if (shared_symbols_ != nullptr) {
+            const auto it = shared_symbols_->find(symbol);
+            if (it != shared_symbols_->end() && it->second.offset_bytes > 0) {
+                const std::string off = next_tmp("tg_sym_off");
+                os << "  " << off << " = add i64 " << tmp << ", " << it->second.offset_bytes << "\n";
+                return off;
+            }
+        }
         return tmp;
     }
 
@@ -1544,10 +1638,30 @@ class GenericLlvmEmitter {
         const std::string& src = instr.operands[1];
 
         if (!dst.empty() && dst.front() == '{') {
-            if (instr.opcode.find(".b32") == std::string::npos) {
-                return fail(instr, "only mov.b32 tuple unpack supported");
-            }
             const std::vector<std::string> parts = split_comma_list(dst);
+            if (instr.opcode.find(".b64") != std::string::npos) {
+                // mov.b64 {%r1, %r2}, %rd — unpack 64-bit into lo/hi 32-bit halves
+                if (parts.size() != 2) {
+                    return fail(instr, "mov.b64 tuple unpack expects 2 dests");
+                }
+                auto src_i64 = emit_integer_from_any(os, src, 64, false);
+                if (!src_i64.has_value()) {
+                    return fail(instr, "mov.b64 tuple unpack source unsupported");
+                }
+                const std::string lo32 = next_tmp("movlo");
+                os << "  " << lo32 << " = trunc i64 " << *src_i64 << " to i32\n";
+                const std::string hi_shift = next_tmp("movhi_sh");
+                os << "  " << hi_shift << " = lshr i64 " << *src_i64 << ", 32\n";
+                const std::string hi32 = next_tmp("movhi");
+                os << "  " << hi32 << " = trunc i64 " << hi_shift << " to i32\n";
+                if (!emit_store_reg_bits(os, parts[0], 32, lo32, 32)) return false;
+                if (!emit_store_reg_bits(os, parts[1], 32, hi32, 32)) return false;
+                return true;
+            }
+            if (instr.opcode.find(".b32") == std::string::npos) {
+                return fail(instr, "only mov.b32/mov.b64 tuple unpack supported");
+            }
+            // mov.b32 {%r1, %r2}, %r3 — unpack 32-bit into lo/hi 16-bit halves
             if (parts.size() != 2) {
                 return fail(instr, "mov.b32 tuple unpack expects 2 dests");
             }
@@ -3768,7 +3882,8 @@ GenericLlvmBodyResult try_emit_generic_llvm_body(std::string_view ptx_source,
                                                  const std::string& entry_name,
                                                  std::vector<ParamInfo>* params,
                                                  std::vector<std::string>* arg_decls,
-                                                 const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols) {
+                                                 const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols,
+                                                 const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols) {
     GenericLlvmBodyResult out;
 
     cumetal::ptx::ParseOptions parse_opts;
@@ -3791,7 +3906,7 @@ GenericLlvmBodyResult try_emit_generic_llvm_body(std::string_view ptx_source,
         return out;
     }
 
-    GenericLlvmEmitter emitter(*entry, params, arg_decls, const_symbols);
+    GenericLlvmEmitter emitter(*entry, params, arg_decls, const_symbols, shared_symbols);
     return emitter.run();
 }
 
@@ -3978,7 +4093,11 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     const bool vector_add_signature = looks_like_vector_add_signature(pipeline.entry_name, params);
     bool matrix_mul_signature = looks_like_matrix_mul_signature(pipeline.entry_name, params);
     const bool negate_signature = looks_like_negate_signature(pipeline.entry_name, params);
-    bool reduce_sum_signature = looks_like_reduce_sum_signature(pipeline.entry_name, params);
+    // Skip the simple atomic-reduce path if the kernel uses shared memory — such
+    // kernels implement their own reduction algorithm (tree + warp-shuffle) and
+    // must go through the generic LLVM path.
+    bool reduce_sum_signature = looks_like_reduce_sum_signature(pipeline.entry_name, params) &&
+                                ptx.find(".shared") == std::string::npos;
     const bool fp64_mul_add_signature =
         looks_like_fp64_mul_add_signature(pipeline.entry_name, params);
     if (matrix_mul_signature && params.size() >= 5) {
@@ -4045,6 +4164,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         const_global_defs.push_back(def.str());
     }
 
+    const auto shared_symbols = parse_ptx_shared_symbols(ptx);
+
     GenericLlvmBodyResult generic_body;
     bool use_generic_body = false;
     if (!vector_add_signature && !matrix_mul_signature && !negate_signature &&
@@ -4055,7 +4176,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
                                                   pipeline.entry_name,
                                                   &generic_params,
                                                   &generic_arg_decls,
-                                                  &const_symbols);
+                                                  &const_symbols,
+                                                  &shared_symbols);
         if (generic_body.ok) {
             params = std::move(generic_params);
             arg_decls = std::move(generic_arg_decls);
@@ -4262,6 +4384,64 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
     }
 
     return result;
+}
+
+std::size_t compute_static_shared_bytes(std::string_view ptx_text) {
+    // Scan .shared declarations (non-extern) and compute total aligned size.
+    std::size_t cursor = 0;
+    std::unordered_set<std::string> seen;
+    std::istringstream lines{std::string(ptx_text)};
+    std::string line;
+    while (std::getline(lines, line)) {
+        const std::string t = trim(line);
+        if (t.find(".shared") == std::string::npos) continue;
+        if (t.find(".extern") != std::string::npos) continue;
+
+        int elem_bytes = 1;
+        std::size_t b_pos = std::string::npos;
+        for (const auto& p : std::vector<std::pair<std::string, int>>{
+                {".b64", 8}, {".b32", 4}, {".b16", 2}, {".b8", 1}}) {
+            const auto pos = t.find(p.first);
+            if (pos != std::string::npos) { b_pos = pos; elem_bytes = p.second; break; }
+        }
+        if (b_pos == std::string::npos) continue;
+
+        std::size_t align_bytes = static_cast<std::size_t>(elem_bytes);
+        if (const std::size_t ap = t.find(".align"); ap != std::string::npos) {
+            std::size_t pos = ap + 6;
+            while (pos < t.size() && std::isspace(static_cast<unsigned char>(t[pos])) != 0) ++pos;
+            std::size_t end = pos;
+            while (end < t.size() && std::isdigit(static_cast<unsigned char>(t[end])) != 0) ++end;
+            if (end > pos) {
+                try { align_bytes = static_cast<std::size_t>(std::max(1, std::stoi(t.substr(pos, end - pos)))); }
+                catch (...) {}
+            }
+        }
+
+        const std::size_t type_len = (elem_bytes == 1) ? 3u : 4u;
+        std::size_t sym_begin = b_pos + type_len;
+        while (sym_begin < t.size() && std::isspace(static_cast<unsigned char>(t[sym_begin])) != 0) ++sym_begin;
+        const std::size_t bracket_open = t.find('[', sym_begin);
+        if (bracket_open == std::string::npos) continue;
+        const std::string symbol = trim(t.substr(sym_begin, bracket_open - sym_begin));
+        if (symbol.empty() || seen.count(symbol) != 0) continue;
+        seen.insert(symbol);
+
+        const std::size_t bracket_close = t.find(']', bracket_open + 1);
+        std::size_t elem_count = 0;
+        if (bracket_close != std::string::npos) {
+            const std::string cnt = trim(t.substr(bracket_open + 1, bracket_close - bracket_open - 1));
+            if (!cnt.empty()) {
+                try { elem_count = static_cast<std::size_t>(std::stoull(cnt)); } catch (...) {}
+            }
+        }
+        const std::size_t size_bytes = elem_count * static_cast<std::size_t>(elem_bytes);
+        if (size_bytes == 0) continue;
+
+        if (align_bytes > 1) cursor = (cursor + align_bytes - 1) & ~(align_bytes - 1);
+        cursor += size_bytes;
+    }
+    return cursor;
 }
 
 }  // namespace cumetal::ptx

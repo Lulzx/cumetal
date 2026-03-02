@@ -29,4 +29,4 @@ if [[ -z "$out_file" || -z "$input_file" ]]; then
     exit 2
 fi
 
-cp "$input_file" "$out_file"
+/bin/cp "$input_file" "$out_file"

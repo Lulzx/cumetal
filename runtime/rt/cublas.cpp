@@ -1533,32 +1533,78 @@ cublasStatus_t cublasGemmEx(cublasHandle_t handle,
     const float alpha_f = read_f32(alpha, 0, alpha_type);
     const float beta_f  = read_f32(beta,  0, beta_type);
 
-    const cublasStatus_t sync_status = synchronize_handle_stream(handle);
-    if (sync_status != CUBLAS_STATUS_SUCCESS) return sync_status;
+    // GPU-accelerated path: upconvert FP16/BF16 → FP32 on CPU (fast on Apple
+    // Silicon UMA shared memory), run Metal GPU GEMM (cublasSgemm), then
+    // downconvert FP32 → FP16/BF16 if the output type requires it.
+    // This is substantially faster than the naive O(M·N·K) CPU loop.
+    {
+        // A memory footprint: lda × (transa==N ? k : m) elements
+        // B memory footprint: ldb × (transb==N ? n : k) elements
+        // C memory footprint: ldc × n elements
+        const int a_cols = (transa == CUBLAS_OP_N) ? k : m;
+        const int b_cols = (transb == CUBLAS_OP_N) ? n : k;
+        const std::size_t a_elems = static_cast<std::size_t>(lda) * a_cols;
+        const std::size_t b_elems = static_cast<std::size_t>(ldb) * b_cols;
+        const std::size_t c_elems = static_cast<std::size_t>(ldc) * n;
 
-    // Naive reference implementation for mixed/fp16 types.
-    for (int col = 0; col < n; ++col) {
-        for (int row = 0; row < m; ++row) {
-            float sum = 0.0f;
-            for (int p = 0; p < k; ++p) {
-                float a_val = 0.0f, b_val = 0.0f;
-                if (transa == CUBLAS_OP_N) {
-                    a_val = read_f32(a, row + p * lda, atype);
-                } else {
-                    a_val = read_f32(a, p + row * lda, atype);
-                }
-                if (transb == CUBLAS_OP_N) {
-                    b_val = read_f32(b, p + col * ldb, btype);
-                } else {
-                    b_val = read_f32(b, col + p * ldb, btype);
-                }
-                sum += a_val * b_val;
-            }
-            const float c_old = read_f32(c, row + col * ldc, ctype);
-            write_f32(c, row + col * ldc, alpha_f * sum + beta_f * c_old, ctype);
+        float* a_f32 = nullptr;
+        float* b_f32 = nullptr;
+        float* c_f32 = nullptr;
+
+        if (cudaMalloc(reinterpret_cast<void**>(&a_f32), a_elems * sizeof(float)) != cudaSuccess ||
+            cudaMalloc(reinterpret_cast<void**>(&b_f32), b_elems * sizeof(float)) != cudaSuccess) {
+            cudaFree(a_f32);
+            cudaFree(b_f32);
+            return CUBLAS_STATUS_ALLOC_FAILED;
         }
+
+        const bool c_already_f32 = (ctype == CUDA_R_32F);
+        if (!c_already_f32) {
+            if (cudaMalloc(reinterpret_cast<void**>(&c_f32), c_elems * sizeof(float)) != cudaSuccess) {
+                cudaFree(a_f32);
+                cudaFree(b_f32);
+                return CUBLAS_STATUS_ALLOC_FAILED;
+            }
+        }
+
+        // Upconvert A → F32 (CPU-side, Apple Silicon UMA shared memory)
+        for (std::size_t i = 0; i < a_elems; ++i) {
+            a_f32[i] = read_f32(a, static_cast<int>(i), atype);
+        }
+        // Upconvert B → F32
+        for (std::size_t i = 0; i < b_elems; ++i) {
+            b_f32[i] = read_f32(b, static_cast<int>(i), btype);
+        }
+
+        float* c_out = c_already_f32 ? static_cast<float*>(c) : c_f32;
+
+        // If C is not F32 and beta != 0, seed c_out with beta*C (converted)
+        if (!c_already_f32 && beta_f != 0.0f) {
+            for (std::size_t i = 0; i < c_elems; ++i) {
+                c_out[i] = beta_f * read_f32(c, static_cast<int>(i), ctype);
+            }
+        }
+
+        const float effective_beta = (!c_already_f32 && beta_f != 0.0f) ? 1.0f : beta_f;
+
+        // Run Metal GPU GEMM (F32 × F32 → F32)
+        const cublasStatus_t st = cublasSgemm(handle, transa, transb, m, n, k,
+                                              &alpha_f, a_f32, lda,
+                                              b_f32, ldb,
+                                              &effective_beta, c_out, ldc);
+
+        // Downconvert C F32 → target type if necessary
+        if (!c_already_f32 && st == CUBLAS_STATUS_SUCCESS) {
+            for (std::size_t i = 0; i < c_elems; ++i) {
+                write_f32(c, static_cast<int>(i), c_out[i], ctype);
+            }
+        }
+
+        cudaFree(a_f32);
+        cudaFree(b_f32);
+        if (!c_already_f32) cudaFree(c_f32);
+        return st;
     }
-    return CUBLAS_STATUS_SUCCESS;
 }
 
 cublasStatus_t cublasGemmStridedBatchedEx(cublasHandle_t handle,

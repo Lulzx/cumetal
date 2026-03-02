@@ -15,6 +15,9 @@ struct RegisteredKernel {
     // Device printf format table (spec §5.3): non-empty iff kernel uses printf.
     // printf_formats[i] is the format string for format id i.
     std::vector<std::string> printf_formats;
+    // Total bytes of static __shared__ memory (non-extern .shared declarations).
+    // Used to call setThreadgroupMemoryLength when no dynamic shared memory is specified.
+    std::size_t static_shared_bytes = 0;
 };
 
 struct LaunchConfiguration {

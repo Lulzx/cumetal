@@ -3340,10 +3340,17 @@ cudaError_t cudaLaunchKernel(const void* func,
         }
     }
 
+    // Use the user-specified dynamic shared memory size; fall back to the static
+    // shared memory size computed from the PTX .shared declarations (for kernels
+    // that use static __shared__ arrays without any dynamic shared memory).
+    const std::size_t effective_shared_mem =
+        (shared_mem > 0) ? shared_mem
+        : (use_registered_kernel ? registered_kernel.static_shared_bytes : 0);
+
     cumetal::metal_backend::LaunchConfig config{
         .grid = grid_dim,
         .block = block_dim,
-        .shared_memory_bytes = shared_mem,
+        .shared_memory_bytes = effective_shared_mem,
     };
 
     const char* metallib_path =
