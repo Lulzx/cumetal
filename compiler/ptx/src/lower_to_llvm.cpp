@@ -2598,7 +2598,7 @@ class GenericLlvmEmitter {
             os << "  " << sel << " = select i1 " << cmp << ", i32 " << *a << ", i32 " << *b << "\n";
             return store_ret_bits(sel, 32);
         }
-        if (callee == "__nv_expf") {
+        if (callee == "__nv_expf" || callee == "__nv_fast_expf") {
             if (arg_names.empty()) return fail(instr, "__nv_expf expects 1 arg");
             auto x = load_call_slot_f32(arg_names[0]);
             if (!x) return fail(instr, "__nv_expf arg missing");
