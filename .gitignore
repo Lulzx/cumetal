@@ -7,3 +7,4 @@ tools/metal_library_archive_bridge/.swiftpm/
 *.o
 .DS_Store
 tests/cuda_projects/softmax/build/
+tests/cuda_projects/*/build/
