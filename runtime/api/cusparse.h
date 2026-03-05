@@ -179,6 +179,48 @@ cusparseStatus_t cusparseSpMM(cusparseHandle_t handle,
                                cusparseSpMMAlg_t alg,
                                void* externalBuffer);
 
+// SpSV: Sparse triangular solve — op(A) * y = alpha * x
+typedef struct cusparseSpSVDescr* cusparseSpSVDescr_t;
+
+typedef enum cusparseSpSVAlg_t {
+    CUSPARSE_SPSV_ALG_DEFAULT = 0,
+} cusparseSpSVAlg_t;
+
+cusparseStatus_t cusparseSpSV_createDescr(cusparseSpSVDescr_t* descr);
+cusparseStatus_t cusparseSpSV_destroyDescr(cusparseSpSVDescr_t descr);
+
+cusparseStatus_t cusparseSpSV_bufferSize(cusparseHandle_t handle,
+                                          cusparseOperation_t opA,
+                                          const void* alpha,
+                                          cusparseSpMatDescr_t matA,
+                                          cusparseDnVecDescr_t vecX,
+                                          cusparseDnVecDescr_t vecY,
+                                          cudaDataType computeType,
+                                          cusparseSpSVAlg_t alg,
+                                          cusparseSpSVDescr_t spsvDescr,
+                                          size_t* bufferSize);
+
+cusparseStatus_t cusparseSpSV_analysis(cusparseHandle_t handle,
+                                        cusparseOperation_t opA,
+                                        const void* alpha,
+                                        cusparseSpMatDescr_t matA,
+                                        cusparseDnVecDescr_t vecX,
+                                        cusparseDnVecDescr_t vecY,
+                                        cudaDataType computeType,
+                                        cusparseSpSVAlg_t alg,
+                                        cusparseSpSVDescr_t spsvDescr,
+                                        void* externalBuffer);
+
+cusparseStatus_t cusparseSpSV_solve(cusparseHandle_t handle,
+                                     cusparseOperation_t opA,
+                                     const void* alpha,
+                                     cusparseSpMatDescr_t matA,
+                                     cusparseDnVecDescr_t vecX,
+                                     cusparseDnVecDescr_t vecY,
+                                     cudaDataType computeType,
+                                     cusparseSpSVAlg_t alg,
+                                     cusparseSpSVDescr_t spsvDescr);
+
 // Legacy CSR SpMV
 cusparseStatus_t cusparseScsrmv(cusparseHandle_t handle,
                                  cusparseOperation_t transA,

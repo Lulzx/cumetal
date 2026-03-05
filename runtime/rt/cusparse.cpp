@@ -505,4 +505,105 @@ cusparseStatus_t cusparseDcsrmv(cusparseHandle_t handle,
     return CUSPARSE_STATUS_SUCCESS;
 }
 
+// ── SpSV: Sparse triangular solve ─────────────────────────────────────────────
+
+struct cusparseSpSVDescr {
+    // Analysis phase is a no-op on CPU; descriptor exists for API compat
+};
+
+cusparseStatus_t cusparseSpSV_createDescr(cusparseSpSVDescr_t* descr) {
+    if (!descr) return CUSPARSE_STATUS_INVALID_VALUE;
+    *descr = new cusparseSpSVDescr();
+    return CUSPARSE_STATUS_SUCCESS;
+}
+
+cusparseStatus_t cusparseSpSV_destroyDescr(cusparseSpSVDescr_t descr) {
+    delete descr;
+    return CUSPARSE_STATUS_SUCCESS;
+}
+
+cusparseStatus_t cusparseSpSV_bufferSize(cusparseHandle_t, cusparseOperation_t,
+                                          const void*, cusparseSpMatDescr_t,
+                                          cusparseDnVecDescr_t, cusparseDnVecDescr_t,
+                                          cudaDataType, cusparseSpSVAlg_t,
+                                          cusparseSpSVDescr_t, size_t* bufferSize) {
+    if (bufferSize) *bufferSize = 0;
+    return CUSPARSE_STATUS_SUCCESS;
+}
+
+cusparseStatus_t cusparseSpSV_analysis(cusparseHandle_t, cusparseOperation_t,
+                                        const void*, cusparseSpMatDescr_t,
+                                        cusparseDnVecDescr_t, cusparseDnVecDescr_t,
+                                        cudaDataType, cusparseSpSVAlg_t,
+                                        cusparseSpSVDescr_t, void*) {
+    // CPU triangular solve needs no pre-analysis
+    return CUSPARSE_STATUS_SUCCESS;
+}
+
+cusparseStatus_t cusparseSpSV_solve(cusparseHandle_t handle,
+                                     cusparseOperation_t opA,
+                                     const void* alpha,
+                                     cusparseSpMatDescr_t matA,
+                                     cusparseDnVecDescr_t vecX,
+                                     cusparseDnVecDescr_t vecY,
+                                     cudaDataType computeType,
+                                     cusparseSpSVAlg_t,
+                                     cusparseSpSVDescr_t) {
+    if (!handle || !matA || !vecX || !vecY || !alpha) return CUSPARSE_STATUS_INVALID_VALUE;
+    if (!matA->is_csr) return CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED;
+    if (computeType != CUDA_R_32F && computeType != CUDA_R_64F)
+        return CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED;
+
+    if (handle->stream) cudaStreamSynchronize(handle->stream);
+
+    const int* rowPtr = static_cast<const int*>(matA->rowOffsets);
+    const int* colIdx = static_cast<const int*>(matA->colInd);
+    const int base = (matA->idxBase == CUSPARSE_INDEX_BASE_ONE) ? 1 : 0;
+    const int64_t n = matA->rows;
+
+    // Forward substitution: solve L*y = alpha*x row by row
+    if (computeType == CUDA_R_64F) {
+        const double a = *static_cast<const double*>(alpha);
+        const double* vals = static_cast<const double*>(matA->values);
+        const double* x = static_cast<const double*>(vecX->values);
+        double* y = static_cast<double*>(vecY->values);
+        for (int64_t i = 0; i < n; ++i) {
+            double rhs = a * x[i];
+            double diag = 1.0;
+            const int rs = rowPtr[i] - base;
+            const int re = rowPtr[i + 1] - base;
+            for (int j = rs; j < re; ++j) {
+                const int c = colIdx[j] - base;
+                if (c == i) { diag = vals[j]; }
+                else if ((opA == CUSPARSE_OPERATION_NON_TRANSPOSE && c < i) ||
+                         (opA != CUSPARSE_OPERATION_NON_TRANSPOSE && c > i)) {
+                    rhs -= vals[j] * y[c];
+                }
+            }
+            y[i] = rhs / diag;
+        }
+    } else {
+        const float a = *static_cast<const float*>(alpha);
+        const float* vals = static_cast<const float*>(matA->values);
+        const float* x = static_cast<const float*>(vecX->values);
+        float* y = static_cast<float*>(vecY->values);
+        for (int64_t i = 0; i < n; ++i) {
+            float rhs = a * x[i];
+            float diag = 1.0f;
+            const int rs = rowPtr[i] - base;
+            const int re = rowPtr[i + 1] - base;
+            for (int j = rs; j < re; ++j) {
+                const int c = colIdx[j] - base;
+                if (c == i) { diag = vals[j]; }
+                else if ((opA == CUSPARSE_OPERATION_NON_TRANSPOSE && c < i) ||
+                         (opA != CUSPARSE_OPERATION_NON_TRANSPOSE && c > i)) {
+                    rhs -= vals[j] * y[c];
+                }
+            }
+            y[i] = rhs / diag;
+        }
+    }
+    return CUSPARSE_STATUS_SUCCESS;
+}
+
 }  // extern "C"

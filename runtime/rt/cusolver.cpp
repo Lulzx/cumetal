@@ -1,4 +1,6 @@
 #include "cusolverDn.h"
+#include "cusolverSp.h"
+#include "cusparse.h"
 #include "cuda_runtime.h"
 
 #include <Accelerate/Accelerate.h>
@@ -301,6 +303,160 @@ cusolverStatus_t cusolverDnDgesvd(cusolverDnHandle_t handle, signed char jobu,
     __CLPK_integer M = m, N = n, LDA = lda, LDU = ldu, LDVT = ldvt, LW = lwork, info = 0;
     dgesvd_(&ju, &jvt, &M, &N, A, &LDA, S, U, &LDU, VT, &LDVT, work, &LW, &info);
     if (devInfo) *devInfo = static_cast<int>(info);
+    return info == 0 ? CUSOLVER_STATUS_SUCCESS : CUSOLVER_STATUS_INTERNAL_ERROR;
+}
+
+} // extern "C" — temporarily close for C++ templates
+
+// ── cusolverSp: Sparse solver (host path) ─────────────────────────────────────
+// Uses dense conversion + LAPACK as a simple-but-correct fallback.
+// On UMA this is zero-copy from the caller's perspective.
+
+// Helper: convert CSR to dense column-major matrix (must be outside extern "C")
+template <typename T>
+static void csr_to_dense_sp(int m, const T* csrVal, const int* csrRowPtr, const int* csrColInd,
+                              int base, T* dense) {
+    std::memset(dense, 0, (size_t)m * m * sizeof(T));
+    for (int i = 0; i < m; ++i) {
+        for (int j = csrRowPtr[i] - base; j < csrRowPtr[i + 1] - base; ++j) {
+            const int c = csrColInd[j] - base;
+            dense[(size_t)c * m + i] = csrVal[j];  // column-major
+        }
+    }
+}
+
+extern "C" {
+
+struct cusolverSpContext {
+    cudaStream_t stream = nullptr;
+};
+
+cusolverStatus_t cusolverSpCreate(cusolverSpHandle_t* handle) {
+    if (!handle) return CUSOLVER_STATUS_INVALID_VALUE;
+    *handle = new cusolverSpContext();
+    return CUSOLVER_STATUS_SUCCESS;
+}
+
+cusolverStatus_t cusolverSpDestroy(cusolverSpHandle_t handle) {
+    delete handle;
+    return CUSOLVER_STATUS_SUCCESS;
+}
+
+cusolverStatus_t cusolverSpSetStream(cusolverSpHandle_t handle, cudaStream_t streamId) {
+    if (!handle) return CUSOLVER_STATUS_NOT_INITIALIZED;
+    handle->stream = streamId;
+    return CUSOLVER_STATUS_SUCCESS;
+}
+
+// Sparse solve via dense Cholesky (LAPACK spotrf/dpotrf + spotrs/dpotrs)
+cusolverStatus_t cusolverSpScsrlsvchol(cusolverSpHandle_t handle,
+                                        int m, int /*nnz*/,
+                                        const cusparseMatDescr_t descrA,
+                                        const float* csrVal, const int* csrRowPtr,
+                                        const int* csrColInd, const float* b,
+                                        float /*tol*/, int /*reorder*/,
+                                        float* x, int* singularity) {
+    if (!handle || !csrVal || !csrRowPtr || !csrColInd || !b || !x)
+        return CUSOLVER_STATUS_INVALID_VALUE;
+    if (handle->stream) cudaStreamSynchronize(handle->stream);
+    const int base = descrA ? static_cast<int>(cusparseGetMatIndexBase(descrA)) : 0;
+
+    std::vector<float> A(m * m);
+    csr_to_dense_sp(m, csrVal, csrRowPtr, csrColInd, base, A.data());
+    std::memcpy(x, b, m * sizeof(float));
+
+    char uplo = 'L';
+    __CLPK_integer N = m, nrhs = 1, lda = m, ldb = m, info = 0;
+    spotrf_(&uplo, &N, A.data(), &lda, &info);
+    if (info != 0) {
+        if (singularity) *singularity = static_cast<int>(info - 1);
+        return CUSOLVER_STATUS_INTERNAL_ERROR;
+    }
+    spotrs_(&uplo, &N, &nrhs, A.data(), &lda, x, &ldb, &info);
+    if (singularity) *singularity = -1; // no singularity
+    return info == 0 ? CUSOLVER_STATUS_SUCCESS : CUSOLVER_STATUS_INTERNAL_ERROR;
+}
+
+cusolverStatus_t cusolverSpDcsrlsvchol(cusolverSpHandle_t handle,
+                                        int m, int /*nnz*/,
+                                        const cusparseMatDescr_t descrA,
+                                        const double* csrVal, const int* csrRowPtr,
+                                        const int* csrColInd, const double* b,
+                                        double /*tol*/, int /*reorder*/,
+                                        double* x, int* singularity) {
+    if (!handle || !csrVal || !csrRowPtr || !csrColInd || !b || !x)
+        return CUSOLVER_STATUS_INVALID_VALUE;
+    if (handle->stream) cudaStreamSynchronize(handle->stream);
+    const int base = descrA ? static_cast<int>(cusparseGetMatIndexBase(descrA)) : 0;
+
+    std::vector<double> A(m * m);
+    csr_to_dense_sp(m, csrVal, csrRowPtr, csrColInd, base, A.data());
+    std::memcpy(x, b, m * sizeof(double));
+
+    char uplo = 'L';
+    __CLPK_integer N = m, nrhs = 1, lda = m, ldb = m, info = 0;
+    dpotrf_(&uplo, &N, A.data(), &lda, &info);
+    if (info != 0) {
+        if (singularity) *singularity = static_cast<int>(info - 1);
+        return CUSOLVER_STATUS_INTERNAL_ERROR;
+    }
+    dpotrs_(&uplo, &N, &nrhs, A.data(), &lda, x, &ldb, &info);
+    if (singularity) *singularity = -1;
+    return info == 0 ? CUSOLVER_STATUS_SUCCESS : CUSOLVER_STATUS_INTERNAL_ERROR;
+}
+
+// Sparse QR solve via dense QR (LAPACK sgels/dgels)
+cusolverStatus_t cusolverSpScsrlsvqr(cusolverSpHandle_t handle,
+                                      int m, int /*nnz*/,
+                                      const cusparseMatDescr_t descrA,
+                                      const float* csrVal, const int* csrRowPtr,
+                                      const int* csrColInd, const float* b,
+                                      float /*tol*/, int /*reorder*/,
+                                      float* x, int* singularity) {
+    if (!handle || !csrVal || !csrRowPtr || !csrColInd || !b || !x)
+        return CUSOLVER_STATUS_INVALID_VALUE;
+    if (handle->stream) cudaStreamSynchronize(handle->stream);
+    const int base = descrA ? static_cast<int>(cusparseGetMatIndexBase(descrA)) : 0;
+
+    std::vector<float> A(m * m);
+    csr_to_dense_sp(m, csrVal, csrRowPtr, csrColInd, base, A.data());
+    std::memcpy(x, b, m * sizeof(float));
+
+    char trans = 'N';
+    __CLPK_integer M = m, N = m, nrhs = 1, lda = m, ldb = m, lwork = -1, info = 0;
+    float work_query = 0;
+    sgels_(&trans, &M, &N, &nrhs, A.data(), &lda, x, &ldb, &work_query, &lwork, &info);
+    lwork = static_cast<__CLPK_integer>(work_query);
+    std::vector<float> work(lwork);
+    sgels_(&trans, &M, &N, &nrhs, A.data(), &lda, x, &ldb, work.data(), &lwork, &info);
+    if (singularity) *singularity = (info != 0) ? static_cast<int>(info - 1) : -1;
+    return info == 0 ? CUSOLVER_STATUS_SUCCESS : CUSOLVER_STATUS_INTERNAL_ERROR;
+}
+
+cusolverStatus_t cusolverSpDcsrlsvqr(cusolverSpHandle_t handle,
+                                      int m, int /*nnz*/,
+                                      const cusparseMatDescr_t descrA,
+                                      const double* csrVal, const int* csrRowPtr,
+                                      const int* csrColInd, const double* b,
+                                      double /*tol*/, int /*reorder*/,
+                                      double* x, int* singularity) {
+    if (!handle || !csrVal || !csrRowPtr || !csrColInd || !b || !x)
+        return CUSOLVER_STATUS_INVALID_VALUE;
+    if (handle->stream) cudaStreamSynchronize(handle->stream);
+    const int base = descrA ? static_cast<int>(cusparseGetMatIndexBase(descrA)) : 0;
+
+    std::vector<double> A(m * m);
+    csr_to_dense_sp(m, csrVal, csrRowPtr, csrColInd, base, A.data());
+    std::memcpy(x, b, m * sizeof(double));
+
+    char trans = 'N';
+    __CLPK_integer M = m, N = m, nrhs = 1, lda = m, ldb = m, lwork = -1, info = 0;
+    double work_query = 0;
+    dgels_(&trans, &M, &N, &nrhs, A.data(), &lda, x, &ldb, &work_query, &lwork, &info);
+    lwork = static_cast<__CLPK_integer>(work_query);
+    std::vector<double> work(lwork);
+    dgels_(&trans, &M, &N, &nrhs, A.data(), &lda, x, &ldb, work.data(), &lwork, &info);
+    if (singularity) *singularity = (info != 0) ? static_cast<int>(info - 1) : -1;
     return info == 0 ? CUSOLVER_STATUS_SUCCESS : CUSOLVER_STATUS_INTERNAL_ERROR;
 }
 

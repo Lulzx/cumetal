@@ -469,6 +469,14 @@ add_executable(cumetal_cudnn_attention_test
     cudnn_attention_test.cpp
 )
 
+add_executable(cumetal_cusparse_spsv_test
+    cusparse_spsv_test.cpp
+)
+
+add_executable(cumetal_cusolver_sparse_test
+    cusolver_sparse_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -1054,6 +1062,16 @@ target_link_libraries(cumetal_cub_partition_sort_test
 )
 
 target_link_libraries(cumetal_cudnn_attention_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cusparse_spsv_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cusolver_sparse_test
     PRIVATE
         cumetal_runtime
 )
@@ -2623,4 +2641,14 @@ add_test(
 add_test(
     NAME functional_cudnn_attention
     COMMAND cumetal_cudnn_attention_test
+)
+
+add_test(
+    NAME functional_cusparse_spsv
+    COMMAND cumetal_cusparse_spsv_test
+)
+
+add_test(
+    NAME functional_cusolver_sparse
+    COMMAND cumetal_cusolver_sparse_test
 )

@@ -461,6 +461,7 @@ install(FILES
     runtime/api/cusparse.h
     runtime/api/cusolver_common.h
     runtime/api/cusolverDn.h
+    runtime/api/cusolverSp.h
     runtime/api/cublasLt.h
     runtime/api/cudnn.h
     runtime/api/nvml.h
