@@ -429,6 +429,10 @@ add_executable(cumetal_cucomplex_api_test
     cucomplex_api_test.cpp
 )
 
+add_executable(cumetal_cub_api_test
+    cub_api_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -956,6 +960,13 @@ target_link_libraries(cumetal_cucomplex_api_test
     PRIVATE
         cumetal_runtime
 )
+
+target_link_libraries(cumetal_cub_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_compile_options(cumetal_cub_api_test PRIVATE -Wall -Wextra -Wpedantic -std=c++17)
 
 target_link_libraries(cumetal_thrust_api_test
     PRIVATE
@@ -2477,4 +2488,9 @@ add_test(
 add_test(
     NAME functional_cucomplex_api
     COMMAND cumetal_cucomplex_api_test
+)
+
+add_test(
+    NAME functional_cub_api
+    COMMAND cumetal_cub_api_test
 )

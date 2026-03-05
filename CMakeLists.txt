@@ -504,3 +504,28 @@ install(FILES
     runtime/api/thrust/iterator/zip_iterator.h
     DESTINATION include/thrust/iterator
 )
+
+install(FILES
+    runtime/api/cub/cub.h
+    DESTINATION include/cub
+)
+
+install(FILES
+    runtime/api/cub/block/block_reduce.h
+    runtime/api/cub/block/block_scan.h
+    runtime/api/cub/block/block_exchange.h
+    DESTINATION include/cub/block
+)
+
+install(FILES
+    runtime/api/cub/warp/warp_reduce.h
+    runtime/api/cub/warp/warp_scan.h
+    DESTINATION include/cub/warp
+)
+
+install(FILES
+    runtime/api/cub/device/device_reduce.h
+    runtime/api/cub/device/device_scan.h
+    runtime/api/cub/device/device_radix_sort.h
+    DESTINATION include/cub/device
+)
