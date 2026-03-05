@@ -81,6 +81,7 @@ Library shims
 - cuDNN (convolution fwd/bwd via im2col+GEMM, pooling, activations fwd/bwd, dropout, softmax, batch norm, Nd tensor, tensor ops)
 - NVML (device info, memory queries, driver version — Apple Silicon adapted)
 - NCCL (single-rank collectives: allreduce, broadcast, reduce, allgather — identity ops on single GPU)
+- thrust (device_vector, sort, reduce, scan, transform, fill, sequence, counting_iterator — CPU-backed on UMA)
 - Async memory pool API (cudaMallocAsync/cudaFreeAsync — UMA synchronous aliases)
 - Texture/Surface objects (array allocation, memcpy, object lifecycle)
 
@@ -196,7 +197,7 @@ Point any pre-compiled llama.cpp binary at a different model by setting
 Test suite
 ----------
 
-163 tests are registered in CTest (unit + functional). An additional benchmark
+164 tests are registered in CTest (unit + functional). An additional benchmark
 gate test (`bench_phase5_all_kernels`) runs on Apple Silicon if xcrun is available.
 
 ```bash

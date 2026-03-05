@@ -473,3 +473,25 @@ install(FILES
     runtime/api/cooperative_groups/reduce.h
     DESTINATION include/cooperative_groups
 )
+
+install(FILES
+    runtime/api/thrust/thrust.h
+    runtime/api/thrust/device_ptr.h
+    runtime/api/thrust/device_vector.h
+    runtime/api/thrust/host_vector.h
+    runtime/api/thrust/sort.h
+    runtime/api/thrust/reduce.h
+    runtime/api/thrust/scan.h
+    runtime/api/thrust/transform.h
+    runtime/api/thrust/functional.h
+    runtime/api/thrust/unique.h
+    runtime/api/thrust/pair.h
+    runtime/api/thrust/execution_policy.h
+    DESTINATION include/thrust
+)
+
+install(FILES
+    runtime/api/thrust/iterator/counting_iterator.h
+    runtime/api/thrust/iterator/zip_iterator.h
+    DESTINATION include/thrust/iterator
+)
