@@ -457,6 +457,18 @@ add_executable(cumetal_blas1_stride_test
     blas1_stride_test.cpp
 )
 
+add_executable(cumetal_cusparse_coo_test
+    cusparse_coo_test.cpp
+)
+
+add_executable(cumetal_cub_partition_sort_test
+    cub_partition_sort_test.cpp
+)
+
+add_executable(cumetal_cudnn_attention_test
+    cudnn_attention_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -1027,6 +1039,21 @@ target_link_libraries(cumetal_cusparse_fp64_test
 )
 
 target_link_libraries(cumetal_blas1_stride_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cusparse_coo_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cub_partition_sort_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cudnn_attention_test
     PRIVATE
         cumetal_runtime
 )
@@ -2581,4 +2608,19 @@ add_test(
 add_test(
     NAME functional_blas1_stride
     COMMAND cumetal_blas1_stride_test
+)
+
+add_test(
+    NAME functional_cusparse_coo
+    COMMAND cumetal_cusparse_coo_test
+)
+
+add_test(
+    NAME functional_cub_partition_sort
+    COMMAND cumetal_cub_partition_sort_test
+)
+
+add_test(
+    NAME functional_cudnn_attention
+    COMMAND cumetal_cudnn_attention_test
 )

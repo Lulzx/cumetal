@@ -563,5 +563,7 @@ install(FILES
     runtime/api/cub/device/device_select.h
     runtime/api/cub/device/device_histogram.h
     runtime/api/cub/device/device_run_length_encode.h
+    runtime/api/cub/device/device_partition.h
+    runtime/api/cub/device/device_merge_sort.h
     DESTINATION include/cub/device
 )

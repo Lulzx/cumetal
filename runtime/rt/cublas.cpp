@@ -12,6 +12,7 @@
 #include <new>
 #include <string>
 #include <vector>
+#include <Accelerate/Accelerate.h>
 
 struct cublasContext {
     cudaStream_t stream = nullptr;
@@ -2980,6 +2981,14 @@ static inline cuDoubleComplex celem_d(const cuDoubleComplex* A, int ld,
     return cconj_d(A[(size_t)row * ld + col]);
 }
 
+static inline enum CBLAS_TRANSPOSE cublas_to_cblas_trans(cublasOperation_t op) {
+    switch (op) {
+        case CUBLAS_OP_N: return CblasNoTrans;
+        case CUBLAS_OP_T: return CblasTrans;
+        default:          return CblasConjTrans;
+    }
+}
+
 cublasStatus_t cublasCgemm(cublasHandle_t handle,
                             cublasOperation_t transa, cublasOperation_t transb,
                             int m, int n, int k,
@@ -2999,17 +3008,10 @@ cublasStatus_t cublasCgemm(cublasHandle_t handle,
     const cublasStatus_t sync_st = synchronize_handle_stream(handle);
     if (sync_st != CUBLAS_STATUS_SUCCESS) return sync_st;
 
-    const cuComplex al = *alpha, be = *beta;
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < m; ++i) {
-            cuComplex sum = {0.0f, 0.0f};
-            for (int l = 0; l < k; ++l)
-                sum = cadd_f(sum, cmul_f(celem_f(A, lda, transa, i, l),
-                                         celem_f(B, ldb, transb, l, j)));
-            cuComplex& cij = C[(size_t)j * ldc + i];
-            cij = cadd_f(cmul_f(al, sum), cmul_f(be, cij));
-        }
-    }
+    cblas_cgemm(CblasColMajor,
+                cublas_to_cblas_trans(transa), cublas_to_cblas_trans(transb),
+                m, n, k,
+                alpha, A, lda, B, ldb, beta, C, ldc);
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -3032,17 +3034,10 @@ cublasStatus_t cublasZgemm(cublasHandle_t handle,
     const cublasStatus_t sync_st = synchronize_handle_stream(handle);
     if (sync_st != CUBLAS_STATUS_SUCCESS) return sync_st;
 
-    const cuDoubleComplex al = *alpha, be = *beta;
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < m; ++i) {
-            cuDoubleComplex sum = {0.0, 0.0};
-            for (int l = 0; l < k; ++l)
-                sum = cadd_d(sum, cmul_d(celem_d(A, lda, transa, i, l),
-                                         celem_d(B, ldb, transb, l, j)));
-            cuDoubleComplex& cij = C[(size_t)j * ldc + i];
-            cij = cadd_d(cmul_d(al, sum), cmul_d(be, cij));
-        }
-    }
+    cblas_zgemm(CblasColMajor,
+                cublas_to_cblas_trans(transa), cublas_to_cblas_trans(transb),
+                m, n, k,
+                alpha, A, lda, B, ldb, beta, C, ldc);
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -3063,15 +3058,8 @@ cublasStatus_t cublasCgemv(cublasHandle_t handle,
     const cublasStatus_t sync_st = synchronize_handle_stream(handle);
     if (sync_st != CUBLAS_STATUS_SUCCESS) return sync_st;
 
-    const cuComplex al = *alpha, be = *beta;
-    const int rows_y = (trans == CUBLAS_OP_N) ? m : n;
-    const int cols_x = (trans == CUBLAS_OP_N) ? n : m;
-    for (int i = 0; i < rows_y; ++i) {
-        cuComplex dot = {0.0f, 0.0f};
-        for (int j = 0; j < cols_x; ++j)
-            dot = cadd_f(dot, cmul_f(celem_f(A, lda, trans, i, j), x[(size_t)j * incx]));
-        y[(size_t)i * incy] = cadd_f(cmul_f(al, dot), cmul_f(be, y[(size_t)i * incy]));
-    }
+    cblas_cgemv(CblasColMajor, cublas_to_cblas_trans(trans),
+                m, n, alpha, A, lda, x, incx, beta, y, incy);
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -3092,15 +3080,8 @@ cublasStatus_t cublasZgemv(cublasHandle_t handle,
     const cublasStatus_t sync_st = synchronize_handle_stream(handle);
     if (sync_st != CUBLAS_STATUS_SUCCESS) return sync_st;
 
-    const cuDoubleComplex al = *alpha, be = *beta;
-    const int rows_y = (trans == CUBLAS_OP_N) ? m : n;
-    const int cols_x = (trans == CUBLAS_OP_N) ? n : m;
-    for (int i = 0; i < rows_y; ++i) {
-        cuDoubleComplex dot = {0.0, 0.0};
-        for (int j = 0; j < cols_x; ++j)
-            dot = cadd_d(dot, cmul_d(celem_d(A, lda, trans, i, j), x[(size_t)j * incx]));
-        y[(size_t)i * incy] = cadd_d(cmul_d(al, dot), cmul_d(be, y[(size_t)i * incy]));
-    }
+    cblas_zgemv(CblasColMajor, cublas_to_cblas_trans(trans),
+                m, n, alpha, A, lda, x, incx, beta, y, incy);
     return CUBLAS_STATUS_SUCCESS;
 }
 
@@ -3524,21 +3505,13 @@ cublasStatus_t cublasCgemmStridedBatched(cublasHandle_t handle,
         return CUBLAS_STATUS_INVALID_VALUE;
     const cublasStatus_t ss = synchronize_handle_stream(handle);
     if (ss != CUBLAS_STATUS_SUCCESS) return ss;
-    const cuComplex al = *alpha, be = *beta;
     for (int b = 0; b < batchCount; ++b) {
-        const cuComplex* Ab = A + (size_t)b * strideA;
-        const cuComplex* Bb = B + (size_t)b * strideB;
-        cuComplex*       Cb = C + (size_t)b * strideC;
-        for (int j = 0; j < n; ++j) {
-            for (int i = 0; i < m; ++i) {
-                cuComplex sum = {0.0f, 0.0f};
-                for (int l = 0; l < k; ++l)
-                    sum = cadd_f(sum, cmul_f(celem_f(Ab, lda, transa, i, l),
-                                             celem_f(Bb, ldb, transb, l, j)));
-                cuComplex& cij = Cb[(size_t)j * ldc + i];
-                cij = cadd_f(cmul_f(al, sum), cmul_f(be, cij));
-            }
-        }
+        cblas_cgemm(CblasColMajor,
+                    cublas_to_cblas_trans(transa), cublas_to_cblas_trans(transb),
+                    m, n, k,
+                    alpha, A + (size_t)b * strideA, lda,
+                    B + (size_t)b * strideB, ldb,
+                    beta, C + (size_t)b * strideC, ldc);
     }
     return CUBLAS_STATUS_SUCCESS;
 }
@@ -3560,21 +3533,13 @@ cublasStatus_t cublasZgemmStridedBatched(cublasHandle_t handle,
         return CUBLAS_STATUS_INVALID_VALUE;
     const cublasStatus_t ss = synchronize_handle_stream(handle);
     if (ss != CUBLAS_STATUS_SUCCESS) return ss;
-    const cuDoubleComplex al = *alpha, be = *beta;
     for (int b = 0; b < batchCount; ++b) {
-        const cuDoubleComplex* Ab = A + (size_t)b * strideA;
-        const cuDoubleComplex* Bb = B + (size_t)b * strideB;
-        cuDoubleComplex*       Cb = C + (size_t)b * strideC;
-        for (int j = 0; j < n; ++j) {
-            for (int i = 0; i < m; ++i) {
-                cuDoubleComplex sum = {0.0, 0.0};
-                for (int l = 0; l < k; ++l)
-                    sum = cadd_d(sum, cmul_d(celem_d(Ab, lda, transa, i, l),
-                                             celem_d(Bb, ldb, transb, l, j)));
-                cuDoubleComplex& cij = Cb[(size_t)j * ldc + i];
-                cij = cadd_d(cmul_d(al, sum), cmul_d(be, cij));
-            }
-        }
+        cblas_zgemm(CblasColMajor,
+                    cublas_to_cblas_trans(transa), cublas_to_cblas_trans(transb),
+                    m, n, k,
+                    alpha, A + (size_t)b * strideA, lda,
+                    B + (size_t)b * strideB, ldb,
+                    beta, C + (size_t)b * strideC, ldc);
     }
     return CUBLAS_STATUS_SUCCESS;
 }

@@ -1,6 +1,6 @@
 # Status
 
-Current status: **Post-Phase 5 — 172/172 tests passing**
+Current status: **Post-Phase 5 — 175/175 tests passing**
 
 Phase 4 is fully complete. Phase 5 performance work is complete.
 Intentional non-goals per §2.2 (CUDA Graphs, dynamic parallelism, texture objects,

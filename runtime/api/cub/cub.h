@@ -13,3 +13,5 @@
 #include "device/device_select.h"
 #include "device/device_histogram.h"
 #include "device/device_run_length_encode.h"
+#include "device/device_partition.h"
+#include "device/device_merge_sort.h"
