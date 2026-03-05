@@ -1,6 +1,6 @@
 # Status
 
-Current status: **Post-Phase 5 — 167/167 tests passing**
+Current status: **Post-Phase 5 — 169/169 tests passing**
 
 Phase 4 is fully complete. Phase 5 performance work is complete.
 Intentional non-goals per §2.2 (CUDA Graphs, dynamic parallelism, texture objects,
@@ -450,11 +450,14 @@ Header-only library shims:
 - **thrust** (`thrust/`): `device_vector`, `host_vector`, `device_ptr`, `sort`,
   `sort_by_key`, `stable_sort`, `reduce`, `transform_reduce`, `inclusive_scan`,
   `exclusive_scan`, `transform`, `fill`, `copy`, `for_each`, `unique`, `sequence`,
-  `counting_iterator`, `zip_iterator`, `execution_policy`, `functional`, `pair`.
+  `counting_iterator`, `zip_iterator`, `transform_iterator`, `constant_iterator`,
+  `discard_iterator`, `permutation_iterator`, `execution_policy`, `functional`, `pair`.
   CPU-backed on UMA (device memory is host-accessible).
-- **CUB** (`cub/`): `BlockReduce`, `BlockScan`, `BlockExchange`, `WarpReduce`,
-  `WarpScan`, `DeviceReduce` (Sum/Min/Max/ArgMin/ArgMax), `DeviceScan`
-  (Inclusive/Exclusive), `DeviceRadixSort` (SortKeys/SortPairs, ascending/descending).
+- **CUB** (`cub/`): `BlockReduce`, `BlockScan`, `BlockExchange`, `BlockLoad`,
+  `BlockStore`, `WarpReduce`, `WarpScan`, `DeviceReduce` (Sum/Min/Max/ArgMin/ArgMax),
+  `DeviceScan` (Inclusive/Exclusive), `DeviceRadixSort` (SortKeys/SortPairs),
+  `DeviceSelect` (If/Flagged/Unique), `DeviceHistogram` (Even/Range),
+  `DeviceRunLengthEncode` (Encode/NonTrivialRuns).
   Sequential fallback for host-side compilation; device ops run on UMA.
 - **NVTX** (`nvtx3/nvToolsExt.h`): No-op stubs for profiling annotations.
   Range push/pop, mark, domain API, naming API all silently ignored.

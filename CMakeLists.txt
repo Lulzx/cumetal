@@ -482,6 +482,8 @@ install(FILES
     runtime/api/sm_70_intrinsics.h
     runtime/api/sm_80_intrinsics.h
     runtime/api/cublas_api.h
+    runtime/api/cuda_pipeline.h
+    runtime/api/cuda_device_runtime_api.h
     DESTINATION include
 )
 
