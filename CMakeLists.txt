@@ -484,6 +484,8 @@ install(FILES
     runtime/api/cublas_api.h
     runtime/api/cuda_pipeline.h
     runtime/api/cuda_device_runtime_api.h
+    runtime/api/curand_kernel.h
+    runtime/api/cusparse_v2.h
     DESTINATION include
 )
 
@@ -521,6 +523,17 @@ install(FILES
     runtime/api/thrust/iterator/discard_iterator.h
     runtime/api/thrust/iterator/permutation_iterator.h
     DESTINATION include/thrust/iterator
+)
+
+install(FILES
+    runtime/api/thrust/system/cuda/vector.h
+    runtime/api/thrust/system/cuda/execution_policy.h
+    DESTINATION include/thrust/system/cuda
+)
+
+install(FILES
+    runtime/api/thrust/system/cuda/detail/par.h
+    DESTINATION include/thrust/system/cuda/detail
 )
 
 install(FILES
