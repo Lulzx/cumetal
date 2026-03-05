@@ -60,6 +60,20 @@ struct cudnnDropoutStruct {
     unsigned long long seed = 0;
 };
 
+struct cudnnOpTensorStruct {
+    cudnnOpTensorOp_t op = CUDNN_OP_TENSOR_ADD;
+    cudnnDataType_t compType = CUDNN_DATA_FLOAT;
+    cudnnNanPropagation_t nanOpt = CUDNN_NOT_PROPAGATE_NAN;
+};
+
+struct cudnnReduceTensorStruct {
+    cudnnReduceTensorOp_t op = CUDNN_REDUCE_TENSOR_ADD;
+    cudnnDataType_t compType = CUDNN_DATA_FLOAT;
+    cudnnNanPropagation_t nanOpt = CUDNN_NOT_PROPAGATE_NAN;
+    cudnnReduceTensorIndices_t indices = CUDNN_REDUCE_TENSOR_NO_INDICES;
+    cudnnIndicesType_t indicesType = CUDNN_32BIT_INDICES;
+};
+
 namespace {
 
 bool debug_cudnn() {
@@ -1345,6 +1359,473 @@ cudnnStatus_t cudnnGetTensorNdDescriptor(cudnnTensorDescriptor_t tensorDesc,
     if (strideA && nbDimsRequested >= 2) strideA[1] = tensorDesc->cStride;
     if (strideA && nbDimsRequested >= 3) strideA[2] = tensorDesc->hStride;
     if (strideA && nbDimsRequested >= 4) strideA[3] = tensorDesc->wStride;
+    return CUDNN_STATUS_SUCCESS;
+}
+
+// ── Batch normalization forward training ──
+
+cudnnStatus_t cudnnBatchNormalizationForwardTraining(
+    cudnnHandle_t /*handle*/,
+    cudnnBatchNormMode_t mode,
+    const void* alpha, const void* beta,
+    cudnnTensorDescriptor_t xDesc, const void* x,
+    cudnnTensorDescriptor_t yDesc, void* y,
+    cudnnTensorDescriptor_t /*bnScaleBiasMeanVarDesc*/,
+    const void* bnScale, const void* bnBias,
+    double exponentialAverageFactor,
+    void* resultRunningMean, void* resultRunningVariance,
+    double epsilon,
+    void* resultSaveMean, void* resultSaveInvVariance) {
+    if (!alpha || !beta || !xDesc || !x || !yDesc || !y || !bnScale || !bnBias)
+        return CUDNN_STATUS_BAD_PARAM;
+
+    float a = *static_cast<const float*>(alpha);
+    float b = *static_cast<const float*>(beta);
+    const float* xf = static_cast<const float*>(x);
+    float* yf = static_cast<float*>(y);
+    const float* scale = static_cast<const float*>(bnScale);
+    const float* bias = static_cast<const float*>(bnBias);
+    float* runMean = static_cast<float*>(resultRunningMean);
+    float* runVar = static_cast<float*>(resultRunningVariance);
+    float* saveMean = static_cast<float*>(resultSaveMean);
+    float* saveInvVar = static_cast<float*>(resultSaveInvVariance);
+
+    int N = xDesc->n, C = xDesc->c, H = xDesc->h, W = xDesc->w;
+    double ema = exponentialAverageFactor;
+
+    if (mode == CUDNN_BATCHNORM_PER_ACTIVATION) {
+        int spatial = C * H * W;
+        for (int i = 0; i < spatial; ++i) {
+            // Compute mean and variance over N
+            float mean = 0.0f;
+            for (int n = 0; n < N; ++n) mean += xf[n * spatial + i];
+            mean /= N;
+            float var = 0.0f;
+            for (int n = 0; n < N; ++n) {
+                float d = xf[n * spatial + i] - mean;
+                var += d * d;
+            }
+            var /= N;
+            float inv_std = 1.0f / std::sqrt(var + (float)epsilon);
+            if (saveMean) saveMean[i] = mean;
+            if (saveInvVar) saveInvVar[i] = inv_std;
+            if (runMean) runMean[i] = (float)((1.0 - ema) * runMean[i] + ema * mean);
+            if (runVar) {
+                float uvar = (N > 1) ? var * N / (N - 1) : var;
+                runVar[i] = (float)((1.0 - ema) * runVar[i] + ema * uvar);
+            }
+            for (int n = 0; n < N; ++n) {
+                float norm = (xf[n * spatial + i] - mean) * inv_std;
+                yf[n * spatial + i] = a * (scale[i] * norm + bias[i]) + b * yf[n * spatial + i];
+            }
+        }
+    } else { // SPATIAL or SPATIAL_PERSISTENT
+        int HW = H * W;
+        for (int c = 0; c < C; ++c) {
+            float mean = 0.0f;
+            for (int n = 0; n < N; ++n)
+                for (int hw = 0; hw < HW; ++hw)
+                    mean += xf[((n * C + c) * H) * W + hw]; // simplified for contiguous NCHW
+            // Proper indexing
+            mean = 0.0f;
+            for (int n = 0; n < N; ++n)
+                for (int h = 0; h < H; ++h)
+                    for (int w = 0; w < W; ++w)
+                        mean += xf[((n * C + c) * H + h) * W + w];
+            mean /= (N * HW);
+
+            float var = 0.0f;
+            for (int n = 0; n < N; ++n)
+                for (int h = 0; h < H; ++h)
+                    for (int w = 0; w < W; ++w) {
+                        float d = xf[((n * C + c) * H + h) * W + w] - mean;
+                        var += d * d;
+                    }
+            var /= (N * HW);
+
+            float inv_std = 1.0f / std::sqrt(var + (float)epsilon);
+            if (saveMean) saveMean[c] = mean;
+            if (saveInvVar) saveInvVar[c] = inv_std;
+            if (runMean) runMean[c] = (float)((1.0 - ema) * runMean[c] + ema * mean);
+            if (runVar) {
+                float uvar = (N * HW > 1) ? var * (N * HW) / (N * HW - 1) : var;
+                runVar[c] = (float)((1.0 - ema) * runVar[c] + ema * uvar);
+            }
+
+            for (int n = 0; n < N; ++n)
+                for (int h = 0; h < H; ++h)
+                    for (int w = 0; w < W; ++w) {
+                        int idx = ((n * C + c) * H + h) * W + w;
+                        float norm = (xf[idx] - mean) * inv_std;
+                        yf[idx] = a * (scale[c] * norm + bias[c]) + b * yf[idx];
+                    }
+        }
+    }
+    return CUDNN_STATUS_SUCCESS;
+}
+
+// ── Batch normalization backward ──
+
+cudnnStatus_t cudnnBatchNormalizationBackward(
+    cudnnHandle_t /*handle*/,
+    cudnnBatchNormMode_t mode,
+    const void* alphaDataDiff, const void* betaDataDiff,
+    const void* alphaParamDiff, const void* betaParamDiff,
+    cudnnTensorDescriptor_t xDesc, const void* x,
+    cudnnTensorDescriptor_t dyDesc, const void* dy,
+    cudnnTensorDescriptor_t dxDesc, void* dx,
+    cudnnTensorDescriptor_t /*dBnScaleBiasDesc*/,
+    const void* bnScale,
+    void* dBnScaleResult, void* dBnBiasResult,
+    double epsilon,
+    const void* savedMean, const void* savedInvVariance) {
+    if (!alphaDataDiff || !betaDataDiff || !alphaParamDiff || !betaParamDiff ||
+        !xDesc || !x || !dyDesc || !dy || !dxDesc || !dx || !bnScale)
+        return CUDNN_STATUS_BAD_PARAM;
+
+    float aData = *static_cast<const float*>(alphaDataDiff);
+    float bData = *static_cast<const float*>(betaDataDiff);
+    float aParam = *static_cast<const float*>(alphaParamDiff);
+    float bParam = *static_cast<const float*>(betaParamDiff);
+    const float* xf = static_cast<const float*>(x);
+    const float* dyf = static_cast<const float*>(dy);
+    float* dxf = static_cast<float*>(dx);
+    const float* scale = static_cast<const float*>(bnScale);
+    float* dscale = static_cast<float*>(dBnScaleResult);
+    float* dbias = static_cast<float*>(dBnBiasResult);
+    const float* sMean = static_cast<const float*>(savedMean);
+    const float* sInvVar = static_cast<const float*>(savedInvVariance);
+
+    int N = xDesc->n, C = xDesc->c, H = xDesc->h, W = xDesc->w;
+
+    // Scale dx by betaDataDiff
+    int total = N * C * H * W;
+    if (bData == 0.0f) std::memset(dxf, 0, total * sizeof(float));
+    else if (bData != 1.0f) cblas_sscal(total, bData, dxf, 1);
+
+    if (mode == CUDNN_BATCHNORM_PER_ACTIVATION) {
+        // Per-activation: each element of C*H*W is independently normalized over N
+        int spatial = C * H * W;
+        for (int i = 0; i < spatial; ++i) {
+            float mean = sMean ? sMean[i] : 0.0f;
+            float inv_var = sInvVar ? sInvVar[i] : 1.0f;
+
+            float ds = 0.0f, db_val = 0.0f;
+            for (int n = 0; n < N; ++n) {
+                float xhat = (xf[n * spatial + i] - mean) * inv_var;
+                ds += dyf[n * spatial + i] * xhat;
+                db_val += dyf[n * spatial + i];
+            }
+            if (dscale) dscale[i] = aParam * ds + bParam * dscale[i];
+            if (dbias) dbias[i] = aParam * db_val + bParam * dbias[i];
+
+            for (int n = 0; n < N; ++n) {
+                float xhat = (xf[n * spatial + i] - mean) * inv_var;
+                float grad = scale[i] * inv_var * (dyf[n * spatial + i] - (db_val + xhat * ds) / N);
+                dxf[n * spatial + i] += aData * grad;
+            }
+        }
+    } else { // SPATIAL
+        int HW = H * W;
+        int M = N * HW;
+        for (int c = 0; c < C; ++c) {
+            float mean = sMean ? sMean[c] : 0.0f;
+            float inv_var = sInvVar ? sInvVar[c] : 1.0f;
+
+            float ds = 0.0f, db_val = 0.0f;
+            for (int n = 0; n < N; ++n)
+                for (int h = 0; h < H; ++h)
+                    for (int w = 0; w < W; ++w) {
+                        int idx = ((n * C + c) * H + h) * W + w;
+                        float xhat = (xf[idx] - mean) * inv_var;
+                        ds += dyf[idx] * xhat;
+                        db_val += dyf[idx];
+                    }
+            if (dscale) dscale[c] = aParam * ds + bParam * dscale[c];
+            if (dbias) dbias[c] = aParam * db_val + bParam * dbias[c];
+
+            for (int n = 0; n < N; ++n)
+                for (int h = 0; h < H; ++h)
+                    for (int w = 0; w < W; ++w) {
+                        int idx = ((n * C + c) * H + h) * W + w;
+                        float xhat = (xf[idx] - mean) * inv_var;
+                        float grad = scale[c] * inv_var * (dyf[idx] - (db_val + xhat * ds) / M);
+                        dxf[idx] += aData * grad;
+                    }
+        }
+    }
+    return CUDNN_STATUS_SUCCESS;
+}
+
+// ── Softmax backward ──
+
+cudnnStatus_t cudnnSoftmaxBackward(cudnnHandle_t /*handle*/,
+                                    cudnnSoftmaxAlgorithm_t algo,
+                                    cudnnSoftmaxMode_t mode,
+                                    const void* alpha,
+                                    cudnnTensorDescriptor_t yDesc, const void* y,
+                                    cudnnTensorDescriptor_t dyDesc, const void* dy,
+                                    const void* beta,
+                                    cudnnTensorDescriptor_t dxDesc, void* dx) {
+    if (!alpha || !yDesc || !y || !dyDesc || !dy || !beta || !dxDesc || !dx)
+        return CUDNN_STATUS_BAD_PARAM;
+
+    float a = *static_cast<const float*>(alpha);
+    float b = *static_cast<const float*>(beta);
+    const float* yf = static_cast<const float*>(y);
+    const float* dyf = static_cast<const float*>(dy);
+    float* dxf = static_cast<float*>(dx);
+
+    int N = yDesc->n, C = yDesc->c, H = yDesc->h, W = yDesc->w;
+
+    if (mode == CUDNN_SOFTMAX_MODE_INSTANCE) {
+        int spatial = C * H * W;
+        for (int n = 0; n < N; ++n) {
+            const float* y_n = yf + n * spatial;
+            const float* dy_n = dyf + n * spatial;
+            float* dx_n = dxf + n * spatial;
+            if (algo == CUDNN_SOFTMAX_LOG) {
+                float sum_dy = 0.0f;
+                for (int i = 0; i < spatial; ++i) sum_dy += dy_n[i];
+                for (int i = 0; i < spatial; ++i)
+                    dx_n[i] = a * (dy_n[i] - std::exp(y_n[i]) * sum_dy) + b * dx_n[i];
+            } else {
+                float dot = 0.0f;
+                for (int i = 0; i < spatial; ++i) dot += y_n[i] * dy_n[i];
+                for (int i = 0; i < spatial; ++i)
+                    dx_n[i] = a * y_n[i] * (dy_n[i] - dot) + b * dx_n[i];
+            }
+        }
+    } else { // MODE_CHANNEL
+        for (int n = 0; n < N; ++n) {
+            for (int h = 0; h < H; ++h) {
+                for (int w = 0; w < W; ++w) {
+                    if (algo == CUDNN_SOFTMAX_LOG) {
+                        float sum_dy = 0.0f;
+                        for (int c = 0; c < C; ++c)
+                            sum_dy += dyf[((n * C + c) * H + h) * W + w];
+                        for (int c = 0; c < C; ++c) {
+                            int idx = ((n * C + c) * H + h) * W + w;
+                            dxf[idx] = a * (dyf[idx] - std::exp(yf[idx]) * sum_dy) + b * dxf[idx];
+                        }
+                    } else {
+                        float dot = 0.0f;
+                        for (int c = 0; c < C; ++c) {
+                            int idx = ((n * C + c) * H + h) * W + w;
+                            dot += yf[idx] * dyf[idx];
+                        }
+                        for (int c = 0; c < C; ++c) {
+                            int idx = ((n * C + c) * H + h) * W + w;
+                            dxf[idx] = a * yf[idx] * (dyf[idx] - dot) + b * dxf[idx];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return CUDNN_STATUS_SUCCESS;
+}
+
+// ── OpTensor ──
+
+cudnnStatus_t cudnnCreateOpTensorDescriptor(cudnnOpTensorDescriptor_t* opTensorDesc) {
+    if (!opTensorDesc) return CUDNN_STATUS_BAD_PARAM;
+    *opTensorDesc = new (std::nothrow) cudnnOpTensorStruct;
+    return *opTensorDesc ? CUDNN_STATUS_SUCCESS : CUDNN_STATUS_ALLOC_FAILED;
+}
+
+cudnnStatus_t cudnnDestroyOpTensorDescriptor(cudnnOpTensorDescriptor_t opTensorDesc) {
+    delete opTensorDesc;
+    return CUDNN_STATUS_SUCCESS;
+}
+
+cudnnStatus_t cudnnSetOpTensorDescriptor(cudnnOpTensorDescriptor_t opTensorDesc,
+                                          cudnnOpTensorOp_t opTensorOp,
+                                          cudnnDataType_t opTensorCompType,
+                                          cudnnNanPropagation_t opTensorNanOpt) {
+    if (!opTensorDesc) return CUDNN_STATUS_BAD_PARAM;
+    opTensorDesc->op = opTensorOp;
+    opTensorDesc->compType = opTensorCompType;
+    opTensorDesc->nanOpt = opTensorNanOpt;
+    return CUDNN_STATUS_SUCCESS;
+}
+
+cudnnStatus_t cudnnOpTensor(cudnnHandle_t /*handle*/,
+                             cudnnOpTensorDescriptor_t opTensorDesc,
+                             const void* alpha1,
+                             cudnnTensorDescriptor_t aDesc, const void* A,
+                             const void* alpha2,
+                             cudnnTensorDescriptor_t bDesc, const void* B,
+                             const void* beta,
+                             cudnnTensorDescriptor_t cDesc, void* C) {
+    if (!opTensorDesc || !alpha1 || !aDesc || !A || !alpha2 || !bDesc || !B ||
+        !beta || !cDesc || !C)
+        return CUDNN_STATUS_BAD_PARAM;
+
+    float a1 = *static_cast<const float*>(alpha1);
+    float a2 = *static_cast<const float*>(alpha2);
+    float b = *static_cast<const float*>(beta);
+    const float* af = static_cast<const float*>(A);
+    const float* bf = static_cast<const float*>(B);
+    float* cf = static_cast<float*>(C);
+
+    int c_count = cDesc->n * cDesc->c * cDesc->h * cDesc->w;
+    int a_count = aDesc->n * aDesc->c * aDesc->h * aDesc->w;
+    int b_count = bDesc->n * bDesc->c * bDesc->h * bDesc->w;
+
+    for (int i = 0; i < c_count; ++i) {
+        float va = af[a_count == c_count ? i : (i % a_count)];
+        float vb = bf[b_count == c_count ? i : (i % b_count)];
+        float result = 0.0f;
+        switch (opTensorDesc->op) {
+            case CUDNN_OP_TENSOR_ADD: result = a1 * va + a2 * vb; break;
+            case CUDNN_OP_TENSOR_MUL: result = a1 * va * a2 * vb; break;
+            case CUDNN_OP_TENSOR_MIN: result = std::min(a1 * va, a2 * vb); break;
+            case CUDNN_OP_TENSOR_MAX: result = std::max(a1 * va, a2 * vb); break;
+            case CUDNN_OP_TENSOR_SQRT: result = a1 * std::sqrt(va); break;
+            case CUDNN_OP_TENSOR_NOT: result = (va == 0.0f) ? 1.0f : 0.0f; break;
+            default: result = a1 * va + a2 * vb; break;
+        }
+        cf[i] = result + b * cf[i];
+    }
+    return CUDNN_STATUS_SUCCESS;
+}
+
+// ── ReduceTensor ──
+
+cudnnStatus_t cudnnCreateReduceTensorDescriptor(cudnnReduceTensorDescriptor_t* reduceTensorDesc) {
+    if (!reduceTensorDesc) return CUDNN_STATUS_BAD_PARAM;
+    *reduceTensorDesc = new (std::nothrow) cudnnReduceTensorStruct;
+    return *reduceTensorDesc ? CUDNN_STATUS_SUCCESS : CUDNN_STATUS_ALLOC_FAILED;
+}
+
+cudnnStatus_t cudnnDestroyReduceTensorDescriptor(cudnnReduceTensorDescriptor_t reduceTensorDesc) {
+    delete reduceTensorDesc;
+    return CUDNN_STATUS_SUCCESS;
+}
+
+cudnnStatus_t cudnnSetReduceTensorDescriptor(cudnnReduceTensorDescriptor_t reduceTensorDesc,
+                                              cudnnReduceTensorOp_t reduceTensorOp,
+                                              cudnnDataType_t reduceTensorCompType,
+                                              cudnnNanPropagation_t reduceTensorNanOpt,
+                                              cudnnReduceTensorIndices_t reduceTensorIndices,
+                                              cudnnIndicesType_t reduceTensorIndicesType) {
+    if (!reduceTensorDesc) return CUDNN_STATUS_BAD_PARAM;
+    reduceTensorDesc->op = reduceTensorOp;
+    reduceTensorDesc->compType = reduceTensorCompType;
+    reduceTensorDesc->nanOpt = reduceTensorNanOpt;
+    reduceTensorDesc->indices = reduceTensorIndices;
+    reduceTensorDesc->indicesType = reduceTensorIndicesType;
+    return CUDNN_STATUS_SUCCESS;
+}
+
+cudnnStatus_t cudnnGetReductionWorkspaceSize(cudnnHandle_t /*handle*/,
+                                              cudnnReduceTensorDescriptor_t /*reduceTensorDesc*/,
+                                              cudnnTensorDescriptor_t aDesc,
+                                              cudnnTensorDescriptor_t /*cDesc*/,
+                                              size_t* sizeInBytes) {
+    if (!sizeInBytes || !aDesc) return CUDNN_STATUS_BAD_PARAM;
+    *sizeInBytes = 0; // CPU reduction needs no extra workspace
+    return CUDNN_STATUS_SUCCESS;
+}
+
+cudnnStatus_t cudnnReduceTensor(cudnnHandle_t /*handle*/,
+                                 cudnnReduceTensorDescriptor_t reduceTensorDesc,
+                                 void* /*indices*/, size_t /*indicesSizeInBytes*/,
+                                 void* /*workspace*/, size_t /*workspaceSizeInBytes*/,
+                                 const void* alpha,
+                                 cudnnTensorDescriptor_t aDesc, const void* A,
+                                 const void* beta,
+                                 cudnnTensorDescriptor_t cDesc, void* C) {
+    if (!reduceTensorDesc || !alpha || !aDesc || !A || !beta || !cDesc || !C)
+        return CUDNN_STATUS_BAD_PARAM;
+
+    float a = *static_cast<const float*>(alpha);
+    float b = *static_cast<const float*>(beta);
+    const float* af = static_cast<const float*>(A);
+    float* cf = static_cast<float*>(C);
+
+    int a_total = aDesc->n * aDesc->c * aDesc->h * aDesc->w;
+    int c_total = cDesc->n * cDesc->c * cDesc->h * cDesc->w;
+
+    // Simple full reduction: reduce all of A into each element of C
+    // For channel-wise reduction: reduce over N,H,W per channel
+    if (c_total == 1) {
+        // Full reduction to scalar
+        float result = 0.0f;
+        switch (reduceTensorDesc->op) {
+            case CUDNN_REDUCE_TENSOR_ADD:
+            case CUDNN_REDUCE_TENSOR_AVG:
+                for (int i = 0; i < a_total; ++i) result += af[i];
+                if (reduceTensorDesc->op == CUDNN_REDUCE_TENSOR_AVG) result /= a_total;
+                break;
+            case CUDNN_REDUCE_TENSOR_MUL:
+            case CUDNN_REDUCE_TENSOR_MUL_NO_ZEROS:
+                result = 1.0f;
+                for (int i = 0; i < a_total; ++i) {
+                    if (reduceTensorDesc->op == CUDNN_REDUCE_TENSOR_MUL_NO_ZEROS && af[i] == 0.0f) continue;
+                    result *= af[i];
+                }
+                break;
+            case CUDNN_REDUCE_TENSOR_MIN:
+                result = af[0];
+                for (int i = 1; i < a_total; ++i) result = std::min(result, af[i]);
+                break;
+            case CUDNN_REDUCE_TENSOR_MAX:
+                result = af[0];
+                for (int i = 1; i < a_total; ++i) result = std::max(result, af[i]);
+                break;
+            case CUDNN_REDUCE_TENSOR_AMAX:
+                result = std::fabs(af[0]);
+                for (int i = 1; i < a_total; ++i) result = std::max(result, std::fabs(af[i]));
+                break;
+            case CUDNN_REDUCE_TENSOR_NORM1:
+                for (int i = 0; i < a_total; ++i) result += std::fabs(af[i]);
+                break;
+            case CUDNN_REDUCE_TENSOR_NORM2:
+                for (int i = 0; i < a_total; ++i) result += af[i] * af[i];
+                result = std::sqrt(result);
+                break;
+            default: break;
+        }
+        cf[0] = a * result + b * cf[0];
+    } else {
+        // Per-channel reduction: c_total == C, reduce over N,H,W
+        int N = aDesc->n, aC = aDesc->c, H = aDesc->h, W = aDesc->w;
+        int HW = H * W;
+        for (int c = 0; c < aC && c < c_total; ++c) {
+            float result = 0.0f;
+            bool first = true;
+            for (int n = 0; n < N; ++n) {
+                for (int hw = 0; hw < HW; ++hw) {
+                    float v = af[((n * aC + c) * H) * W + hw];
+                    // Fix indexing for proper NCHW layout
+                    int h = hw / W, w = hw % W;
+                    v = af[((n * aC + c) * H + h) * W + w];
+                    switch (reduceTensorDesc->op) {
+                        case CUDNN_REDUCE_TENSOR_ADD:
+                        case CUDNN_REDUCE_TENSOR_AVG:
+                            result += v; break;
+                        case CUDNN_REDUCE_TENSOR_MIN:
+                            result = first ? v : std::min(result, v); break;
+                        case CUDNN_REDUCE_TENSOR_MAX:
+                            result = first ? v : std::max(result, v); break;
+                        case CUDNN_REDUCE_TENSOR_AMAX:
+                            result = first ? std::fabs(v) : std::max(result, std::fabs(v)); break;
+                        case CUDNN_REDUCE_TENSOR_NORM1:
+                            result += std::fabs(v); break;
+                        case CUDNN_REDUCE_TENSOR_NORM2:
+                            result += v * v; break;
+                        default: result += v; break;
+                    }
+                    first = false;
+                }
+            }
+            if (reduceTensorDesc->op == CUDNN_REDUCE_TENSOR_AVG) result /= (N * HW);
+            if (reduceTensorDesc->op == CUDNN_REDUCE_TENSOR_NORM2) result = std::sqrt(result);
+            cf[c] = a * result + b * cf[c];
+        }
+    }
     return CUDNN_STATUS_SUCCESS;
 }
 

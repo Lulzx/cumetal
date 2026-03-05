@@ -437,6 +437,120 @@ cudnnStatus_t cudnnBatchNormalizationForwardInference(
     const void* estimatedMean, const void* estimatedVariance,
     double epsilon);
 
+// Batch normalization training + backward
+cudnnStatus_t cudnnBatchNormalizationForwardTraining(
+    cudnnHandle_t handle,
+    cudnnBatchNormMode_t mode,
+    const void* alpha, const void* beta,
+    cudnnTensorDescriptor_t xDesc, const void* x,
+    cudnnTensorDescriptor_t yDesc, void* y,
+    cudnnTensorDescriptor_t bnScaleBiasMeanVarDesc,
+    const void* bnScale, const void* bnBias,
+    double exponentialAverageFactor,
+    void* resultRunningMean, void* resultRunningVariance,
+    double epsilon,
+    void* resultSaveMean, void* resultSaveInvVariance);
+
+cudnnStatus_t cudnnBatchNormalizationBackward(
+    cudnnHandle_t handle,
+    cudnnBatchNormMode_t mode,
+    const void* alphaDataDiff, const void* betaDataDiff,
+    const void* alphaParamDiff, const void* betaParamDiff,
+    cudnnTensorDescriptor_t xDesc, const void* x,
+    cudnnTensorDescriptor_t dyDesc, const void* dy,
+    cudnnTensorDescriptor_t dxDesc, void* dx,
+    cudnnTensorDescriptor_t dBnScaleBiasDesc,
+    const void* bnScale,
+    void* dBnScaleResult, void* dBnBiasResult,
+    double epsilon,
+    const void* savedMean, const void* savedInvVariance);
+
+// Softmax backward
+cudnnStatus_t cudnnSoftmaxBackward(cudnnHandle_t handle,
+                                    cudnnSoftmaxAlgorithm_t algo,
+                                    cudnnSoftmaxMode_t mode,
+                                    const void* alpha,
+                                    cudnnTensorDescriptor_t yDesc, const void* y,
+                                    cudnnTensorDescriptor_t dyDesc, const void* dy,
+                                    const void* beta,
+                                    cudnnTensorDescriptor_t dxDesc, void* dx);
+
+// OpTensor
+typedef enum cudnnOpTensorOp_t {
+    CUDNN_OP_TENSOR_ADD = 0,
+    CUDNN_OP_TENSOR_MUL = 1,
+    CUDNN_OP_TENSOR_MIN = 2,
+    CUDNN_OP_TENSOR_MAX = 3,
+    CUDNN_OP_TENSOR_SQRT = 4,
+    CUDNN_OP_TENSOR_NOT = 5,
+} cudnnOpTensorOp_t;
+
+typedef struct cudnnOpTensorStruct* cudnnOpTensorDescriptor_t;
+
+cudnnStatus_t cudnnCreateOpTensorDescriptor(cudnnOpTensorDescriptor_t* opTensorDesc);
+cudnnStatus_t cudnnDestroyOpTensorDescriptor(cudnnOpTensorDescriptor_t opTensorDesc);
+cudnnStatus_t cudnnSetOpTensorDescriptor(cudnnOpTensorDescriptor_t opTensorDesc,
+                                          cudnnOpTensorOp_t opTensorOp,
+                                          cudnnDataType_t opTensorCompType,
+                                          cudnnNanPropagation_t opTensorNanOpt);
+cudnnStatus_t cudnnOpTensor(cudnnHandle_t handle,
+                             cudnnOpTensorDescriptor_t opTensorDesc,
+                             const void* alpha1,
+                             cudnnTensorDescriptor_t aDesc, const void* A,
+                             const void* alpha2,
+                             cudnnTensorDescriptor_t bDesc, const void* B,
+                             const void* beta,
+                             cudnnTensorDescriptor_t cDesc, void* C);
+
+// Reduce tensor
+typedef enum cudnnReduceTensorOp_t {
+    CUDNN_REDUCE_TENSOR_ADD = 0,
+    CUDNN_REDUCE_TENSOR_MUL = 1,
+    CUDNN_REDUCE_TENSOR_MIN = 2,
+    CUDNN_REDUCE_TENSOR_MAX = 3,
+    CUDNN_REDUCE_TENSOR_AMAX = 4,
+    CUDNN_REDUCE_TENSOR_AVG = 5,
+    CUDNN_REDUCE_TENSOR_NORM1 = 6,
+    CUDNN_REDUCE_TENSOR_NORM2 = 7,
+    CUDNN_REDUCE_TENSOR_MUL_NO_ZEROS = 8,
+} cudnnReduceTensorOp_t;
+
+typedef enum cudnnReduceTensorIndices_t {
+    CUDNN_REDUCE_TENSOR_NO_INDICES = 0,
+    CUDNN_REDUCE_TENSOR_FLATTENED_INDICES = 1,
+} cudnnReduceTensorIndices_t;
+
+typedef enum cudnnIndicesType_t {
+    CUDNN_32BIT_INDICES = 0,
+    CUDNN_64BIT_INDICES = 1,
+    CUDNN_16BIT_INDICES = 2,
+    CUDNN_8BIT_INDICES = 3,
+} cudnnIndicesType_t;
+
+typedef struct cudnnReduceTensorStruct* cudnnReduceTensorDescriptor_t;
+
+cudnnStatus_t cudnnCreateReduceTensorDescriptor(cudnnReduceTensorDescriptor_t* reduceTensorDesc);
+cudnnStatus_t cudnnDestroyReduceTensorDescriptor(cudnnReduceTensorDescriptor_t reduceTensorDesc);
+cudnnStatus_t cudnnSetReduceTensorDescriptor(cudnnReduceTensorDescriptor_t reduceTensorDesc,
+                                              cudnnReduceTensorOp_t reduceTensorOp,
+                                              cudnnDataType_t reduceTensorCompType,
+                                              cudnnNanPropagation_t reduceTensorNanOpt,
+                                              cudnnReduceTensorIndices_t reduceTensorIndices,
+                                              cudnnIndicesType_t reduceTensorIndicesType);
+cudnnStatus_t cudnnGetReductionWorkspaceSize(cudnnHandle_t handle,
+                                              cudnnReduceTensorDescriptor_t reduceTensorDesc,
+                                              cudnnTensorDescriptor_t aDesc,
+                                              cudnnTensorDescriptor_t cDesc,
+                                              size_t* sizeInBytes);
+cudnnStatus_t cudnnReduceTensor(cudnnHandle_t handle,
+                                 cudnnReduceTensorDescriptor_t reduceTensorDesc,
+                                 void* indices, size_t indicesSizeInBytes,
+                                 void* workspace, size_t workspaceSizeInBytes,
+                                 const void* alpha,
+                                 cudnnTensorDescriptor_t aDesc, const void* A,
+                                 const void* beta,
+                                 cudnnTensorDescriptor_t cDesc, void* C);
+
 #ifdef __cplusplus
 }
 #endif

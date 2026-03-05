@@ -485,6 +485,195 @@ static bool test_tensor_nd_descriptor() {
     return true;
 }
 
+static bool test_batch_norm_training() {
+    // 2x1x1x1: two samples, one channel, spatial 1x1
+    // x = [2, 4], mean = 3, var = 1
+    // normalized: [-1, 1], scale=1, bias=0 => y = [-1, 1]
+    float x[] = {2.0f, 4.0f};
+    float y[2] = {};
+    float scale[] = {1.0f};
+    float bias[] = {0.0f};
+    float runMean[] = {0.0f};
+    float runVar[] = {1.0f};
+    float saveMean[1] = {};
+    float saveInvVar[1] = {};
+    float alpha = 1.0f, beta = 0.0f;
+
+    cudnnHandle_t handle = nullptr;
+    cudnnCreate(&handle);
+
+    cudnnTensorDescriptor_t xDesc = nullptr, bnDesc = nullptr;
+    cudnnCreateTensorDescriptor(&xDesc);
+    cudnnCreateTensorDescriptor(&bnDesc);
+    cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 2, 1, 1, 1);
+    cudnnSetTensor4dDescriptor(bnDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 1, 1, 1);
+
+    cudnnBatchNormalizationForwardTraining(handle, CUDNN_BATCHNORM_SPATIAL,
+        &alpha, &beta, xDesc, x, xDesc, y, bnDesc, scale, bias,
+        1.0, runMean, runVar, 1e-5, saveMean, saveInvVar);
+
+    // Check normalized output
+    if (std::fabs(y[0] - (-1.0f)) > 0.01f || std::fabs(y[1] - 1.0f) > 0.01f) {
+        std::fprintf(stderr, "FAIL: bn training y=[%f,%f] expected [-1,1]\n", y[0], y[1]);
+        return false;
+    }
+    // Check saved mean ~3.0
+    if (std::fabs(saveMean[0] - 3.0f) > 1e-5f) {
+        std::fprintf(stderr, "FAIL: bn training saveMean=%f expected 3.0\n", saveMean[0]);
+        return false;
+    }
+
+    cudnnDestroyTensorDescriptor(bnDesc);
+    cudnnDestroyTensorDescriptor(xDesc);
+    cudnnDestroy(handle);
+    return true;
+}
+
+static bool test_batch_norm_backward() {
+    // 2x1x1x1: two samples, one channel
+    float x[] = {2.0f, 4.0f};
+    float dy[] = {1.0f, -1.0f};
+    float dx[2] = {};
+    float scale[] = {1.0f};
+    float dscale[1] = {0.0f};
+    float dbias_arr[1] = {0.0f};
+    float saveMean[] = {3.0f};
+    float saveInvVar[] = {1.0f}; // 1/sqrt(var+eps) ~ 1.0
+    float alpha = 1.0f, beta = 0.0f;
+
+    cudnnHandle_t handle = nullptr;
+    cudnnCreate(&handle);
+
+    cudnnTensorDescriptor_t xDesc = nullptr, bnDesc = nullptr;
+    cudnnCreateTensorDescriptor(&xDesc);
+    cudnnCreateTensorDescriptor(&bnDesc);
+    cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 2, 1, 1, 1);
+    cudnnSetTensor4dDescriptor(bnDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 1, 1, 1);
+
+    cudnnBatchNormalizationBackward(handle, CUDNN_BATCHNORM_SPATIAL,
+        &alpha, &beta, &alpha, &beta,
+        xDesc, x, xDesc, dy, xDesc, dx, bnDesc, scale,
+        dscale, dbias_arr, 1e-5, saveMean, saveInvVar);
+
+    // dbias = sum(dy) = 1 + (-1) = 0
+    if (std::fabs(dbias_arr[0]) > 0.01f) {
+        std::fprintf(stderr, "FAIL: bn backward dbias=%f expected 0\n", dbias_arr[0]);
+        return false;
+    }
+
+    cudnnDestroyTensorDescriptor(bnDesc);
+    cudnnDestroyTensorDescriptor(xDesc);
+    cudnnDestroy(handle);
+    return true;
+}
+
+static bool test_softmax_backward() {
+    // 1x3x1x1: softmax output [0.09, 0.24, 0.67] (approx for [1,2,3])
+    // First compute softmax forward, then backward
+    float x_in[] = {1.0f, 2.0f, 3.0f};
+    float y[3] = {};
+    float dy[] = {1.0f, 0.0f, 0.0f}; // gradient only on class 0
+    float dx[3] = {};
+    float alpha = 1.0f, beta = 0.0f;
+
+    cudnnHandle_t handle = nullptr;
+    cudnnCreate(&handle);
+
+    cudnnTensorDescriptor_t desc = nullptr;
+    cudnnCreateTensorDescriptor(&desc);
+    cudnnSetTensor4dDescriptor(desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 3, 1, 1);
+
+    cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_CHANNEL,
+                        &alpha, desc, x_in, &beta, desc, y);
+
+    cudnnSoftmaxBackward(handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_CHANNEL,
+                         &alpha, desc, y, desc, dy, &beta, desc, dx);
+
+    // dx should sum to 0 (softmax jacobian property)
+    float sum = dx[0] + dx[1] + dx[2];
+    if (std::fabs(sum) > 1e-5f) {
+        std::fprintf(stderr, "FAIL: softmax backward sum=%f expected 0\n", sum);
+        return false;
+    }
+    // dx[0] should be positive (correct class), dx[1],dx[2] should be negative
+    if (dx[0] <= 0.0f) {
+        std::fprintf(stderr, "FAIL: softmax backward dx[0]=%f expected >0\n", dx[0]);
+        return false;
+    }
+
+    cudnnDestroyTensorDescriptor(desc);
+    cudnnDestroy(handle);
+    return true;
+}
+
+static bool test_op_tensor_add() {
+    float A[] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float B[] = {10.0f, 20.0f, 30.0f, 40.0f};
+    float C[4] = {};
+    float alpha1 = 1.0f, alpha2 = 1.0f, beta_val = 0.0f;
+
+    cudnnHandle_t handle = nullptr;
+    cudnnCreate(&handle);
+
+    cudnnTensorDescriptor_t desc = nullptr;
+    cudnnCreateTensorDescriptor(&desc);
+    cudnnSetTensor4dDescriptor(desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 1, 1, 4);
+
+    cudnnOpTensorDescriptor_t op = nullptr;
+    cudnnCreateOpTensorDescriptor(&op);
+    cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_NOT_PROPAGATE_NAN);
+
+    cudnnOpTensor(handle, op, &alpha1, desc, A, &alpha2, desc, B, &beta_val, desc, C);
+
+    float expected[] = {11.0f, 22.0f, 33.0f, 44.0f};
+    for (int i = 0; i < 4; ++i) {
+        if (std::fabs(C[i] - expected[i]) > 1e-5f) {
+            std::fprintf(stderr, "FAIL: OpTensor add[%d]=%f expected %f\n", i, C[i], expected[i]);
+            return false;
+        }
+    }
+
+    cudnnDestroyOpTensorDescriptor(op);
+    cudnnDestroyTensorDescriptor(desc);
+    cudnnDestroy(handle);
+    return true;
+}
+
+static bool test_reduce_tensor_sum() {
+    float A[] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float C[1] = {};
+    float alpha = 1.0f, beta_val = 0.0f;
+
+    cudnnHandle_t handle = nullptr;
+    cudnnCreate(&handle);
+
+    cudnnTensorDescriptor_t aDesc = nullptr, cDesc = nullptr;
+    cudnnCreateTensorDescriptor(&aDesc);
+    cudnnCreateTensorDescriptor(&cDesc);
+    cudnnSetTensor4dDescriptor(aDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 1, 1, 4);
+    cudnnSetTensor4dDescriptor(cDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, 1, 1, 1);
+
+    cudnnReduceTensorDescriptor_t red = nullptr;
+    cudnnCreateReduceTensorDescriptor(&red);
+    cudnnSetReduceTensorDescriptor(red, CUDNN_REDUCE_TENSOR_ADD, CUDNN_DATA_FLOAT,
+                                    CUDNN_NOT_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES,
+                                    CUDNN_32BIT_INDICES);
+
+    cudnnReduceTensor(handle, red, nullptr, 0, nullptr, 0,
+                       &alpha, aDesc, A, &beta_val, cDesc, C);
+
+    if (std::fabs(C[0] - 10.0f) > 1e-5f) {
+        std::fprintf(stderr, "FAIL: reduce sum=%f expected 10.0\n", C[0]);
+        return false;
+    }
+
+    cudnnDestroyReduceTensorDescriptor(red);
+    cudnnDestroyTensorDescriptor(cDesc);
+    cudnnDestroyTensorDescriptor(aDesc);
+    cudnnDestroy(handle);
+    return true;
+}
+
 int main() {
     if (!test_handle_lifecycle()) return 1;
     if (!test_tensor_descriptor()) return 1;
@@ -502,6 +691,11 @@ int main() {
     if (!test_dropout_passthrough()) return 1;
     if (!test_dropout_states_size()) return 1;
     if (!test_tensor_nd_descriptor()) return 1;
+    if (!test_batch_norm_training()) return 1;
+    if (!test_batch_norm_backward()) return 1;
+    if (!test_softmax_backward()) return 1;
+    if (!test_op_tensor_add()) return 1;
+    if (!test_reduce_tensor_sum()) return 1;
 
     std::printf("PASS: cuDNN API tests\n");
     return 0;
