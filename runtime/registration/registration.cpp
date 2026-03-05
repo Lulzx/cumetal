@@ -335,6 +335,45 @@ bool parse_fatbin_blob_ptx(const void* fat_cubin, std::string* out_ptx) {
     return extract_ptx_from_blob(blob + header_size, fat_size, out_ptx);
 }
 
+// ELF-embedded fatbinary: NVCC places PTX inside ELF objects within .nv_fatbin sections.
+// The ELF magic is 0x7f 'E' 'L' 'F'. We scan the entire image for embedded fatbin blobs
+// or raw PTX strings that live after the ELF headers.
+bool parse_elf_embedded_ptx(const void* fat_cubin, std::size_t scan_limit, std::string* out_ptx) {
+    if (fat_cubin == nullptr || out_ptx == nullptr || scan_limit < 16) {
+        return false;
+    }
+    const auto* raw = static_cast<const std::uint8_t*>(fat_cubin);
+
+    // Check for ELF magic (0x7f 'E' 'L' 'F')
+    if (raw[0] != 0x7f || raw[1] != 'E' || raw[2] != 'L' || raw[3] != 'F') {
+        return false;
+    }
+
+    REG_DEBUG("parse_elf_embedded_ptx: ELF magic detected, scanning %zu bytes", scan_limit);
+
+    // Scan the ELF for embedded fatbin blobs or PTX markers
+    for (std::size_t i = 4; i + 8 < scan_limit; ++i) {
+        // Look for fatbin blob magic within the ELF
+        std::uint32_t word = 0;
+        std::memcpy(&word, raw + i, sizeof(word));
+        if (word == kFatbinBlobMagic) {
+            if (parse_fatbin_blob_ptx(raw + i, out_ptx)) {
+                REG_DEBUG("parse_elf_embedded_ptx: found fatbin blob at offset %zu", i);
+                return true;
+            }
+        }
+        // Look for raw PTX (.version marker) within ELF
+        if (raw[i] == '.' && i + 8 < scan_limit &&
+            std::memcmp(raw + i, ".version", 8) == 0) {
+            if (extract_ptx_from_blob(raw + i, scan_limit - i, out_ptx)) {
+                REG_DEBUG("parse_elf_embedded_ptx: found PTX at offset %zu", i);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool parse_fatbin_wrapper_ptx(const void* fat_cubin, std::string* out_ptx) {
     if (fat_cubin == nullptr || out_ptx == nullptr) {
         return false;
@@ -397,6 +436,12 @@ ParsedFatbinImage parse_fatbin_image(const void* fat_cubin) {
     }
     if (parse_direct_ptx_image(fat_cubin, &parsed.ptx_source)) {
         REG_DEBUG("parse_fatbin_image: direct PTX image, ptx_size=%zu",
+                  parsed.ptx_source.size());
+        return parsed;
+    }
+    // NVCC-generated ELF fatbinaries may embed PTX inside an ELF container.
+    if (parse_elf_embedded_ptx(fat_cubin, 1024 * 1024, &parsed.ptx_source)) {
+        REG_DEBUG("parse_fatbin_image: ELF-embedded PTX, ptx_size=%zu",
                   parsed.ptx_source.size());
         return parsed;
     }

@@ -15,6 +15,9 @@ typedef struct CUmod_st* CUmodule;
 typedef struct CUfunc_st* CUfunction;
 typedef struct cudaStream_st* CUstream;
 typedef struct cudaEvent_st* CUevent;
+typedef struct cudaGraph_st* CUgraph;
+typedef struct cudaGraphExec_st* CUgraphExec;
+typedef struct cudaGraphNode_st* CUgraphNode;
 
 #define CU_STREAM_LEGACY ((CUstream)0x1)
 #define CU_STREAM_PER_THREAD ((CUstream)0x2)
@@ -290,6 +293,15 @@ typedef enum CUpointer_attribute_enum {
 } CUpointer_attribute;
 
 CUresult cuPointerGetAttribute(void* data, CUpointer_attribute attribute, CUdeviceptr ptr);
+
+// ── CUDA Graphs (Driver API) ─────────────────────────────────────────────────
+CUresult cuGraphCreate(CUgraph* phGraph, unsigned int flags);
+CUresult cuGraphDestroy(CUgraph hGraph);
+CUresult cuGraphInstantiate(CUgraphExec* phGraphExec, CUgraph hGraph,
+                             CUgraphNode* phErrorNode, char* logBuffer,
+                             size_t bufferSize);
+CUresult cuGraphLaunch(CUgraphExec hGraphExec, CUstream hStream);
+CUresult cuGraphExecDestroy(CUgraphExec hGraphExec);
 
 CUresult cuDeviceComputeCapability(int* major, int* minor, CUdevice dev);
 CUresult cuDeviceCanAccessPeer(int* canAccessPeer, CUdevice dev, CUdevice peerDev);

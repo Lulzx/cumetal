@@ -74,9 +74,14 @@ Library shims
 - cuRAND (host-side random number generation via MT19937/XORWOW)
 - cuBLAS v2 (GEMM, GEMV, BLAS 1 — backed by MetalPerformanceShaders and Accelerate)
 - cuFFT (1D/2D/3D, any-N batched, backed by Apple Accelerate vDSP)
+- cuSPARSE (CSR/COO SpMV, SpMM, legacy `cusparseScsrmv`/`cusparseDcsrmv` — CPU-backed on UMA)
+- cuSOLVER Dense (LU, QR, Cholesky, SVD, eigenvalue — backed by Apple Accelerate LAPACK)
+- CUDA Graphs (stream capture, instantiate, launch — sequential replay)
+- Texture/Surface objects (array allocation, memcpy, object lifecycle)
 
 Build/install also provides dylib aliases so software linked against CUDA library
-names can find the shims: `libcublas.dylib`, `libcurand.dylib`, `libcufft.dylib`.
+names can find the shims: `libcublas.dylib`, `libcurand.dylib`, `libcufft.dylib`,
+`libcusparse.dylib`, `libcusolver.dylib`.
 With `CUMETAL_ENABLE_BINARY_SHIM=ON`, `libcuda.dylib` is also provided.
 
 
@@ -185,7 +190,7 @@ Point any pre-compiled llama.cpp binary at a different model by setting
 Test suite
 ----------
 
-152 tests are registered in CTest (unit + functional). An additional benchmark
+158 tests are registered in CTest (unit + functional). An additional benchmark
 gate test (`bench_phase5_all_kernels`) runs on Apple Silicon if xcrun is available.
 
 ```bash
@@ -197,16 +202,17 @@ ctest --test-dir build -R unit_ -V              # unit tests only
 Known limitations
 -----------------
 
-- **CUDA Graphs**: deferred to v2 (spec §2.2)
 - **Dynamic parallelism**: compile-time error (spec §2.2)
-- **Texture/surface objects**: deferred to v2 (spec §2.2, §8)
 - **Multi-GPU**: single GPU on Apple Silicon; peer APIs return appropriate errors
 - **Graphics interop** (OpenGL/Vulkan): non-goal (spec §2.2)
 - **`grid_group::sync()`**: no-op stub; Metal has no cross-threadgroup barrier
 - **Warp partial-mask**: conservative full-group emulation (spec §5.3)
-- **FP64**: Apple Silicon GPU has minimal FP64 throughput; `--fp64=emulate` recommended
-- **Full NVCC fatbin**: binary shim supports CuMetal CMTL envelopes and PTX images;
-  full NVCC ELF-embedded fatbinary variants are not yet implemented
+- **FP64**: Apple Silicon GPU has minimal FP64 throughput; `--fp64=emulate` uses
+  Dekker double-single decomposition (~44-bit mantissa via FP32 pairs)
+- **CUDA Graphs**: basic support (create, instantiate, launch); stream capture records
+  empty graphs (operation interception during capture is not yet implemented)
+- **Texture/surface objects**: lifecycle and array memcpy supported; GPU-side texture
+  sampling requires Metal shader integration (not yet wired)
 - **Device printf**: buffer-based; format strings limited to 256 bytes
 
 Documentation

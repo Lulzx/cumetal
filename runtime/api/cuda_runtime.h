@@ -333,6 +333,27 @@ typedef enum cudaStreamCaptureMode {
     cudaStreamCaptureModeRelaxed = 2,
 } cudaStreamCaptureMode;
 
+typedef enum cudaStreamCaptureStatus {
+    cudaStreamCaptureStatusNone = 0,
+    cudaStreamCaptureStatusActive = 1,
+    cudaStreamCaptureStatusInvalidated = 2,
+} cudaStreamCaptureStatus;
+
+// ── CUDA Graphs ──────────────────────────────────────────────────────────────
+typedef struct cudaGraph_st* cudaGraph_t;
+typedef struct cudaGraphExec_st* cudaGraphExec_t;
+typedef struct cudaGraphNode_st* cudaGraphNode_t;
+
+typedef enum cudaGraphNodeType {
+    cudaGraphNodeTypeKernel = 0,
+    cudaGraphNodeTypeMemcpy = 1,
+    cudaGraphNodeTypeMemset = 2,
+    cudaGraphNodeTypeHost = 3,
+    cudaGraphNodeTypeGraph = 4,
+    cudaGraphNodeTypeEmpty = 5,
+    cudaGraphNodeTypeCount = 6,
+} cudaGraphNodeType;
+
 enum {
     cudaDeviceScheduleAuto = 0x00,
     cudaDeviceScheduleSpin = 0x01,
@@ -390,9 +411,80 @@ typedef struct cudaPos {
     size_t z;
 } cudaPos;
 
-// Opaque CUDA array handle (not implemented; present for struct compatibility).
+// Opaque CUDA array handle.
 struct cudaArray;
 typedef struct cudaArray* cudaArray_t;
+typedef const struct cudaArray* cudaArray_const_t;
+
+// ── Texture / Surface objects ────────────────────────────────────────────────
+typedef unsigned long long cudaTextureObject_t;
+typedef unsigned long long cudaSurfaceObject_t;
+
+typedef enum cudaChannelFormatKind {
+    cudaChannelFormatKindSigned = 0,
+    cudaChannelFormatKindUnsigned = 1,
+    cudaChannelFormatKindFloat = 2,
+    cudaChannelFormatKindNone = 3,
+} cudaChannelFormatKind;
+
+typedef struct cudaChannelFormatDesc {
+    int x, y, z, w;
+    cudaChannelFormatKind f;
+} cudaChannelFormatDesc;
+
+typedef enum cudaTextureAddressMode {
+    cudaAddressModeWrap = 0,
+    cudaAddressModeClamp = 1,
+    cudaAddressModeMirror = 2,
+    cudaAddressModeBorder = 3,
+} cudaTextureAddressMode;
+
+typedef enum cudaTextureFilterMode {
+    cudaFilterModePoint = 0,
+    cudaFilterModeLinear = 1,
+} cudaTextureFilterMode;
+
+typedef enum cudaTextureReadMode {
+    cudaReadModeElementType = 0,
+    cudaReadModeNormalizedFloat = 1,
+} cudaTextureReadMode;
+
+typedef struct cudaResourceDesc {
+    enum { cudaResourceTypeArray = 0, cudaResourceTypeMipmappedArray = 1,
+           cudaResourceTypeLinear = 2, cudaResourceTypePitch2D = 3 } resType;
+    union {
+        struct { cudaArray_t array; } array;
+        struct { void* devPtr; cudaChannelFormatDesc desc; size_t sizeInBytes; } linear;
+        struct { void* devPtr; cudaChannelFormatDesc desc; size_t width; size_t height;
+                 size_t pitchInBytes; } pitch2D;
+    } res;
+} cudaResourceDesc;
+
+typedef struct cudaTextureDesc {
+    cudaTextureAddressMode addressMode[3];
+    cudaTextureFilterMode filterMode;
+    cudaTextureReadMode readMode;
+    int sRGB;
+    float borderColor[4];
+    int normalizedCoords;
+    unsigned int maxAnisotropy;
+    cudaTextureFilterMode mipmapFilterMode;
+    float mipmapLevelBias;
+    float minMipmapLevelClamp;
+    float maxMipmapLevelClamp;
+    int disableTrilinearOptimization;
+} cudaTextureDesc;
+
+typedef struct cudaResourceViewDesc {
+    enum { cudaResViewFormatNone = 0 } format;
+    size_t width;
+    size_t height;
+    size_t depth;
+    unsigned int firstMipmapLevel;
+    unsigned int lastMipmapLevel;
+    unsigned int firstLayer;
+    unsigned int lastLayer;
+} cudaResourceViewDesc;
 
 typedef struct cudaMemcpy3DParms {
     cudaArray_t      srcArray;
@@ -523,6 +615,17 @@ cudaError_t cudaStreamDestroy(cudaStream_t stream);
 cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaStreamQuery(cudaStream_t stream);
 cudaError_t cudaStreamBeginCapture(cudaStream_t stream, cudaStreamCaptureMode mode);
+cudaError_t cudaStreamEndCapture(cudaStream_t stream, cudaGraph_t* pGraph);
+cudaError_t cudaStreamIsCapturing(cudaStream_t stream, cudaStreamCaptureStatus* pCaptureStatus);
+cudaError_t cudaGraphCreate(cudaGraph_t* pGraph, unsigned int flags);
+cudaError_t cudaGraphDestroy(cudaGraph_t graph);
+cudaError_t cudaGraphInstantiate(cudaGraphExec_t* pGraphExec, cudaGraph_t graph,
+                                  cudaGraphNode_t* pErrorNode, char* pLogBuffer,
+                                  size_t bufferSize);
+cudaError_t cudaGraphLaunch(cudaGraphExec_t graphExec, cudaStream_t stream);
+cudaError_t cudaGraphExecDestroy(cudaGraphExec_t graphExec);
+cudaError_t cudaGraphGetNodes(cudaGraph_t graph, cudaGraphNode_t* nodes, size_t* numNodes);
+cudaError_t cudaGraphGetRootNodes(cudaGraph_t graph, cudaGraphNode_t* pRootNodes, size_t* pNumRootNodes);
 cudaError_t cudaStreamAddCallback(cudaStream_t stream,
                                   cudaStreamCallback_t callback,
                                   void* user_data,
@@ -627,6 +730,31 @@ cudaError_t cudaLaunchCooperativeKernel(const void* func,
                                          void** args,
                                          size_t sharedMem,
                                          cudaStream_t stream);
+
+// ── Texture / Surface API ────────────────────────────────────────────────────
+cudaError_t cudaMallocArray(cudaArray_t* array, const cudaChannelFormatDesc* desc,
+                             size_t width, size_t height, unsigned int flags);
+cudaError_t cudaFreeArray(cudaArray_t array);
+cudaError_t cudaMemcpy2DToArray(cudaArray_t dst, size_t wOffset, size_t hOffset,
+                                 const void* src, size_t spitch, size_t width,
+                                 size_t height, cudaMemcpyKind kind);
+cudaError_t cudaMemcpy2DFromArray(void* dst, size_t dpitch, cudaArray_const_t src,
+                                   size_t wOffset, size_t hOffset, size_t width,
+                                   size_t height, cudaMemcpyKind kind);
+cudaError_t cudaMemcpyToArray(cudaArray_t dst, size_t wOffset, size_t hOffset,
+                               const void* src, size_t count, cudaMemcpyKind kind);
+cudaError_t cudaMemcpyFromArray(void* dst, cudaArray_const_t src, size_t wOffset,
+                                 size_t hOffset, size_t count, cudaMemcpyKind kind);
+cudaError_t cudaCreateTextureObject(cudaTextureObject_t* pTexObject,
+                                     const cudaResourceDesc* pResDesc,
+                                     const cudaTextureDesc* pTexDesc,
+                                     const cudaResourceViewDesc* pResViewDesc);
+cudaError_t cudaDestroyTextureObject(cudaTextureObject_t texObject);
+cudaError_t cudaCreateSurfaceObject(cudaSurfaceObject_t* pSurfObject,
+                                     const cudaResourceDesc* pResDesc);
+cudaError_t cudaDestroySurfaceObject(cudaSurfaceObject_t surfObject);
+cudaChannelFormatDesc cudaCreateChannelDesc(int x, int y, int z, int w,
+                                             cudaChannelFormatKind f);
 
 // Legacy thread API — deprecated aliases retained for source compatibility.
 cudaError_t cudaThreadExit(void);

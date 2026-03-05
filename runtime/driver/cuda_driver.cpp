@@ -2039,4 +2039,48 @@ CUresult cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int* numBlocks,
     return cuOccupancyMaxActiveBlocksPerMultiprocessor(numBlocks, func, blockSize, dynamicSMemSize);
 }
 
+// ── CUDA Graphs (Driver API) ─────────────────────────────────────────────────
+
+CUresult cuGraphCreate(CUgraph* phGraph, unsigned int flags) {
+    if (phGraph == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    cudaGraph_t g = nullptr;
+    cudaError_t err = cudaGraphCreate(&g, flags);
+    *phGraph = reinterpret_cast<CUgraph>(g);
+    return err == cudaSuccess ? CUDA_SUCCESS : CUDA_ERROR_INVALID_VALUE;
+}
+
+CUresult cuGraphDestroy(CUgraph hGraph) {
+    cudaError_t err = cudaGraphDestroy(reinterpret_cast<cudaGraph_t>(hGraph));
+    return err == cudaSuccess ? CUDA_SUCCESS : CUDA_ERROR_INVALID_VALUE;
+}
+
+CUresult cuGraphInstantiate(CUgraphExec* phGraphExec, CUgraph hGraph,
+                             CUgraphNode* phErrorNode, char* logBuffer,
+                             size_t bufferSize) {
+    if (phGraphExec == nullptr) {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    cudaGraphExec_t exec = nullptr;
+    cudaGraphNode_t errNode = nullptr;
+    cudaError_t err = cudaGraphInstantiate(
+        &exec, reinterpret_cast<cudaGraph_t>(hGraph), &errNode, logBuffer, bufferSize);
+    *phGraphExec = reinterpret_cast<CUgraphExec>(exec);
+    if (phErrorNode) { *phErrorNode = reinterpret_cast<CUgraphNode>(errNode); }
+    return err == cudaSuccess ? CUDA_SUCCESS : CUDA_ERROR_INVALID_VALUE;
+}
+
+CUresult cuGraphLaunch(CUgraphExec hGraphExec, CUstream hStream) {
+    cudaError_t err = cudaGraphLaunch(
+        reinterpret_cast<cudaGraphExec_t>(hGraphExec),
+        reinterpret_cast<cudaStream_t>(hStream));
+    return err == cudaSuccess ? CUDA_SUCCESS : CUDA_ERROR_INVALID_VALUE;
+}
+
+CUresult cuGraphExecDestroy(CUgraphExec hGraphExec) {
+    cudaError_t err = cudaGraphExecDestroy(reinterpret_cast<cudaGraphExec_t>(hGraphExec));
+    return err == cudaSuccess ? CUDA_SUCCESS : CUDA_ERROR_INVALID_VALUE;
+}
+
 }  // extern "C"

@@ -26,6 +26,48 @@
 #include <vector>
 
 struct cudaStream_st {};
+
+// ── CUDA Graphs (spec §2.2 — previously deferred, now implemented) ──────────
+// Graph nodes record operations; instantiation creates an executable sequence.
+// On Apple Silicon (single GPU, UMA), graphs are replayed sequentially.
+
+struct cudaGraphNode_st {
+    cudaGraphNodeType type = cudaGraphNodeTypeEmpty;
+
+    // Kernel node data
+    const void* func = nullptr;
+    dim3 grid_dim{};
+    dim3 block_dim{};
+    void** kernel_args = nullptr;
+    int num_args = 0;
+    size_t shared_mem = 0;
+
+    // Memcpy node data
+    void* dst = nullptr;
+    const void* src = nullptr;
+    size_t count = 0;
+    cudaMemcpyKind memcpy_kind = cudaMemcpyDefault;
+
+    // Memset node data
+    int memset_value = 0;
+
+    // Host node data
+    cudaHostFn_t host_fn = nullptr;
+    void* host_user_data = nullptr;
+};
+
+struct cudaGraph_st {
+    std::vector<cudaGraphNode_st*> nodes;
+    ~cudaGraph_st() {
+        for (auto* n : nodes) { delete n; }
+    }
+};
+
+struct cudaGraphExec_st {
+    // Owned copy of the graph for replay
+    std::vector<cudaGraphNode_st> nodes;
+};
+
 struct cudaEvent_st {
     bool disable_timing = false;
     bool recorded_once = false;
@@ -59,6 +101,14 @@ RuntimeState& runtime_state() {
 
 thread_local cudaError_t tls_last_error = cudaSuccess;
 thread_local std::shared_ptr<cumetal::metal_backend::Stream> tls_per_thread_stream;
+
+// Per-stream graph capture state.
+struct CaptureState {
+    bool capturing = false;
+    cudaGraph_t graph = nullptr;
+};
+std::mutex g_capture_mutex;
+std::unordered_map<cudaStream_t, CaptureState> g_captures;
 
 struct PendingLaunchArgument {
     size_t offset = 0;
@@ -2748,17 +2798,144 @@ cudaError_t cudaStreamBeginCapture(cudaStream_t stream, cudaStreamCaptureMode mo
         return fail(init_status);
     }
 
-    if (!is_legacy_stream_handle(stream)) {
-        std::shared_ptr<cumetal::metal_backend::Stream> backend_stream;
-        const cudaError_t resolve_status = resolve_runtime_stream(stream, &backend_stream, nullptr);
-        if (resolve_status != cudaSuccess || backend_stream == nullptr) {
-            return fail(resolve_status == cudaSuccess ? cudaErrorInvalidValue : resolve_status);
-        }
+    std::lock_guard<std::mutex> lock(g_capture_mutex);
+    auto& cap = g_captures[stream];
+    if (cap.capturing) {
+        return fail(cudaErrorInvalidValue);
+    }
+    cap.capturing = true;
+    cap.graph = new cudaGraph_st();
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaStreamEndCapture(cudaStream_t stream, cudaGraph_t* pGraph) {
+    if (pGraph == nullptr) {
+        return fail(cudaErrorInvalidValue);
     }
 
-    // CUDA graphs are not implemented in CuMetal yet; capture begin is accepted as a no-op so
-    // codepaths compiled with graph support can still run with graphs disabled at runtime.
+    std::lock_guard<std::mutex> lock(g_capture_mutex);
+    auto it = g_captures.find(stream);
+    if (it == g_captures.end() || !it->second.capturing) {
+        *pGraph = nullptr;
+        return fail(cudaErrorInvalidValue);
+    }
+    *pGraph = it->second.graph;
+    it->second.capturing = false;
+    it->second.graph = nullptr;
+    g_captures.erase(it);
     return fail(cudaSuccess);
+}
+
+cudaError_t cudaStreamIsCapturing(cudaStream_t stream,
+                                   cudaStreamCaptureStatus* pCaptureStatus) {
+    if (pCaptureStatus == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    std::lock_guard<std::mutex> lock(g_capture_mutex);
+    auto it = g_captures.find(stream);
+    if (it != g_captures.end() && it->second.capturing) {
+        *pCaptureStatus = cudaStreamCaptureStatusActive;
+    } else {
+        *pCaptureStatus = cudaStreamCaptureStatusNone;
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphCreate(cudaGraph_t* pGraph, unsigned int /*flags*/) {
+    if (pGraph == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    *pGraph = new cudaGraph_st();
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphDestroy(cudaGraph_t graph) {
+    if (graph == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    delete graph;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphInstantiate(cudaGraphExec_t* pGraphExec, cudaGraph_t graph,
+                                  cudaGraphNode_t* pErrorNode, char* /*pLogBuffer*/,
+                                  size_t /*bufferSize*/) {
+    if (pGraphExec == nullptr || graph == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    if (pErrorNode) { *pErrorNode = nullptr; }
+
+    auto* exec = new cudaGraphExec_st();
+    for (const auto* node : graph->nodes) {
+        exec->nodes.push_back(*node);
+    }
+    *pGraphExec = exec;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphLaunch(cudaGraphExec_t graphExec, cudaStream_t stream) {
+    if (graphExec == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    // Replay all recorded operations sequentially on the given stream.
+    for (const auto& node : graphExec->nodes) {
+        cudaError_t err = cudaSuccess;
+        switch (node.type) {
+            case cudaGraphNodeTypeKernel:
+                err = cudaLaunchKernel(node.func, node.grid_dim, node.block_dim,
+                                        node.kernel_args, node.shared_mem, stream);
+                break;
+            case cudaGraphNodeTypeMemcpy:
+                err = cudaMemcpyAsync(const_cast<void*>(static_cast<const void*>(node.dst)),
+                                       node.src, node.count, node.memcpy_kind, stream);
+                break;
+            case cudaGraphNodeTypeMemset:
+                err = cudaMemsetAsync(node.dst, node.memset_value, node.count, stream);
+                break;
+            case cudaGraphNodeTypeHost:
+                if (node.host_fn) {
+                    cudaStreamSynchronize(stream);
+                    node.host_fn(node.host_user_data);
+                }
+                break;
+            default:
+                break;
+        }
+        if (err != cudaSuccess) {
+            return fail(err);
+        }
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphExecDestroy(cudaGraphExec_t graphExec) {
+    if (graphExec == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    delete graphExec;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphGetNodes(cudaGraph_t graph, cudaGraphNode_t* nodes, size_t* numNodes) {
+    if (graph == nullptr || numNodes == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    if (nodes == nullptr) {
+        *numNodes = graph->nodes.size();
+    } else {
+        const size_t n = std::min(*numNodes, graph->nodes.size());
+        for (size_t i = 0; i < n; ++i) {
+            nodes[i] = graph->nodes[i];
+        }
+        *numNodes = n;
+    }
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaGraphGetRootNodes(cudaGraph_t graph, cudaGraphNode_t* pRootNodes,
+                                   size_t* pNumRootNodes) {
+    // All nodes are root nodes in our flat graph model.
+    return cudaGraphGetNodes(graph, pRootNodes, pNumRootNodes);
 }
 
 cudaError_t cudaStreamAddCallback(cudaStream_t stream,
@@ -3914,6 +4091,158 @@ cudaError_t cudaLaunchCooperativeKernel(const void* func,
                                          size_t sharedMem,
                                          cudaStream_t stream) {
     return cudaLaunchKernel(func, gridDim, blockDim, args, sharedMem, stream);
+}
+
+// ── Texture / Surface API ────────────────────────────────────────────────────
+// Apple Silicon UMA has no dedicated texture unit accessible via CUDA semantics.
+// These stubs allow code that declares texture objects to compile and link;
+// actual texture sampling is backed by linear memory reads.
+
+struct CuMetalArray {
+    void* data = nullptr;
+    size_t width = 0;
+    size_t height = 0;
+    cudaChannelFormatDesc desc{};
+};
+
+cudaError_t cudaMallocArray(cudaArray_t* array, const cudaChannelFormatDesc* desc,
+                             size_t width, size_t height, unsigned int /*flags*/) {
+    if (array == nullptr || desc == nullptr || width == 0) {
+        return fail(cudaErrorInvalidValue);
+    }
+    const size_t elem_size = static_cast<size_t>(
+        (desc->x + desc->y + desc->z + desc->w + 7) / 8);
+    if (height == 0) { height = 1; }
+    auto* a = new CuMetalArray();
+    a->width = width;
+    a->height = height;
+    a->desc = *desc;
+    void* ptr = nullptr;
+    const cudaError_t err = cudaMalloc(&ptr, width * height * elem_size);
+    if (err != cudaSuccess) {
+        delete a;
+        return fail(err);
+    }
+    a->data = ptr;
+    *array = reinterpret_cast<cudaArray_t>(a);
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaFreeArray(cudaArray_t array) {
+    if (array == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    auto* a = reinterpret_cast<CuMetalArray*>(array);
+    cudaFree(a->data);
+    delete a;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaMemcpy2DToArray(cudaArray_t dst, size_t wOffset, size_t hOffset,
+                                 const void* src, size_t spitch, size_t width,
+                                 size_t height, cudaMemcpyKind kind) {
+    if (dst == nullptr || src == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    auto* a = reinterpret_cast<CuMetalArray*>(dst);
+    const size_t elem_size = static_cast<size_t>(
+        (a->desc.x + a->desc.y + a->desc.z + a->desc.w + 7) / 8);
+    const size_t dpitch = a->width * elem_size;
+    auto* dst_base = static_cast<char*>(a->data) + hOffset * dpitch + wOffset;
+    return cudaMemcpy2D(dst_base, dpitch, src, spitch, width, height, kind);
+}
+
+cudaError_t cudaMemcpy2DFromArray(void* dst, size_t dpitch, cudaArray_const_t src,
+                                   size_t wOffset, size_t hOffset, size_t width,
+                                   size_t height, cudaMemcpyKind kind) {
+    if (dst == nullptr || src == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    auto* a = reinterpret_cast<const CuMetalArray*>(src);
+    const size_t elem_size = static_cast<size_t>(
+        (a->desc.x + a->desc.y + a->desc.z + a->desc.w + 7) / 8);
+    const size_t spitch = a->width * elem_size;
+    const auto* src_base = static_cast<const char*>(a->data) + hOffset * spitch + wOffset;
+    return cudaMemcpy2D(dst, dpitch, src_base, spitch, width, height, kind);
+}
+
+cudaError_t cudaMemcpyToArray(cudaArray_t dst, size_t wOffset, size_t hOffset,
+                               const void* src, size_t count, cudaMemcpyKind kind) {
+    if (dst == nullptr || src == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    auto* a = reinterpret_cast<CuMetalArray*>(dst);
+    const size_t elem_size = static_cast<size_t>(
+        (a->desc.x + a->desc.y + a->desc.z + a->desc.w + 7) / 8);
+    auto* dst_ptr = static_cast<char*>(a->data) + hOffset * a->width * elem_size + wOffset;
+    return cudaMemcpy(dst_ptr, src, count, kind);
+}
+
+cudaError_t cudaMemcpyFromArray(void* dst, cudaArray_const_t src, size_t wOffset,
+                                 size_t hOffset, size_t count, cudaMemcpyKind kind) {
+    if (dst == nullptr || src == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    auto* a = reinterpret_cast<const CuMetalArray*>(src);
+    const size_t elem_size = static_cast<size_t>(
+        (a->desc.x + a->desc.y + a->desc.z + a->desc.w + 7) / 8);
+    const auto* src_ptr = static_cast<const char*>(a->data) + hOffset * a->width * elem_size + wOffset;
+    return cudaMemcpy(dst, src_ptr, count, kind);
+}
+
+namespace {
+std::mutex g_tex_mutex;
+std::unordered_map<cudaTextureObject_t, cudaResourceDesc> g_texture_objects;
+std::unordered_map<cudaSurfaceObject_t, cudaResourceDesc> g_surface_objects;
+cudaTextureObject_t g_next_tex_id = 1;
+cudaSurfaceObject_t g_next_surf_id = 1;
+}  // namespace
+
+cudaError_t cudaCreateTextureObject(cudaTextureObject_t* pTexObject,
+                                     const cudaResourceDesc* pResDesc,
+                                     const cudaTextureDesc* /*pTexDesc*/,
+                                     const cudaResourceViewDesc* /*pResViewDesc*/) {
+    if (pTexObject == nullptr || pResDesc == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    std::lock_guard<std::mutex> lock(g_tex_mutex);
+    *pTexObject = g_next_tex_id++;
+    g_texture_objects[*pTexObject] = *pResDesc;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDestroyTextureObject(cudaTextureObject_t texObject) {
+    std::lock_guard<std::mutex> lock(g_tex_mutex);
+    g_texture_objects.erase(texObject);
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaCreateSurfaceObject(cudaSurfaceObject_t* pSurfObject,
+                                     const cudaResourceDesc* pResDesc) {
+    if (pSurfObject == nullptr || pResDesc == nullptr) {
+        return fail(cudaErrorInvalidValue);
+    }
+    std::lock_guard<std::mutex> lock(g_tex_mutex);
+    *pSurfObject = g_next_surf_id++;
+    g_surface_objects[*pSurfObject] = *pResDesc;
+    return fail(cudaSuccess);
+}
+
+cudaError_t cudaDestroySurfaceObject(cudaSurfaceObject_t surfObject) {
+    std::lock_guard<std::mutex> lock(g_tex_mutex);
+    g_surface_objects.erase(surfObject);
+    return fail(cudaSuccess);
+}
+
+cudaChannelFormatDesc cudaCreateChannelDesc(int x, int y, int z, int w,
+                                             cudaChannelFormatKind f) {
+    cudaChannelFormatDesc desc{};
+    desc.x = x;
+    desc.y = y;
+    desc.z = z;
+    desc.w = w;
+    desc.f = f;
+    return desc;
 }
 
 // ── Legacy thread API (batch 5) ───────────────────────────────────────────────

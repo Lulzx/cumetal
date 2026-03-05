@@ -385,6 +385,22 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
     )
 endif()
 
+add_executable(cumetal_cusparse_api_test
+    cusparse_api_test.cpp
+)
+
+add_executable(cumetal_cusolver_api_test
+    cusolver_api_test.cpp
+)
+
+add_executable(cumetal_cuda_graph_api_test
+    cuda_graph_api_test.cpp
+)
+
+add_executable(cumetal_texture_surface_api_test
+    texture_surface_api_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -861,6 +877,32 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
             cumetal_runtime
     )
 endif()
+
+target_link_libraries(cumetal_cusparse_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cusolver_api_test
+    PRIVATE
+        cumetal_runtime
+        "-framework Accelerate"
+)
+
+target_link_libraries(cumetal_cuda_graph_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_texture_surface_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_compile_options(cumetal_cusparse_api_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(cumetal_cusolver_api_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(cumetal_cuda_graph_api_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(cumetal_texture_surface_api_test PRIVATE -Wall -Wextra -Wpedantic)
 
 target_compile_options(cumetal_runtime_vector_add_test
     PRIVATE
@@ -2312,3 +2354,23 @@ if(CUMETAL_ENABLE_BINARY_SHIM)
 
     set_tests_properties(functional_runtime_registration_printf PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+add_test(
+    NAME functional_cusparse_api
+    COMMAND cumetal_cusparse_api_test
+)
+
+add_test(
+    NAME functional_cusolver_api
+    COMMAND cumetal_cusolver_api_test
+)
+
+add_test(
+    NAME functional_cuda_graph_api
+    COMMAND cumetal_cuda_graph_api_test
+)
+
+add_test(
+    NAME functional_texture_surface_api
+    COMMAND cumetal_texture_surface_api_test
+)

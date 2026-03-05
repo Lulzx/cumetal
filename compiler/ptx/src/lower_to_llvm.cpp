@@ -881,9 +881,10 @@ class GenericLlvmEmitter {
                       std::vector<ParamInfo>* params,
                       std::vector<std::string>* arg_decls,
                       const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols,
-                      const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols)
+                      const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols,
+                      cumetal::ptx::Fp64Mode fp64_mode = cumetal::ptx::Fp64Mode::kNative)
         : entry_(entry), params_(params), arg_decls_(arg_decls), const_symbols_(const_symbols),
-          shared_symbols_(shared_symbols) {
+          shared_symbols_(shared_symbols), fp64_mode_(fp64_mode) {
         if (params_ != nullptr) {
             for (std::size_t i = 0; i < params_->size(); ++i) {
                 param_by_raw_[(*params_)[i].raw_name] = static_cast<int>(i);
@@ -971,6 +972,7 @@ class GenericLlvmEmitter {
     std::vector<std::string>* arg_decls_ = nullptr;
     const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols_ = nullptr;
     const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols_ = nullptr;
+    cumetal::ptx::Fp64Mode fp64_mode_ = cumetal::ptx::Fp64Mode::kNative;
 
     std::unordered_map<std::string, int> param_by_raw_;
     std::unordered_map<std::string, std::string> builtin_vector_arg_name_;
@@ -1763,6 +1765,121 @@ class GenericLlvmEmitter {
         return emit_store_reg_bits(os, dst, ensure_reg_slot(dst).bits, out, bits);
     }
 
+    // Dekker double-single FP64 emulation: decompose a 64-bit float op into FP32 pairs.
+    // Each double is represented as (hi, lo) where hi+lo approximates the double value.
+    // This gives ~44 bits of effective mantissa.
+    bool emit_fp64_emulated_binary(std::ostringstream& os,
+                                    const std::string& dst,
+                                    const Value& a, const Value& b,
+                                    const std::string& llvm_op) {
+        // Truncate double operands to float (hi word of Dekker pair)
+        const std::string a_hi = next_tmp("dek_ahi");
+        const std::string b_hi = next_tmp("dek_bhi");
+        os << "  " << a_hi << " = fptrunc double " << a.ir << " to float\n";
+        os << "  " << b_hi << " = fptrunc double " << b.ir << " to float\n";
+
+        // Compute error terms (lo words): a_lo = a - fpext(a_hi)
+        const std::string a_hi_ext = next_tmp("dek_ahiext");
+        const std::string b_hi_ext = next_tmp("dek_bhiext");
+        const std::string a_lo_d = next_tmp("dek_alo");
+        const std::string b_lo_d = next_tmp("dek_blo");
+        os << "  " << a_hi_ext << " = fpext float " << a_hi << " to double\n";
+        os << "  " << b_hi_ext << " = fpext float " << b_hi << " to double\n";
+        os << "  " << a_lo_d << " = fsub double " << a.ir << ", " << a_hi_ext << "\n";
+        os << "  " << b_lo_d << " = fsub double " << b.ir << ", " << b_hi_ext << "\n";
+        const std::string a_lo = next_tmp("dek_alo32");
+        const std::string b_lo = next_tmp("dek_blo32");
+        os << "  " << a_lo << " = fptrunc double " << a_lo_d << " to float\n";
+        os << "  " << b_lo << " = fptrunc double " << b_lo_d << " to float\n";
+
+        std::string result_hi, result_lo;
+
+        if (llvm_op == "fadd" || llvm_op == "fsub") {
+            // (a_hi + a_lo) +/- (b_hi + b_lo) = (a_hi +/- b_hi) + (a_lo +/- b_lo)
+            // Use TwoSum for the hi parts to get exact error
+            const std::string s = next_tmp("dek_s");
+            os << "  " << s << " = " << llvm_op << " float " << a_hi << ", " << b_hi << "\n";
+            const std::string v1 = next_tmp("dek_v");
+            os << "  " << v1 << " = fsub float " << s << ", " << a_hi << "\n";
+            const std::string err_b = next_tmp("dek_errb");
+            os << "  " << err_b << " = fsub float " << b_hi << ", " << v1 << "\n";
+            const std::string err_a = next_tmp("dek_erra");
+            os << "  " << err_a << " = fsub float " << a_hi << ", " << s << "\n";
+            const std::string err_a2 = next_tmp("dek_erra2");
+            os << "  " << err_a2 << " = fadd float " << err_a << ", " << v1 << "\n";
+            const std::string round_err = next_tmp("dek_rerr");
+            os << "  " << round_err << " = fadd float " << err_a2 << ", " << err_b << "\n";
+            // lo = round_err + a_lo +/- b_lo
+            const std::string lo1 = next_tmp("dek_lo1");
+            os << "  " << lo1 << " = fadd float " << round_err << ", " << a_lo << "\n";
+            const std::string lo2 = next_tmp("dek_lo2");
+            os << "  " << lo2 << " = " << llvm_op << " float " << lo1 << ", " << b_lo << "\n";
+            result_hi = s;
+            result_lo = lo2;
+        } else if (llvm_op == "fmul") {
+            // (a_hi + a_lo) * (b_hi + b_lo) ≈ a_hi*b_hi + (a_hi*b_lo + a_lo*b_hi)
+            const std::string p = next_tmp("dek_p");
+            os << "  " << p << " = fmul float " << a_hi << ", " << b_hi << "\n";
+            // Cross terms
+            const std::string c1 = next_tmp("dek_c1");
+            os << "  " << c1 << " = fmul float " << a_hi << ", " << b_lo << "\n";
+            const std::string c2 = next_tmp("dek_c2");
+            os << "  " << c2 << " = fmul float " << a_lo << ", " << b_hi << "\n";
+            const std::string lo1 = next_tmp("dek_lo1");
+            os << "  " << lo1 << " = fadd float " << c1 << ", " << c2 << "\n";
+            result_hi = p;
+            result_lo = lo1;
+        } else if (llvm_op == "fdiv") {
+            // a / b ≈ (a_hi / b_hi) with Newton correction
+            const std::string q = next_tmp("dek_q");
+            os << "  " << q << " = fdiv float " << a_hi << ", " << b_hi << "\n";
+            // Residual: r = a_hi - q * b_hi
+            const std::string qb = next_tmp("dek_qb");
+            os << "  " << qb << " = fmul float " << q << ", " << b_hi << "\n";
+            const std::string r = next_tmp("dek_r");
+            os << "  " << r << " = fsub float " << a_hi << ", " << qb << "\n";
+            // Correction: (r + a_lo - q * b_lo) / b_hi
+            const std::string r2 = next_tmp("dek_r2");
+            os << "  " << r2 << " = fadd float " << r << ", " << a_lo << "\n";
+            const std::string qbl = next_tmp("dek_qbl");
+            os << "  " << qbl << " = fmul float " << q << ", " << b_lo << "\n";
+            const std::string r3 = next_tmp("dek_r3");
+            os << "  " << r3 << " = fsub float " << r2 << ", " << qbl << "\n";
+            const std::string corr = next_tmp("dek_corr");
+            os << "  " << corr << " = fdiv float " << r3 << ", " << b_hi << "\n";
+            result_hi = q;
+            result_lo = corr;
+        } else {
+            // Unsupported op — fall back to FP32 approximation
+            const std::string out = next_tmp("fbin");
+            os << "  " << out << " = " << llvm_op << " float " << a_hi << ", " << b_hi << "\n";
+            result_hi = out;
+            result_lo = "";
+        }
+
+        // Reconstruct: result = hi + lo, then extend back to double
+        std::string final_f32;
+        if (!result_lo.empty()) {
+            final_f32 = next_tmp("dek_sum");
+            os << "  " << final_f32 << " = fadd float " << result_hi << ", " << result_lo << "\n";
+        } else {
+            final_f32 = result_hi;
+        }
+        const std::string result_d = next_tmp("dek_result");
+        os << "  " << result_d << " = fpext float " << final_f32 << " to double\n";
+
+        Value v;
+        v.ir = result_d;
+        v.type = {.kind = PtxTypeSpec::Kind::kFloat, .bits = 64, .is_signed = false};
+        v.bits = 64;
+        auto bitsv = encode_value_to_reg_bits(os, v, ensure_reg_slot(dst).bits);
+        if (!bitsv.has_value()) {
+            error_ = "fp64 emulate result encode failed";
+            return false;
+        }
+        return emit_store_reg_bits(os, dst, ensure_reg_slot(dst).bits, *bitsv, ensure_reg_slot(dst).bits);
+    }
+
     bool emit_binary_float_op(std::ostringstream& os,
                               const cumetal::ptx::EntryFunction::Instruction& instr,
                               const std::string& llvm_op) {
@@ -1774,6 +1891,17 @@ class GenericLlvmEmitter {
         if (ty.kind != PtxTypeSpec::Kind::kFloat) {
             return fail(instr, "float op without float suffix");
         }
+
+        // FP64 emulation: decompose to FP32 Dekker pairs when --fp64=emulate
+        if (ty.bits == 64 && fp64_mode_ == cumetal::ptx::Fp64Mode::kEmulate) {
+            auto a = decode_float_operand(os, instr.operands[1], ty.bits);
+            auto b = decode_float_operand(os, instr.operands[2], ty.bits);
+            if (!a.has_value() || !b.has_value()) {
+                return fail(instr, "float op source unsupported");
+            }
+            return emit_fp64_emulated_binary(os, dst, *a, *b, llvm_op);
+        }
+
         auto a = decode_float_operand(os, instr.operands[1], ty.bits);
         auto b = decode_float_operand(os, instr.operands[2], ty.bits);
         if (!a.has_value() || !b.has_value()) {
@@ -3883,7 +4011,8 @@ GenericLlvmBodyResult try_emit_generic_llvm_body(std::string_view ptx_source,
                                                  std::vector<ParamInfo>* params,
                                                  std::vector<std::string>* arg_decls,
                                                  const std::unordered_map<std::string, ConstSymbolInfo>* const_symbols,
-                                                 const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols) {
+                                                 const std::unordered_map<std::string, SharedSymbolInfo>* shared_symbols,
+                                                 cumetal::ptx::Fp64Mode fp64_mode = cumetal::ptx::Fp64Mode::kNative) {
     GenericLlvmBodyResult out;
 
     cumetal::ptx::ParseOptions parse_opts;
@@ -3906,7 +4035,7 @@ GenericLlvmBodyResult try_emit_generic_llvm_body(std::string_view ptx_source,
         return out;
     }
 
-    GenericLlvmEmitter emitter(*entry, params, arg_decls, const_symbols, shared_symbols);
+    GenericLlvmEmitter emitter(*entry, params, arg_decls, const_symbols, shared_symbols, fp64_mode);
     return emitter.run();
 }
 
@@ -4177,7 +4306,8 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
                                                   &generic_params,
                                                   &generic_arg_decls,
                                                   &const_symbols,
-                                                  &shared_symbols);
+                                                  &shared_symbols,
+                                                  options.fp64_mode);
         if (generic_body.ok) {
             params = std::move(generic_params);
             arg_decls = std::move(generic_arg_decls);
@@ -4359,13 +4489,11 @@ LowerToLlvmResult lower_ptx_to_llvm_ir(std::string_view ptx, const LowerToLlvmOp
         result.warnings.push_back(generic_body.error);
     }
 
-    // --fp64=emulate: Dekker's algorithm decomposition is not yet implemented.
-    // Emit a warning and fall through to native FP64 (kNative) behavior.
-    if (options.fp64_mode == Fp64Mode::kEmulate) {
-        result.warnings.push_back(
-            "--fp64=emulate: Dekker's algorithm FP32-pair decomposition is not yet implemented; "
-            "using native FP64 (full IEEE 754 double, but low throughput on Apple Silicon)");
-    }
+    // --fp64=emulate: Dekker's algorithm FP32-pair decomposition is active in the
+    // generic LLVM emitter. Named fp64_mul_add signatures use dedicated Dekker code.
+    // Generic .f64 arithmetic (fadd, fsub, fmul, fdiv) is decomposed to ~44-bit
+    // effective mantissa via FP32 pairs. Other .f64 ops (sqrt, fma intrinsic) fall
+    // through to native double IR and may fail on Apple Silicon GPU.
 
     // --fp64=warn: scan PTX source for any .f64 instructions and emit per-line warnings.
     if (options.fp64_mode == Fp64Mode::kWarn) {

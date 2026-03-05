@@ -417,3 +417,10 @@ add_test(
             ${CMAKE_CURRENT_BINARY_DIR}
 )
 set_tests_properties(unit_library_link_aliases PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME unit_cusparse_cusolver_symlinks
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/cusolver_link_test.sh
+            $<TARGET_FILE_DIR:cumetal_runtime>
+)
