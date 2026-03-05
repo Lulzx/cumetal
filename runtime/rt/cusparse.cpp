@@ -249,37 +249,48 @@ cusparseStatus_t cusparseSpMV(cusparseHandle_t handle,
     if (!handle || !matA || !vecX || !vecY || !alpha || !beta) {
         return CUSPARSE_STATUS_INVALID_VALUE;
     }
-    if (!matA->is_csr || computeType != CUDA_R_32F) {
+    if (!matA->is_csr || (computeType != CUDA_R_32F && computeType != CUDA_R_64F)) {
         return CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED;
     }
 
     // Synchronize stream before CPU computation on UMA
     if (handle->stream) cudaStreamSynchronize(handle->stream);
 
-    const float a = *static_cast<const float*>(alpha);
-    const float b = *static_cast<const float*>(beta);
-    const float* vals = static_cast<const float*>(matA->values);
     const int* rowPtr = static_cast<const int*>(matA->rowOffsets);
     const int* colIdx = static_cast<const int*>(matA->colInd);
-    const float* x = static_cast<const float*>(vecX->values);
-    float* y = static_cast<float*>(vecY->values);
     const int base = (matA->idxBase == CUSPARSE_INDEX_BASE_ONE) ? 1 : 0;
     const int64_t m = (opA == CUSPARSE_OPERATION_NON_TRANSPOSE) ? matA->rows : matA->cols;
 
-    for (int64_t i = 0; i < m; ++i) {
-        float sum = 0.0f;
-        const int row_start = rowPtr[i] - base;
-        const int row_end = rowPtr[i + 1] - base;
-        for (int j = row_start; j < row_end; ++j) {
-            const int col = colIdx[j] - base;
-            if (opA == CUSPARSE_OPERATION_NON_TRANSPOSE) {
-                sum += vals[j] * x[col];
-            } else {
-                // For transpose, accumulate into y[col] instead — simplified path
-                sum += vals[j] * x[col];
+    if (computeType == CUDA_R_64F) {
+        const double a = *static_cast<const double*>(alpha);
+        const double b = *static_cast<const double*>(beta);
+        const double* vals = static_cast<const double*>(matA->values);
+        const double* x = static_cast<const double*>(vecX->values);
+        double* y = static_cast<double*>(vecY->values);
+        for (int64_t i = 0; i < m; ++i) {
+            double sum = 0.0;
+            const int row_start = rowPtr[i] - base;
+            const int row_end = rowPtr[i + 1] - base;
+            for (int j = row_start; j < row_end; ++j) {
+                sum += vals[j] * x[colIdx[j] - base];
             }
+            y[i] = a * sum + b * y[i];
         }
-        y[i] = a * sum + b * y[i];
+    } else {
+        const float a = *static_cast<const float*>(alpha);
+        const float b = *static_cast<const float*>(beta);
+        const float* vals = static_cast<const float*>(matA->values);
+        const float* x = static_cast<const float*>(vecX->values);
+        float* y = static_cast<float*>(vecY->values);
+        for (int64_t i = 0; i < m; ++i) {
+            float sum = 0.0f;
+            const int row_start = rowPtr[i] - base;
+            const int row_end = rowPtr[i + 1] - base;
+            for (int j = row_start; j < row_end; ++j) {
+                sum += vals[j] * x[colIdx[j] - base];
+            }
+            y[i] = a * sum + b * y[i];
+        }
     }
     return CUSPARSE_STATUS_SUCCESS;
 }
@@ -314,35 +325,53 @@ cusparseStatus_t cusparseSpMM(cusparseHandle_t handle,
     if (!handle || !matA || !matB || !matC || !alpha || !beta) {
         return CUSPARSE_STATUS_INVALID_VALUE;
     }
-    if (!matA->is_csr || computeType != CUDA_R_32F) {
+    if (!matA->is_csr || (computeType != CUDA_R_32F && computeType != CUDA_R_64F)) {
         return CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED;
     }
 
     if (handle->stream) cudaStreamSynchronize(handle->stream);
 
-    const float a = *static_cast<const float*>(alpha);
-    const float b = *static_cast<const float*>(beta);
-    const float* vals = static_cast<const float*>(matA->values);
     const int* rowPtr = static_cast<const int*>(matA->rowOffsets);
     const int* colIdx = static_cast<const int*>(matA->colInd);
-    const float* B = static_cast<const float*>(matB->values);
-    float* C = static_cast<float*>(matC->values);
     const int base = (matA->idxBase == CUSPARSE_INDEX_BASE_ONE) ? 1 : 0;
     const int64_t m = (opA == CUSPARSE_OPERATION_NON_TRANSPOSE) ? matA->rows : matA->cols;
     const int64_t n = matB->cols;
     const int64_t ldb = matB->ld;
     const int64_t ldc = matC->ld;
 
-    for (int64_t i = 0; i < m; ++i) {
-        for (int64_t j = 0; j < n; ++j) {
-            float sum = 0.0f;
-            const int row_start = rowPtr[i] - base;
-            const int row_end = rowPtr[i + 1] - base;
-            for (int k = row_start; k < row_end; ++k) {
-                const int col = colIdx[k] - base;
-                sum += vals[k] * B[col + j * ldb];
+    if (computeType == CUDA_R_64F) {
+        const double a = *static_cast<const double*>(alpha);
+        const double b = *static_cast<const double*>(beta);
+        const double* vals = static_cast<const double*>(matA->values);
+        const double* B = static_cast<const double*>(matB->values);
+        double* C = static_cast<double*>(matC->values);
+        for (int64_t i = 0; i < m; ++i) {
+            for (int64_t j = 0; j < n; ++j) {
+                double sum = 0.0;
+                const int row_start = rowPtr[i] - base;
+                const int row_end = rowPtr[i + 1] - base;
+                for (int k = row_start; k < row_end; ++k) {
+                    sum += vals[k] * B[colIdx[k] - base + j * ldb];
+                }
+                C[i + j * ldc] = a * sum + b * C[i + j * ldc];
             }
-            C[i + j * ldc] = a * sum + b * C[i + j * ldc];
+        }
+    } else {
+        const float a = *static_cast<const float*>(alpha);
+        const float b = *static_cast<const float*>(beta);
+        const float* vals = static_cast<const float*>(matA->values);
+        const float* B = static_cast<const float*>(matB->values);
+        float* C = static_cast<float*>(matC->values);
+        for (int64_t i = 0; i < m; ++i) {
+            for (int64_t j = 0; j < n; ++j) {
+                float sum = 0.0f;
+                const int row_start = rowPtr[i] - base;
+                const int row_end = rowPtr[i + 1] - base;
+                for (int k = row_start; k < row_end; ++k) {
+                    sum += vals[k] * B[colIdx[k] - base + j * ldb];
+                }
+                C[i + j * ldc] = a * sum + b * C[i + j * ldc];
+            }
         }
     }
     return CUSPARSE_STATUS_SUCCESS;

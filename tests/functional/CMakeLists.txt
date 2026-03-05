@@ -449,6 +449,14 @@ add_executable(cumetal_curand_kernel_test
     curand_kernel_test.cpp
 )
 
+add_executable(cumetal_cusparse_fp64_test
+    cusparse_fp64_test.cpp
+)
+
+add_executable(cumetal_blas1_stride_test
+    blas1_stride_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -1009,6 +1017,16 @@ target_link_libraries(cumetal_curand_kernel_test
 )
 
 target_link_libraries(cumetal_thrust_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cusparse_fp64_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_blas1_stride_test
     PRIVATE
         cumetal_runtime
 )
@@ -2553,4 +2571,14 @@ add_test(
 add_test(
     NAME functional_curand_kernel
     COMMAND cumetal_curand_kernel_test
+)
+
+add_test(
+    NAME functional_cusparse_fp64
+    COMMAND cumetal_cusparse_fp64_test
+)
+
+add_test(
+    NAME functional_blas1_stride
+    COMMAND cumetal_blas1_stride_test
 )
