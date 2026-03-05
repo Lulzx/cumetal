@@ -466,6 +466,15 @@ install(FILES
     runtime/api/nvml.h
     runtime/api/nccl.h
     runtime/api/cooperative_groups.h
+    runtime/api/cuComplex.h
+    runtime/api/device_launch_parameters.h
+    runtime/api/driver_types.h
+    runtime/api/library_types.h
+    runtime/api/channel_descriptor.h
+    runtime/api/device_atomic_functions.h
+    runtime/api/math_functions.h
+    runtime/api/cuda_profiler_api.h
+    runtime/api/cuda_occupancy.h
     DESTINATION include
 )
 

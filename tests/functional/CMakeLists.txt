@@ -425,6 +425,10 @@ add_executable(cumetal_thrust_api_test
     thrust_api_test.cpp
 )
 
+add_executable(cumetal_cucomplex_api_test
+    cucomplex_api_test.cpp
+)
+
 target_link_libraries(cumetal_runtime_vector_add_test
     PRIVATE
         cumetal_runtime
@@ -944,6 +948,11 @@ target_link_libraries(cumetal_nvml_api_test
 )
 
 target_link_libraries(cumetal_nccl_api_test
+    PRIVATE
+        cumetal_runtime
+)
+
+target_link_libraries(cumetal_cucomplex_api_test
     PRIVATE
         cumetal_runtime
 )
@@ -2463,4 +2472,9 @@ add_test(
 add_test(
     NAME functional_thrust_api
     COMMAND cumetal_thrust_api_test
+)
+
+add_test(
+    NAME functional_cucomplex_api
+    COMMAND cumetal_cucomplex_api_test
 )
